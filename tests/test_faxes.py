@@ -22,7 +22,7 @@ import httpx
 import pytest
 import respx
 
-from ringivo import ApiError, Fax, Ringivo
+from ringivo import ApiError, Fax, Ringivo, __version__
 
 BASE_URL = "https://api.yourprovider.example"
 TOKEN_URL = f"{BASE_URL}/oauth/token"
@@ -313,6 +313,29 @@ def test_get_reads_a_jsonapi_document_into_the_public_dataclass(
     assert fax.raw["type"] == "faxes"
 
 
+def test_a_fax_id_stays_inside_its_own_path_segment(
+    respx_mock: respx.MockRouter, client: Ringivo
+) -> None:
+    # A fax id is whatever the caller's own system handed them, and an id
+    # carrying `/` or `..` must not be able to steer the request at a
+    # DIFFERENT endpoint. Unquoted, `../fax-accounts/secret` normalises on the
+    # wire to `/v1/fax-accounts/secret` — a real resource, read with this
+    # client's token, that the caller never asked for.
+    #
+    # Asserted on `raw_path`, which is what goes on the wire. `url.path` is a
+    # DECODED view and shows `/v1/faxes/../fax-accounts/secret` even when the
+    # escaping is correct, so a test written against it proves nothing.
+    evil = "../fax-accounts/secret"
+    route = respx_mock.route(host="api.yourprovider.example").mock(
+        return_value=httpx.Response(200, json={"data": _fax_resource()})
+    )
+
+    with client:
+        client.faxes.get(evil)
+
+    assert route.calls.last.request.url.raw_path == b"/v1/faxes/..%2Ffax-accounts%2Fsecret"
+
+
 def test_get_speaks_jsonapi_and_can_side_load_the_attempts(
     respx_mock: respx.MockRouter, client: Ringivo
 ) -> None:
@@ -536,6 +559,10 @@ def test_media_mints_a_link_and_then_downloads_it_without_the_bearer(
     assert content == b"%PDF-1.7 the real pages"
     assert link.calls.last.request.headers["authorization"] == "Bearer tok"
     assert "authorization" not in download.calls.last.request.headers
+    # It drops the token and NOTHING else: the download is still this SDK
+    # asking, and an operator reading an object store's access log should see
+    # which client fetched the document.
+    assert download.calls.last.request.headers["user-agent"] == f"Ringivo/Python {__version__}"
     assert link.calls.last.request.url.params["format"] == "pdf"
 
 

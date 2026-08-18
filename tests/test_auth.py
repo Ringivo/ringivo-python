@@ -13,6 +13,7 @@ requests were made, and the one proving a 401 is retried exactly ONCE.
 
 from __future__ import annotations
 
+import asyncio
 from urllib.parse import parse_qs
 
 import httpx
@@ -209,6 +210,43 @@ def test_every_request_carries_the_versioned_user_agent() -> None:
     expected = f"Ringivo/Python {ringivo.__version__}"
     assert token.calls.last.request.headers["user-agent"] == expected
     assert fax.calls.last.request.headers["user-agent"] == expected
+
+
+@respx.mock
+def test_an_async_client_refuses_loudly_rather_than_sending_an_unauthenticated_request() -> None:
+    """0.1.0 shipped this as a SILENT unauthenticated send, and this is the fix.
+
+    httpx's base `Auth.async_auth_flow` defers to `Auth.auth_flow`, whose
+    default body is one line — `yield request` — a PASS-THROUGH. So an async
+    caller who handed this object to an `httpx.AsyncClient` got the request
+    sent verbatim: no token minted, no `Authorization` header, no exception.
+    The server answers 401 and the caller reads it as their credential being
+    wrong.
+
+    That is reachable, not theoretical: auth.py's own docstring advertises
+    that every request through the shared client is covered "including any a
+    caller makes through the vendored generated client" — and that client
+    publishes `asyncio` functions beside its `sync` ones.
+
+    So the two assertions below are one gate. Raising is only half of it; the
+    half that matters is that NOTHING WENT OUT.
+    """
+    token = respx.post(TOKEN_URL).mock(return_value=_token_response())
+    fax = respx.get(FAX_URL).mock(return_value=httpx.Response(200, json=_fax_document()))
+
+    async def attempt() -> None:
+        client = Ringivo(base_url=BASE_URL, client_id="cid", client_secret="csecret")
+        try:
+            async with httpx.AsyncClient(auth=client._auth) as async_client:
+                await async_client.get(FAX_URL)
+        finally:
+            client.close()
+
+    with pytest.raises(NotImplementedError, match="sync-only"):
+        asyncio.run(attempt())
+
+    assert fax.call_count == 0, "an unauthenticated request reached the API"
+    assert token.call_count == 0
 
 
 def test_the_base_url_is_taken_whole_and_normalised() -> None:
