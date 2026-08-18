@@ -99,7 +99,12 @@ def sync_detailed(
     """Mint a download URL for a fax's document
 
      Answers a small **plain-JSON composite**, not the bytes and not a JSON:API document: `url`
-    is a short-lived pre-signed link you follow yourself, and `expires_at` says until when.
+    is a time-limited download URL **on your own API host**, and `expires_at` says until when.
+
+    Follow `url` with a plain `GET` and **no `Authorization` header**. It carries its own
+    signature, and that signature is the authorization — sending a bearer token is unnecessary
+    and adds nothing. Treat the URL as opaque: the signature covers the whole address, so
+    editing any part of it invalidates the link.
 
     Every call mints a fresh capability and writes an audit entry naming who asked, so do not
     cache the URL past its expiry or share it — anyone holding it reads that document with no
@@ -138,7 +143,12 @@ def sync(
     """Mint a download URL for a fax's document
 
      Answers a small **plain-JSON composite**, not the bytes and not a JSON:API document: `url`
-    is a short-lived pre-signed link you follow yourself, and `expires_at` says until when.
+    is a time-limited download URL **on your own API host**, and `expires_at` says until when.
+
+    Follow `url` with a plain `GET` and **no `Authorization` header**. It carries its own
+    signature, and that signature is the authorization — sending a bearer token is unnecessary
+    and adds nothing. Treat the URL as opaque: the signature covers the whole address, so
+    editing any part of it invalidates the link.
 
     Every call mints a fresh capability and writes an audit entry naming who asked, so do not
     cache the URL past its expiry or share it — anyone holding it reads that document with no
@@ -172,7 +182,12 @@ async def asyncio_detailed(
     """Mint a download URL for a fax's document
 
      Answers a small **plain-JSON composite**, not the bytes and not a JSON:API document: `url`
-    is a short-lived pre-signed link you follow yourself, and `expires_at` says until when.
+    is a time-limited download URL **on your own API host**, and `expires_at` says until when.
+
+    Follow `url` with a plain `GET` and **no `Authorization` header**. It carries its own
+    signature, and that signature is the authorization — sending a bearer token is unnecessary
+    and adds nothing. Treat the URL as opaque: the signature covers the whole address, so
+    editing any part of it invalidates the link.
 
     Every call mints a fresh capability and writes an audit entry naming who asked, so do not
     cache the URL past its expiry or share it — anyone holding it reads that document with no
@@ -209,7 +224,12 @@ async def asyncio(
     """Mint a download URL for a fax's document
 
      Answers a small **plain-JSON composite**, not the bytes and not a JSON:API document: `url`
-    is a short-lived pre-signed link you follow yourself, and `expires_at` says until when.
+    is a time-limited download URL **on your own API host**, and `expires_at` says until when.
+
+    Follow `url` with a plain `GET` and **no `Authorization` header**. It carries its own
+    signature, and that signature is the authorization — sending a bearer token is unnecessary
+    and adds nothing. Treat the URL as opaque: the signature covers the whole address, so
+    editing any part of it invalidates the link.
 
     Every call mints a fresh capability and writes an audit entry naming who asked, so do not
     cache the URL past its expiry or share it — anyone holding it reads that document with no
