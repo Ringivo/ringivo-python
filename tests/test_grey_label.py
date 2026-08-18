@@ -51,15 +51,14 @@ def test_no_packaged_file_names_a_platform_brand_or_a_provider_host() -> None:
     # must not look alike. A refactor that moved the package would otherwise
     # leave this test passing over an empty file list forever.
     assert len(files) > 100, f"only {len(files)} packaged files were searched — scan is broken"
-    assert any(
-        "_generated" in path.parts for path in files
-    ), "the generated tree was not searched, and it is the half that regresses on its own"
+    assert any("_generated" in path.parts for path in files), (
+        "the generated tree was not searched, and it is the half that regresses on its own"
+    )
 
     offenders = {
         str(path): sorted({match.group(0).lower() for match in FORBIDDEN.finditer(text)})
         for path in files
-        if (text := path.read_text(encoding="utf-8", errors="replace"))
-        and FORBIDDEN.search(text)
+        if (text := path.read_text(encoding="utf-8", errors="replace")) and FORBIDDEN.search(text)
     }
 
     assert offenders == {}, (

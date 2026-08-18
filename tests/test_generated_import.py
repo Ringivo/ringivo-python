@@ -51,7 +51,35 @@ def test_send_fax_endpoint_has_known_generator_bug():
         importlib.import_module("ringivo._generated.api.faxes.send_fax")
 
 
-def test_ringivo_stub_still_works():
+def test_list_faxes_deep_object_filter_has_known_generator_bug():
+    """openapi-python-client 0.29.0 does not serialise a `deepObject` query
+    parameter. `filter[tag]` is declared `style: deepObject, explode: true`
+    (spec/openapi.yaml, GET /v1/faxes), so `{"clinic": "north"}` must reach
+    the wire as `filter[tag][clinic]=north`. The generated code ends its
+    handling with `params.update(json_filtertag)`, which puts the members on
+    the query string BARE — `clinic=north` — dropping the `filter[tag]`
+    wrapper entirely.
+
+    That failure is silent and expensive: the server ignores an unknown
+    query member or refuses it, and either way a caller who believes they
+    narrowed the collection is reading the whole of it.
+
+    This test pins the bug the way the sendFax one above does. It is the
+    second of the two reasons `ringivo.faxes` builds its own requests
+    instead of calling the generated endpoints (see that module's
+    docstring). If a future generator version fixes it, this test fails
+    loudly and the reasoning in faxes.py should be revisited with it.
+    """
+    from ringivo._generated.api.faxes import list_faxes
+    from ringivo._generated.models.list_faxes_filtertag import ListFaxesFiltertag
+
+    kwargs = list_faxes._get_kwargs(filtertag=ListFaxesFiltertag.from_dict({"clinic": "north"}))
+
+    assert kwargs["params"] == {"clinic": "north"}
+    assert "filter[tag][clinic]" not in kwargs["params"]
+
+
+def test_ringivo_client_still_works():
     from ringivo import Ringivo
 
     client = Ringivo(base_url="https://api.example.com/", client_id="x", client_secret="y")
