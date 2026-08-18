@@ -37,6 +37,15 @@ def test_send_fax_endpoint_has_known_generator_bug():
     of the bug silently reappearing (or silently vanishing unnoticed).
     Remove this test and the matching ruff per-file-ignore in
     pyproject.toml together once that happens.
+
+    CI is pinned to Python 3.12 (.python-version) specifically because this
+    test depends on CURRENT eager annotation evaluation: under Python 3.14
+    (PEP 649, lazy/deferred annotations by default) a bare `def f(x: Unset =
+    UNSET)` with no `from __future__ import annotations` would no longer
+    raise NameError merely on import — the annotation is only evaluated on
+    demand. If this test goes red on a newer Python, re-diagnose the actual
+    cause (Python version vs. an upstream generator fix) before touching the
+    ruff ignore.
     """
     with pytest.raises(NameError, match="Unset"):
         importlib.import_module("ringivo._generated.api.faxes.send_fax")
