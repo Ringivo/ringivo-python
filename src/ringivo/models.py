@@ -17,7 +17,7 @@ server field never has to wait for a new SDK.
 
 from __future__ import annotations
 
-from collections.abc import Iterator, Mapping, Sequence
+from collections.abc import Iterator, Mapping
 from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any
@@ -240,10 +240,3 @@ class MediaLink:
             sha256=_text(payload, "sha256"),
             raw=payload,
         )
-
-
-def _faxes_from_collection(document: Mapping[str, Any]) -> Sequence[Fax]:
-    data = document.get("data")
-    if not isinstance(data, list):
-        return ()
-    return tuple(Fax._from_resource(item) for item in data if isinstance(item, Mapping))
