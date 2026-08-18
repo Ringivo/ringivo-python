@@ -124,6 +124,11 @@ def sync_detailed(
         body (SendFaxMultipartRequest): Upload the pages themselves. Up to five parts, sniffed on
             their bytes rather than on their
             names — PDF, TIFF, PNG and JPEG are what a fax can be made of.
+
+            Send the `tags` and `cover_page` parts as plain JSON text, not as a `Blob`: append the
+            JSON
+            string directly as the part body, because a `Blob` part gains a filename and arrives as an
+            upload instead of a field, which fails validation without saying why.
         body (SendFaxUrlRequest): Point at the pages instead of uploading them. Every URL must be
             `https` on a public host, and
             uploads and URLs may not be mixed in one request.
@@ -174,6 +179,11 @@ def sync(
         body (SendFaxMultipartRequest): Upload the pages themselves. Up to five parts, sniffed on
             their bytes rather than on their
             names — PDF, TIFF, PNG and JPEG are what a fax can be made of.
+
+            Send the `tags` and `cover_page` parts as plain JSON text, not as a `Blob`: append the
+            JSON
+            string directly as the part body, because a `Blob` part gains a filename and arrives as an
+            upload instead of a field, which fails validation without saying why.
         body (SendFaxUrlRequest): Point at the pages instead of uploading them. Every URL must be
             `https` on a public host, and
             uploads and URLs may not be mixed in one request.
@@ -219,6 +229,11 @@ async def asyncio_detailed(
         body (SendFaxMultipartRequest): Upload the pages themselves. Up to five parts, sniffed on
             their bytes rather than on their
             names — PDF, TIFF, PNG and JPEG are what a fax can be made of.
+
+            Send the `tags` and `cover_page` parts as plain JSON text, not as a `Blob`: append the
+            JSON
+            string directly as the part body, because a `Blob` part gains a filename and arrives as an
+            upload instead of a field, which fails validation without saying why.
         body (SendFaxUrlRequest): Point at the pages instead of uploading them. Every URL must be
             `https` on a public host, and
             uploads and URLs may not be mixed in one request.
@@ -267,6 +282,11 @@ async def asyncio(
         body (SendFaxMultipartRequest): Upload the pages themselves. Up to five parts, sniffed on
             their bytes rather than on their
             names — PDF, TIFF, PNG and JPEG are what a fax can be made of.
+
+            Send the `tags` and `cover_page` parts as plain JSON text, not as a `Blob`: append the
+            JSON
+            string directly as the part body, because a `Blob` part gains a filename and arrives as an
+            upload instead of a field, which fails validation without saying why.
         body (SendFaxUrlRequest): Point at the pages instead of uploading them. Every URL must be
             `https` on a public host, and
             uploads and URLs may not be mixed in one request.
