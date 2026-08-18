@@ -22,9 +22,10 @@
 # rewrite of every model's `from_dict(cls: type[T]) -> T` into
 # `from_dict(cls) -> Self` + `from typing_extensions import Self` — which is
 # why a `typing-extensions` runtime dependency appeared after the first
-# generate and silently went dead after a later one (see pyproject.toml
-# history / task-9-report.md). If you touch [tool.ruff] here, regenerate and
-# diff src/ringivo/_generated before committing either change alone.
+# generate of this repo and silently went dead after a later one, once the
+# rewrite stopped happening (`git log -p pyproject.toml` shows both moves).
+# If you touch [tool.ruff] here, regenerate and diff src/ringivo/_generated
+# before committing either change alone.
 #
 # The post-hook's own ruff is UNPINNED: it comes from openapi-python-client's
 # hard dependency `ruff>=0.2` inside the ephemeral `uvx` environment, not from
