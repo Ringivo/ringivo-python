@@ -10,6 +10,11 @@ pip install ringivo
 
 Python 3.10 or newer. The only runtime dependencies are `httpx` and `attrs`.
 
+**This client is synchronous.** There is no async client in 0.1.x, and the
+authentication refuses to be used from one rather than quietly sending your
+requests without a token — an `httpx.AsyncClient` handed this client's auth
+raises `NotImplementedError` naming the reason.
+
 ## Your base URL
 
 There is no default host, and none is compiled in. Your provider gives you

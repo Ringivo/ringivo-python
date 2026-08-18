@@ -46,7 +46,7 @@ import uuid
 from collections.abc import Mapping, Sequence
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
-from urllib.parse import parse_qs, urlsplit
+from urllib.parse import parse_qs, quote, urlsplit
 
 from .models import Fax, FaxPage, MediaLink
 
@@ -336,9 +336,18 @@ def _upload(document: Path | bytes, index: int) -> tuple[str, bytes, str]:
 
 
 def _path_segment(value: str) -> str:
+    """One path segment, escaped so an id cannot steer the request.
+
+    `safe=""` — nothing is left unescaped, `/` least of all. An id is
+    whatever the caller's own system handed them, and an unescaped
+    `../fax-accounts/secret` normalises ON THE WIRE to
+    `/v1/fax-accounts/secret`: a different endpoint, read with this client's
+    token, that nobody asked for. Ids are UUIDs in practice, so this escapes
+    nothing on the happy path and costs nothing.
+    """
     if not value:
         raise ValueError("a fax id is required")
-    return value
+    return quote(value, safe="")
 
 
 def _data_object(payload: Any) -> Mapping[str, Any]:

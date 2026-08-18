@@ -8,9 +8,13 @@ here, on the way out of every request.
 -- WHY THIS IS AN httpx.Auth AND NOT A WRAPPER METHOD --------------------------
 `httpx.Auth` is a request/response GENERATOR: it may look at the response and
 yield a second request. That is exactly the shape of "retry once on 401 with a
-fresh token", and putting it here means EVERY request through the shared
+fresh token", and putting it here means EVERY SYNC request through the shared
 client gets it — including any a caller makes through the vendored generated
 client, which knows nothing about tokens.
+
+The ASYNC half of that promise is not kept, and is refused rather than
+half-kept: see `async_auth_flow`, which raises. Inheriting httpx's default
+there sent requests with no `Authorization` header at all.
 
 -- WHY THE EXPIRY MARGIN -------------------------------------------------------
 The cached token is replaced `expires_in - 60` seconds after it was minted,
@@ -30,7 +34,7 @@ from __future__ import annotations
 
 import threading
 import time
-from collections.abc import Generator, Sequence
+from collections.abc import AsyncGenerator, Generator, Sequence
 
 import httpx
 
@@ -84,6 +88,36 @@ class ClientCredentialsAuth(httpx.Auth):
         # spin, and every attempt costs the server a token.
         request.headers["Authorization"] = f"Bearer {self.access_token(force_refresh=True)}"
         yield request
+
+    async def async_auth_flow(
+        self, request: httpx.Request
+    ) -> AsyncGenerator[httpx.Request, httpx.Response]:
+        """Refuse, loudly, rather than send the request unauthenticated.
+
+        THIS OVERRIDE EXISTS BECAUSE ITS ABSENCE WAS A SILENT FAILURE, shipped
+        in 0.1.0. httpx's base `async_auth_flow` defers to `auth_flow`, whose
+        default body is a single line — `yield request` — a PASS-THROUGH. So
+        an `httpx.AsyncClient(auth=…)` holding this object sent the request
+        verbatim: no token minted, no `Authorization` header, no error. The
+        server answers 401, and the caller reads that as their credential
+        being wrong. A refusal that names the cause costs them a minute; the
+        pass-through cost them an afternoon.
+
+        Not implemented rather than made to work, because the token mint below
+        is blocking I/O behind a `threading.Lock`, and an async flow needs its
+        own client and its own lock to be honest. 0.1.x is sync-only.
+
+        The unreachable `yield` is load-bearing: without it this is a
+        coroutine rather than an async generator, and httpx would fail on
+        `.__anext__()` with an `AttributeError` naming nothing useful.
+        """
+        raise NotImplementedError(
+            "ringivo's authentication is sync-only in 0.1.x, and an async client would "
+            "otherwise send this request with NO Authorization header. Use the sync "
+            "ringivo.Ringivo client, or mint a token yourself and set the header on your "
+            "own async requests."
+        )
+        yield request  # pragma: no cover - unreachable; makes this an async generator
 
     def access_token(self, *, force_refresh: bool = False) -> str:
         """The token to send, minting or replacing it if that is what it takes."""
