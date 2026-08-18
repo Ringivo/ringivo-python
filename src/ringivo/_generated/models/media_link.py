@@ -16,7 +16,10 @@ class MediaLink:
     there is no stored member this URI could be a collection of.
 
         Attributes:
-            url (str): A pre-signed download link. Short-lived — do not cache or share it.
+            url (str): A time-limited download URL on your own API host. Fetch it with a plain `GET` and no
+                `Authorization` header — the signature it carries is the authorization. Opaque: the
+                signature covers the whole address, so any edit invalidates it. Short-lived — do not
+                cache it past `expires_at` or share it.
             expires_at (datetime.datetime):
             byte_size (int):
             sha256 (str): The digest of the bytes behind `url`, so you can verify what you downloaded.

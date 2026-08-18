@@ -83,6 +83,8 @@ def sync_detailed(
     list screen asks for a preview from a different place in your code than the one that
     downloads a fax.
 
+    Follow `url` the same way — a plain `GET`, no `Authorization` header.
+
     Args:
         fax (UUID):
 
@@ -117,6 +119,8 @@ def sync(
     list screen asks for a preview from a different place in your code than the one that
     downloads a fax.
 
+    Follow `url` the same way — a plain `GET`, no `Authorization` header.
+
     Args:
         fax (UUID):
 
@@ -145,6 +149,8 @@ async def asyncio_detailed(
     PNG generated at conversion. Its own path rather than a third `format` value, because a
     list screen asks for a preview from a different place in your code than the one that
     downloads a fax.
+
+    Follow `url` the same way — a plain `GET`, no `Authorization` header.
 
     Args:
         fax (UUID):
@@ -177,6 +183,8 @@ async def asyncio(
     PNG generated at conversion. Its own path rather than a third `format` value, because a
     list screen asks for a preview from a different place in your code than the one that
     downloads a fax.
+
+    Follow `url` the same way — a plain `GET`, no `Authorization` header.
 
     Args:
         fax (UUID):
