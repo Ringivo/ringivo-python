@@ -1,7 +1,7 @@
 [project]
 name = "ringivo"
-version = "0.0.1"
-description = "Ringivo API client for Python"
+dynamic = ["version"]
+description = "Ringivo fax API client for Python"
 readme = "README.md"
 license = "MIT"
 requires-python = ">=3.10"
@@ -13,6 +13,12 @@ dependencies = [
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
+
+# ONE source of truth for the version: the module the runtime reads for its
+# own User-Agent. A literal here would be a second copy, and the two would
+# drift the first time a release was cut in a hurry.
+[tool.hatch.version]
+path = "src/ringivo/_version.py"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/ringivo"]
