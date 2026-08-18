@@ -3,7 +3,7 @@
 from .cancel_fax_result import CancelFaxResult
 from .cancel_fax_result_data import CancelFaxResultData
 from .collection_links import CollectionLinks
-from .cover_page_request import CoverPageRequest
+from .cover_page_request_type_0 import CoverPageRequestType0
 from .cover_page_type_0 import CoverPageType0
 from .document_meta import DocumentMeta
 from .error import Error
@@ -141,7 +141,7 @@ __all__ = (
     "CancelFaxResult",
     "CancelFaxResultData",
     "CollectionLinks",
-    "CoverPageRequest",
+    "CoverPageRequestType0",
     "CoverPageType0",
     "DocumentMeta",
     "Error",
