@@ -8,13 +8,14 @@ from attrs import field as _attrs_field
 
 from ..types import UNSET, Unset
 
-T = TypeVar("T", bound="CoverPageRequest")
+T = TypeVar("T", bound="CoverPageRequestType0")
 
 
 @_attrs_define
-class CoverPageRequest:
+class CoverPageRequestType0:
     """The four fields of the built-in cover page. A cover page IS a page — it is counted in
-    `pages_total` and it bills.
+    `pages_total` and it bills. `null` is accepted the same as omitting the field or sending
+    `{}` — none of the three add a cover page.
 
     Shared by both send bodies on purpose: the ceiling on each field is one validation rule in
     the application, so two copies here would be two places for it to drift.
@@ -66,15 +67,15 @@ class CoverPageRequest:
 
         message = d.pop("message", UNSET)
 
-        cover_page_request = cls(
+        cover_page_request_type_0 = cls(
             to_name=to_name,
             from_name=from_name,
             subject=subject,
             message=message,
         )
 
-        cover_page_request.additional_properties = d
-        return cover_page_request
+        cover_page_request_type_0.additional_properties = d
+        return cover_page_request_type_0
 
     @property
     def additional_keys(self) -> list[str]:

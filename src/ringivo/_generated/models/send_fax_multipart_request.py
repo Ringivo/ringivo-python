@@ -14,7 +14,7 @@ from ..models.fax_resolution import FaxResolution
 from ..types import UNSET, File, Unset
 
 if TYPE_CHECKING:
-    from ..models.cover_page_request import CoverPageRequest
+    from ..models.cover_page_request_type_0 import CoverPageRequestType0
     from ..models.tags_type_0 import TagsType0
 
 
@@ -34,9 +34,10 @@ class SendFaxMultipartRequest:
             from_ (str | Unset): The caller ID. Omit it to use the account's `defaultFromE164`; a number the account does
                 not hold is a 403, whichever way it arrived.
             resolution (FaxResolution | Unset): The two vertical resolutions the renderer produces.
-            cover_page (CoverPageRequest | Unset): The four fields of the built-in cover page. A cover page IS a page — it
-                is counted in
-                `pages_total` and it bills.
+            cover_page (CoverPageRequestType0 | None | Unset): The four fields of the built-in cover page. A cover page IS a
+                page — it is counted in
+                `pages_total` and it bills. `null` is accepted the same as omitting the field or sending
+                `{}` — none of the three add a cover page.
 
                 Shared by both send bodies on purpose: the ceiling on each field is one validation rule in
                 the application, so two copies here would be two places for it to drift.
@@ -51,12 +52,13 @@ class SendFaxMultipartRequest:
     documents: list[File]
     from_: str | Unset = UNSET
     resolution: FaxResolution | Unset = UNSET
-    cover_page: CoverPageRequest | Unset = UNSET
+    cover_page: CoverPageRequestType0 | None | Unset = UNSET
     client_reference: str | Unset = UNSET
     tags: None | TagsType0 | Unset = UNSET
     additional_properties: dict[str, Any] = _attrs_field(init=False, factory=dict)
 
     def to_dict(self) -> dict[str, Any]:
+        from ..models.cover_page_request_type_0 import CoverPageRequestType0
         from ..models.tags_type_0 import TagsType0
 
         fax_account = str(self.fax_account)
@@ -75,9 +77,13 @@ class SendFaxMultipartRequest:
         if not isinstance(self.resolution, Unset):
             resolution = self.resolution.value
 
-        cover_page: dict[str, Any] | Unset = UNSET
-        if not isinstance(self.cover_page, Unset):
+        cover_page: dict[str, Any] | None | Unset
+        if isinstance(self.cover_page, Unset):
+            cover_page = UNSET
+        elif isinstance(self.cover_page, CoverPageRequestType0):
             cover_page = self.cover_page.to_dict()
+        else:
+            cover_page = self.cover_page
 
         client_reference = self.client_reference
 
@@ -112,6 +118,7 @@ class SendFaxMultipartRequest:
         return field_dict
 
     def to_multipart(self) -> types.RequestFiles:
+        from ..models.cover_page_request_type_0 import CoverPageRequestType0
         from ..models.tags_type_0 import TagsType0
 
         files: types.RequestFiles = []
@@ -130,12 +137,15 @@ class SendFaxMultipartRequest:
             files.append(("resolution", (None, str(self.resolution.value).encode(), "text/plain")))
 
         if not isinstance(self.cover_page, Unset):
-            files.append(
-                (
-                    "cover_page",
-                    (None, json.dumps(self.cover_page.to_dict()).encode(), "application/json"),
+            if isinstance(self.cover_page, CoverPageRequestType0):
+                files.append(
+                    (
+                        "cover_page",
+                        (None, json.dumps(self.cover_page.to_dict()).encode(), "application/json"),
+                    )
                 )
-            )
+            else:
+                files.append(("cover_page", (None, str(self.cover_page).encode(), "text/plain")))
 
         if not isinstance(self.client_reference, Unset):
             files.append(
@@ -157,7 +167,7 @@ class SendFaxMultipartRequest:
 
     @classmethod
     def from_dict(cls: type[T], src_dict: Mapping[str, Any]) -> T:
-        from ..models.cover_page_request import CoverPageRequest
+        from ..models.cover_page_request_type_0 import CoverPageRequestType0
         from ..models.tags_type_0 import TagsType0
 
         d = dict(src_dict)
@@ -181,12 +191,22 @@ class SendFaxMultipartRequest:
         else:
             resolution = FaxResolution(_resolution)
 
-        _cover_page = d.pop("cover_page", UNSET)
-        cover_page: CoverPageRequest | Unset
-        if isinstance(_cover_page, Unset):
-            cover_page = UNSET
-        else:
-            cover_page = CoverPageRequest.from_dict(_cover_page)
+        def _parse_cover_page(data: object) -> CoverPageRequestType0 | None | Unset:
+            if data is None:
+                return data
+            if isinstance(data, Unset):
+                return data
+            try:
+                if not isinstance(data, dict):
+                    raise TypeError()
+                componentsschemas_cover_page_request_type_0 = CoverPageRequestType0.from_dict(data)
+
+                return componentsschemas_cover_page_request_type_0
+            except (TypeError, ValueError, AttributeError, KeyError):
+                pass
+            return cast(CoverPageRequestType0 | None | Unset, data)
+
+        cover_page = _parse_cover_page(d.pop("cover_page", UNSET))
 
         client_reference = d.pop("client_reference", UNSET)
 

@@ -11,7 +11,7 @@ from ..models.fax_resolution import FaxResolution
 from ..types import UNSET, Unset
 
 if TYPE_CHECKING:
-    from ..models.cover_page_request import CoverPageRequest
+    from ..models.cover_page_request_type_0 import CoverPageRequestType0
     from ..models.tags_type_0 import TagsType0
 
 
@@ -29,9 +29,10 @@ class SendFaxUrlRequest:
             documents (list[str]):
             from_ (str | Unset):
             resolution (FaxResolution | Unset): The two vertical resolutions the renderer produces.
-            cover_page (CoverPageRequest | Unset): The four fields of the built-in cover page. A cover page IS a page — it
-                is counted in
-                `pages_total` and it bills.
+            cover_page (CoverPageRequestType0 | None | Unset): The four fields of the built-in cover page. A cover page IS a
+                page — it is counted in
+                `pages_total` and it bills. `null` is accepted the same as omitting the field or sending
+                `{}` — none of the three add a cover page.
 
                 Shared by both send bodies on purpose: the ceiling on each field is one validation rule in
                 the application, so two copies here would be two places for it to drift.
@@ -46,12 +47,13 @@ class SendFaxUrlRequest:
     documents: list[str]
     from_: str | Unset = UNSET
     resolution: FaxResolution | Unset = UNSET
-    cover_page: CoverPageRequest | Unset = UNSET
+    cover_page: CoverPageRequestType0 | None | Unset = UNSET
     client_reference: str | Unset = UNSET
     tags: None | TagsType0 | Unset = UNSET
     additional_properties: dict[str, Any] = _attrs_field(init=False, factory=dict)
 
     def to_dict(self) -> dict[str, Any]:
+        from ..models.cover_page_request_type_0 import CoverPageRequestType0
         from ..models.tags_type_0 import TagsType0
 
         fax_account = str(self.fax_account)
@@ -66,9 +68,13 @@ class SendFaxUrlRequest:
         if not isinstance(self.resolution, Unset):
             resolution = self.resolution.value
 
-        cover_page: dict[str, Any] | Unset = UNSET
-        if not isinstance(self.cover_page, Unset):
+        cover_page: dict[str, Any] | None | Unset
+        if isinstance(self.cover_page, Unset):
+            cover_page = UNSET
+        elif isinstance(self.cover_page, CoverPageRequestType0):
             cover_page = self.cover_page.to_dict()
+        else:
+            cover_page = self.cover_page
 
         client_reference = self.client_reference
 
@@ -104,7 +110,7 @@ class SendFaxUrlRequest:
 
     @classmethod
     def from_dict(cls: type[T], src_dict: Mapping[str, Any]) -> T:
-        from ..models.cover_page_request import CoverPageRequest
+        from ..models.cover_page_request_type_0 import CoverPageRequestType0
         from ..models.tags_type_0 import TagsType0
 
         d = dict(src_dict)
@@ -123,12 +129,22 @@ class SendFaxUrlRequest:
         else:
             resolution = FaxResolution(_resolution)
 
-        _cover_page = d.pop("cover_page", UNSET)
-        cover_page: CoverPageRequest | Unset
-        if isinstance(_cover_page, Unset):
-            cover_page = UNSET
-        else:
-            cover_page = CoverPageRequest.from_dict(_cover_page)
+        def _parse_cover_page(data: object) -> CoverPageRequestType0 | None | Unset:
+            if data is None:
+                return data
+            if isinstance(data, Unset):
+                return data
+            try:
+                if not isinstance(data, dict):
+                    raise TypeError()
+                componentsschemas_cover_page_request_type_0 = CoverPageRequestType0.from_dict(data)
+
+                return componentsschemas_cover_page_request_type_0
+            except (TypeError, ValueError, AttributeError, KeyError):
+                pass
+            return cast(CoverPageRequestType0 | None | Unset, data)
+
+        cover_page = _parse_cover_page(d.pop("cover_page", UNSET))
 
         client_reference = d.pop("client_reference", UNSET)
 
