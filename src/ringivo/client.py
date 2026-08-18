@@ -1,0 +1,179 @@
+"""The client a caller constructs, and the one connection everything shares.
+
+`Ringivo` owns three things: the base URL (there is no default — see below),
+one `httpx.Client` with the auth flow attached, and the resource namespaces
+hung off it (`client.faxes`).
+
+-- NO HOSTNAME IS COMPILED IN --------------------------------------------------
+`base_url` is required and has no default. This package is grey-label: the
+same wheel is installed by integrators of different providers, and a default
+host would name one of them in every traceback, every log line and every
+`--help`. tests/test_grey_label.py asserts the absence from the other side,
+by reading the installed source.
+
+-- ONE CLIENT, ONE AUTH FLOW ---------------------------------------------------
+Every request goes through the same `httpx.Client`, so token caching, the
+expiry margin and the single 401 retry apply once and apply everywhere
+(see auth.py). Pre-signed media downloads are the deliberate exception: they
+go through a second, UNAUTHENTICATED client, because the download URL points
+at an object store that is not us and must never receive our bearer token.
+"""
+
+from __future__ import annotations
+
+from collections.abc import Mapping, Sequence
+from types import TracebackType
+from typing import Any
+
+import httpx
+
+from ._version import __version__
+from .auth import USER_AGENT, ClientCredentialsAuth
+from .errors import raise_for_response
+from .faxes import Faxes
+
+__all__ = ["Ringivo"]
+
+#: What the JSON:API resource endpoints send and accept.
+JSONAPI_MEDIA_TYPE = "application/vnd.api+json"
+
+#: What the four non-JSON:API endpoints send and accept — `POST /v1/faxes`,
+#: the two media links, and `POST /v1/faxes/{fax}/cancel`.
+JSON_MEDIA_TYPE = "application/json"
+
+
+class Ringivo:
+    """A connection to one provider's API, authenticated for its lifetime.
+
+    Args:
+        base_url: The API root you were given, without a trailing slash —
+            `https://api.yourprovider.example`. Required: this package
+            names no host of its own.
+        client_id: The client id issued with your credential.
+        client_secret: Its secret.
+        scopes: The scopes to ask for, or None to take your credential's
+            default. A scope outside your client's ceiling is dropped by
+            the server rather than refused, so read the scopes back rather
+            than assuming the request was honoured in full.
+        timeout: Seconds any single request may take, token requests
+            included.
+
+    Use it as a context manager, or call `close()`, so the underlying
+    connections are released.
+    """
+
+    def __init__(
+        self,
+        base_url: str,
+        client_id: str,
+        client_secret: str,
+        *,
+        scopes: Sequence[str] | None = None,
+        timeout: float = 30.0,
+    ) -> None:
+        if not base_url:
+            raise ValueError("base_url is required")
+        if not client_id or not client_secret:
+            raise ValueError("client_id and client_secret are required")
+
+        self._base_url = base_url.rstrip("/")
+        self._auth = ClientCredentialsAuth(
+            base_url=self._base_url,
+            client_id=client_id,
+            client_secret=client_secret,
+            scopes=scopes,
+            timeout=timeout,
+        )
+        self._http = httpx.Client(
+            base_url=self._base_url,
+            timeout=timeout,
+            auth=self._auth,
+            headers={"User-Agent": USER_AGENT, "Accept": JSONAPI_MEDIA_TYPE},
+        )
+        self._downloads = httpx.Client(
+            timeout=timeout,
+            headers={"User-Agent": USER_AGENT},
+            follow_redirects=True,
+        )
+
+        self.faxes = Faxes(self)
+
+    @property
+    def base_url(self) -> str:
+        """The API root every request is built against."""
+        return self._base_url
+
+    def close(self) -> None:
+        """Release the connections. Idempotent."""
+        self._http.close()
+        self._downloads.close()
+        self._auth.close()
+
+    def __enter__(self) -> Ringivo:
+        return self
+
+    def __exit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc: BaseException | None,
+        traceback: TracebackType | None,
+    ) -> None:
+        self.close()
+
+    def __repr__(self) -> str:
+        return f"<Ringivo base_url={self._base_url!r} version={__version__!r}>"
+
+    def _request(
+        self,
+        method: str,
+        path: str,
+        *,
+        params: Mapping[str, Any] | None = None,
+        accept: str = JSONAPI_MEDIA_TYPE,
+        headers: Mapping[str, str] | None = None,
+        json: Any = None,
+        data: Mapping[str, Any] | None = None,
+        files: Sequence[tuple[str, Any]] | None = None,
+    ) -> httpx.Response:
+        """Send one request and hand back the response, or raise.
+
+        Anything at or above 400 becomes a typed exception here, so no
+        caller of this method has to check a status code — including the
+        401 that has already been retried once by the auth flow.
+        """
+        sent_headers = {"Accept": accept}
+        if headers:
+            sent_headers.update(headers)
+
+        response = self._http.request(
+            method,
+            path,
+            params=_clean_params(params),
+            headers=sent_headers,
+            json=json,
+            data=dict(data) if data else None,
+            files=list(files) if files else None,
+        )
+        raise_for_response(response)
+        return response
+
+    def _download(self, url: str) -> bytes:
+        """Follow a pre-signed URL and return the bytes behind it.
+
+        Deliberately not through `self._http`: that client carries our
+        bearer token, and this URL is somebody else's host.
+        """
+        response = self._downloads.get(url)
+        raise_for_response(response)
+        return response.content
+
+
+def _clean_params(params: Mapping[str, Any] | None) -> dict[str, Any] | None:
+    """Drop unset query parameters, keeping `False` and `0`.
+
+    `if not value` would drop `filter[read]=false` and `page[size]=0`,
+    which mean something. Only None means "not asked for".
+    """
+    if not params:
+        return None
+    return {key: value for key, value in params.items() if value is not None}
