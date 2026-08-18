@@ -50,3 +50,9 @@ def test_ringivo_stub_still_works():
 
     with pytest.raises(ValueError):
         Ringivo(base_url="", client_id="x", client_secret="y")
+
+
+def test_ci_negative_probe_deliberately_fails():
+    """Temporary: proves the CI gate actually fails red for the right
+    reason. Removed in the very next commit."""
+    assert False, "deliberate CI negative-probe failure — task 9"
