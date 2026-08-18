@@ -20,6 +20,7 @@ Webhook receivers want `ringivo.webhooks.verify()`, which needs no client
 and no network.
 """
 
+from . import webhooks
 from ._version import __version__
 from .client import Ringivo
 from .errors import (
@@ -45,4 +46,5 @@ __all__ = [
     "RingivoError",
     "SignatureVerificationError",
     "__version__",
+    "webhooks",
 ]
