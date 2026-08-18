@@ -8,6 +8,29 @@
 # Flow: uvx generates a fresh package into build/_gen (git-ignored scratch
 # space), then rsync mirrors it into src/ringivo/_generated/, which IS
 # committed — spec-sync diffs stay reviewable in PRs.
+#
+# THIS REPO'S [tool.ruff] CONFIG IS A CODEGEN INPUT, not just a lint gate.
+# openapi-python-client runs a post-generation hook (`ruff check . --fix-only
+# --extend-select=I` then `ruff format .`) INSIDE build/_gen — and because
+# build/_gen resolves to a path under this repo, ruff's own upward config
+# discovery finds and applies THIS pyproject.toml's [tool.ruff]/[tool.ruff.lint]
+# tables. Editing `select` (or `line-length`, `target-version`) therefore
+# silently changes what the NEXT `scripts/generate.sh` run writes to
+# src/ringivo/_generated/ — it is not scoped to `ruff check` in CI. Confirmed
+# concretely: narrowing `select` to ["E4","E7","E9","F"] (dropping PYI019,
+# "use Self instead of a custom TypeVar") stopped the post-hook's safe-autofix
+# rewrite of every model's `from_dict(cls: type[T]) -> T` into
+# `from_dict(cls) -> Self` + `from typing_extensions import Self` — which is
+# why a `typing-extensions` runtime dependency appeared after the first
+# generate and silently went dead after a later one (see pyproject.toml
+# history / task-9-report.md). If you touch [tool.ruff] here, regenerate and
+# diff src/ringivo/_generated before committing either change alone.
+#
+# The post-hook's own ruff is UNPINNED: it comes from openapi-python-client's
+# hard dependency `ruff>=0.2` inside the ephemeral `uvx` environment, not from
+# this repo's dev-dependency `ruff` pin. A future openapi-python-client
+# release can silently resolve a newer ruff there, changing which rules exist
+# and how they fix — independent of anything in this repo's lockfile.
 set -euo pipefail
 
 GENERATOR_VERSION="0.29.0"
