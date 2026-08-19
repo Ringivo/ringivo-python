@@ -20,14 +20,18 @@ string out of a spec.
 
 from __future__ import annotations
 
+import codecs
 import re
 from pathlib import Path
 
 import ringivo
 
-# The two platform names this product is grey-labelled away from, and the
-# provider hostname that must never be compiled in.
-FORBIDDEN = re.compile(__import__("codecs").decode("gryanzvp|gryvzngvp", "rot13") + r"|ringivo\.com", re.IGNORECASE)
+# The names this package must never carry, kept rot13-encoded so this public
+# repository does not itself spell them anywhere.
+FORBIDDEN = re.compile(
+    codecs.decode("gryanzvp|gryvzngvp", "rot13") + r"|ringivo\.com",
+    re.IGNORECASE,
+)
 
 # Everything the wheel carries that a human or a tool can read.
 SCANNED_SUFFIXES = {".py", ".pyi", ".txt", ".json", ".yaml", ".yml", ".md", ".cfg", ".typed"}
