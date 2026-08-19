@@ -10,10 +10,13 @@ pip install ringivo
 
 Python 3.10 or newer. The only runtime dependencies are `httpx` and `attrs`.
 
-**This client is synchronous.** There is no async client in 0.1.x, and the
-authentication refuses to be used from one rather than quietly sending your
-requests without a token — an `httpx.AsyncClient` handed this client's auth
-raises `NotImplementedError` naming the reason.
+**There are two clients: `Ringivo` and `AsyncRingivo`.** They take the same
+arguments and have the same methods; the async one awaits them. Pick the one
+that matches your program and do not mix them: each client's authentication
+refuses the other's transport rather than quietly sending your requests
+without a token, so an `httpx.AsyncClient` handed `Ringivo`'s auth — or an
+`httpx.Client` handed `AsyncRingivo`'s — raises `NotImplementedError` naming
+the reason.
 
 ## Your base URL
 
@@ -101,6 +104,43 @@ did:
 `media_link()` instead if you want the URL and its expiry — but do not cache
 it or pass it on: anyone holding it reads that document.
 
+## The async client
+
+`AsyncRingivo` is the same client for programs already running on asyncio.
+The constructor is identical, every method is awaited, and `async with`
+replaces `with`:
+
+```python
+import asyncio
+
+from ringivo import AsyncRingivo
+
+
+async def main():
+    async with AsyncRingivo(
+        base_url="https://api.yourprovider.example",
+        client_id="0198c4a1-1f2e-7a3b-9c40-5f6e7d8a9b01",
+        client_secret="9tK2xr4mQ7vBnZ1sD5hL0pWfC8jY3aE6",
+    ) as client:
+        fax = await client.faxes.send(
+            fax_account="0198c4a1-3c4d-7e5f-9061-2b3c4d5e6f70",
+            to="+13025556789",
+            file=Path("chart-4471.pdf"),
+        )
+
+        pdf = await client.faxes.media(fax.id)
+
+asyncio.run(main())
+```
+
+Outside a context manager, release the connections with `await
+client.aclose()` — the async spelling of `close()`.
+
+Everything else reads the same. The exceptions are the same classes, the
+returned `Fax`, `FaxPage` and `MediaLink` are the same frozen dataclasses,
+and `webhooks.verify()` is the same function: it is pure computation with no
+network, so there is nothing to await.
+
 ## Verify a webhook
 
 Every delivery carries a `Ringivo-Signature` header. Check it before you
@@ -163,6 +203,7 @@ are deliberately not wrapped.
 | | |
 |---|---|
 | `Ringivo(base_url, client_id, client_secret, *, scopes=None, timeout=30.0)` | The client. A context manager, or call `close()`. |
+| `AsyncRingivo(…same arguments…)` | The asyncio twin. An async context manager, or await `aclose()`. Every method below is awaited. |
 | `client.faxes.send(*, fax_account, to, file=…\|urls=…, …)` | Send one fax. Returns the accepted `Fax`. |
 | `client.faxes.get(fax_id, *, include=None)` | One fax, complete. |
 | `client.faxes.list(*, filters…, cursor=None, page_size=None)` | A `FaxPage`: iterable, with `next_cursor`. |

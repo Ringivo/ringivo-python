@@ -25,6 +25,13 @@ packages = ["src/ringivo"]
 
 [dependency-groups]
 dev = [
+    # httpx pulls anyio in anyway; it is named HERE because the test suite
+    # uses its pytest plugin to run the async tests (`@pytest.mark.anyio`),
+    # and a transitive dependency is not a promise. Without a plugin pytest
+    # FAILS an async test rather than skipping it, so this cannot rot into a
+    # silent green — but the failure would be a puzzle rather than a
+    # sentence.
+    "anyio>=4",
     "pyright>=1.1.411",
     "pytest>=9.1.1",
     "respx>=0.22",
