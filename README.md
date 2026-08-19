@@ -149,7 +149,13 @@ async def main():
             file=Path("chart-4471.pdf"),
         )
 
-        pdf = await client.faxes.media(fax.id)
+        terminal = {"delivered", "partial", "cancelled", "failed"}
+        while fax.status not in terminal:          # a rendered PDF needs one of these
+            await asyncio.sleep(5)
+            fax = await client.faxes.get(fax.id)
+
+        if fax.status == "delivered":
+            pdf = await client.faxes.media(fax.id)
 
 asyncio.run(main())
 ```
