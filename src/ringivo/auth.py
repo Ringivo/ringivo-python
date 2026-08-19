@@ -15,10 +15,18 @@ by every route this client calls.
 
 -- WHY THE SELECTORS ARE SENT ONLY WHEN SET ------------------------------------
 `tenant` and `customer` NAME a grant somebody already wrote for this
-credential; neither narrows a wider grant down. So an unset selector is
-left out of the body altogether rather than sent empty or null: absence is
-what asks the platform to choose, and a member carrying nothing is a
-different question with a different answer.
+credential; neither narrows a wider grant down. An unset selector is left
+out of the body altogether rather than sent as null.
+
+For `customer` the two spellings mean the same thing — the platform
+documents an omitted `customer` and a null one as the same tenant-wide
+request — so this is a free choice, and one way of saying nothing beats
+two.
+
+For `tenant` it is not free. The platform asks for a tenant, so a null one
+is a malformed request rather than "you choose"; leaving the member out is
+the only spelling that can ever mean "pick the grant I have". The SDK
+never invents a tenant to fill the gap.
 
 -- WHY THIS IS AN httpx.Auth AND NOT A WRAPPER METHOD --------------------------
 `httpx.Auth` is a request/response GENERATOR: it may look at the response and

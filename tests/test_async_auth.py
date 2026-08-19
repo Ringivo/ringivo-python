@@ -147,9 +147,10 @@ async def test_the_mint_request_carries_no_authorization_header() -> None:
 @pytest.mark.anyio
 @respx.mock
 async def test_the_selectors_are_sent_only_when_the_caller_names_them() -> None:
-    # An unset selector is ABSENT from the body rather than sent empty or
-    # null: absence is what asks the platform to choose, and a member
-    # carrying nothing is a different question.
+    # An unset selector is ABSENT from the body rather than sent as null.
+    # For `customer` the platform reads both spellings the same way, so one
+    # of them is enough; for `tenant` absence is the ONLY spelling that can
+    # mean "pick the grant I have", since a null tenant is malformed.
     token = respx.post(TOKEN_URL).mock(return_value=_token_response())
     respx.get(FAX_URL).mock(return_value=httpx.Response(200, json=_fax_document()))
 
@@ -602,4 +603,55 @@ async def test_a_client_that_asks_for_no_scopes_is_refused_at_construction() -> 
         await client.faxes.get(FAX_ID)
 
     assert token.call_count == 1
+    assert _sent(token)["scopes"] == ["fax:read"]
+
+
+@pytest.mark.anyio
+@respx.mock
+async def test_one_bare_string_of_scopes_is_refused_rather_than_split_into_characters() -> None:
+    """The twin of the sync bypass test, and it has to be written twice.
+
+    A `str` IS a `Sequence[str]`, so `scopes="fax:read"` type-checks, is
+    not empty, and becomes eight one-character scopes the platform drops
+    one by one — the scopeless token the emptiness check exists to
+    prevent, delivered past it. `AsyncRingivo` could lose this check on its
+    own and the sync suite would stay green.
+
+    Probed by deleting the `isinstance(scopes, str)` block in
+    async_client.py: this test fails at `refused is not None` — "a bare
+    string was accepted as a list of scopes".
+    """
+    token = respx.post(TOKEN_URL).mock(return_value=_token_response())
+    respx.get(FAX_URL).mock(return_value=httpx.Response(200, json=_fax_document()))
+    refused: BaseException | None = None
+
+    try:
+        built = AsyncRingivo(
+            base_url=BASE_URL,
+            client_id="cid",
+            client_secret="csecret",
+            tenant=TENANT,
+            scopes="fax:read",  # type: ignore[arg-type] - the bypass is the point
+        )
+    except ValueError as caught:
+        refused = caught
+    else:
+        await built.aclose()
+
+    assert token.call_count == 0, "a refused client still reached the mint"
+    assert refused is not None, "a bare string was accepted as a list of scopes"
+    assert "not one string" in str(refused), refused
+    assert 'scopes=["fax:read"]' in str(refused), "the refusal does not show the fix"
+
+    # THE CONTROL: the same name, in a list, is accepted and reaches the
+    # wire whole — one scope, not eight characters.
+    async with AsyncRingivo(
+        base_url=BASE_URL,
+        client_id="cid",
+        client_secret="csecret",
+        tenant=TENANT,
+        scopes=["fax:read"],
+    ) as client:
+        await client.faxes.get(FAX_ID)
+
     assert _sent(token)["scopes"] == ["fax:read"]

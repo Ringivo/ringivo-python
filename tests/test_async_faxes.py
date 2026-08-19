@@ -31,7 +31,17 @@ def _token(respx_mock: respx.MockRouter) -> None:
     """Every test here needs a credential to have been minted, not tested."""
     respx_mock.post(TOKEN_URL).mock(
         return_value=httpx.Response(
-            200, json={"token_type": "Bearer", "access_token": "tok", "expires_in": 3600}
+            200,
+            json={
+                # Every member `IntegrationTokenResponse` requires, `scopes`
+                # included: a fixture is read as a specimen of the real
+                # answer, and one missing a required member teaches the next
+                # reader a response the platform never sends.
+                "token_type": "Bearer",
+                "access_token": "tok",
+                "expires_in": 900,
+                "scopes": ["fax:read", "fax:write"],
+            },
         )
     )
 

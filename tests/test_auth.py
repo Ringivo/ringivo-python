@@ -142,9 +142,10 @@ def test_the_mint_request_carries_no_authorization_header() -> None:
 @respx.mock
 def test_the_selectors_are_sent_only_when_the_caller_names_them() -> None:
     # A selector NAMES a grant somebody already wrote; it never narrows one.
-    # So an unset selector has to be ABSENT from the body rather than sent
-    # empty or null — absence is what asks the platform to choose, and a
-    # `customer: null` would be a different question.
+    # An unset selector is ABSENT from the body rather than sent as null.
+    # For `customer` the platform reads both spellings the same way, so one
+    # of them is enough; for `tenant` absence is the ONLY spelling that can
+    # mean "pick the grant I have", since a null tenant is malformed.
     token = respx.post(TOKEN_URL).mock(return_value=_token_response())
     respx.get(FAX_URL).mock(return_value=httpx.Response(200, json=_fax_document()))
 
@@ -644,4 +645,59 @@ def test_a_client_that_asks_for_no_scopes_is_refused_at_construction() -> None:
         client.faxes.get(FAX_ID)
 
     assert token.call_count == 1
+    assert _sent(token)["scopes"] == ["fax:read"]
+
+
+@respx.mock
+def test_one_bare_string_of_scopes_is_refused_rather_than_split_into_characters() -> None:
+    """The guard above, walked past by a caller who wrote `scopes="fax:read"`.
+
+    A `str` IS a `Sequence[str]`: the annotation accepts it, pyright is
+    happy, it is not empty, and `tuple("fax:read")` is eight one-character
+    scopes. Every one of them is a name the platform does not publish, and
+    an unpublished name on THIS endpoint is dropped rather than refused —
+    so the mint answers 200 and hands back exactly the scopeless token the
+    emptiness check exists to prevent. The same failure, wearing a type the
+    checker approves of.
+
+    Nothing downstream can catch it either: eight dropped scopes and one
+    dropped scope look identical on the wire.
+
+    Probed by deleting the `isinstance(scopes, str)` block in client.py:
+    this test fails at `refused is not None` — "a bare string was accepted
+    as a list of scopes".
+    """
+    token = respx.post(TOKEN_URL).mock(return_value=_token_response())
+    respx.get(FAX_URL).mock(return_value=httpx.Response(200, json=_fax_document()))
+    refused: BaseException | None = None
+
+    try:
+        built = Ringivo(
+            base_url=BASE_URL,
+            client_id="cid",
+            client_secret="csecret",
+            tenant=TENANT,
+            scopes="fax:read",  # type: ignore[arg-type] - the bypass is the point
+        )
+    except ValueError as caught:
+        refused = caught
+    else:
+        built.close()
+
+    assert token.call_count == 0, "a refused client still reached the mint"
+    assert refused is not None, "a bare string was accepted as a list of scopes"
+    assert "not one string" in str(refused), refused
+    assert 'scopes=["fax:read"]' in str(refused), "the refusal does not show the fix"
+
+    # THE CONTROL: the same name, in a list, is accepted and reaches the
+    # wire whole — one scope, not eight characters.
+    with Ringivo(
+        base_url=BASE_URL,
+        client_id="cid",
+        client_secret="csecret",
+        tenant=TENANT,
+        scopes=["fax:read"],
+    ) as client:
+        client.faxes.get(FAX_ID)
+
     assert _sent(token)["scopes"] == ["fax:read"]

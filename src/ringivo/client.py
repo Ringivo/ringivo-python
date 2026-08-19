@@ -25,9 +25,15 @@ wrong with it, read as an access problem, hours or a deployment later. Same
 reasoning as the empty-upload refusal in faxes.py: refuse what cannot work,
 at the first moment it can be seen.
 
+A single string is refused beside the empty one, because `scopes="fax:read"`
+is the same failure wearing a type the checker accepts: a str is a
+`Sequence[str]`, so it splits into eight one-character scopes that the
+platform drops one by one, and the caller is handed the very token this
+guard exists to refuse.
+
 The SDK still names no scope of its own — WHICH scopes a credential may hold
 is the platform's to decide and the grant's to answer. This only refuses the
-empty question.
+questions that cannot have an answer.
 
 -- ONE CLIENT, ONE AUTH FLOW ---------------------------------------------------
 Every request goes through the same `httpx.Client`, so token caching, the
@@ -85,10 +91,12 @@ class Ringivo:
             one. It SELECTS a context somebody already granted you and
             narrows nothing by itself, so leave it out for the
             tenant-wide token your grant allows.
-        scopes: The scopes to ask for. REQUIRED, though it is spelled as a
-            keyword: a token minted with no scopes carries none and is
-            refused by every route, so an empty one is a `ValueError` here
-            rather than a puzzle in production. `fax:read` and `fax:write`
+        scopes: The scopes to ask for, as a list of names. REQUIRED, though
+            it is spelled as a keyword: a token minted with no scopes
+            carries none and is refused by every route, so an empty list —
+            or one bare string, which splits into one-character scopes — is
+            a `ValueError` here rather than a puzzle in production.
+            `fax:read` and `fax:write`
             are what this client's own calls need. What the token ends up
             carrying is the intersection with what your grant allows, and
             a scope outside that is dropped rather than refused, so an
@@ -120,6 +128,19 @@ class Ringivo:
             raise ValueError("base_url is required")
         if not client_id or not client_secret:
             raise ValueError("client_id and client_secret are required")
+        # A str IS a `Sequence[str]`, to the type checker and to `tuple()`:
+        # `scopes="fax:read"` type-checks, passes the emptiness check below,
+        # and asks for eight one-character scopes the platform drops one by
+        # one. That is the inert token this whole guard exists to refuse,
+        # walking straight past it, so the shape is checked before the
+        # content.
+        if isinstance(scopes, str):
+            raise ValueError(
+                "scopes must be a list of scope names, not one string: a str is read "
+                "one character at a time, so scopes=\"fax:read\" asks for eight scopes "
+                "that do not exist and the platform silently drops every one. Pass "
+                'scopes=["fax:read"].'
+            )
         # Empty is not "the default" here — it is a token that carries no
         # scopes and is refused by every route (module docstring, above).
         if not scopes:

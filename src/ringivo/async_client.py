@@ -15,10 +15,11 @@ provider in every traceback of another's. tests/test_grey_label.py reads
 the installed source and asserts the absence from the other side.
 
 -- AND NO SCOPES IS REFUSED HERE TOO -------------------------------------------
-An empty `scopes` is a `ValueError` on this constructor for the reason
-client.py sets out in full: the token would carry no scopes, every route
-would refuse it, and the client would have no working call in it. The
-refusal is written twice because the constructors are twins, not one.
+An empty `scopes` — or a single string, which splits into one-character
+scopes — is a `ValueError` on this constructor for the reason client.py
+sets out in full: the token would carry no scopes, every route would
+refuse it, and the client would have no working call in it. The refusal is
+written twice because the constructors are twins, not one.
 
 -- ONE CLIENT, ONE AUTH FLOW ---------------------------------------------------
 Every request goes through the same `httpx.AsyncClient`, so token caching,
@@ -74,10 +75,12 @@ class AsyncRingivo:
             one. It SELECTS a context somebody already granted you and
             narrows nothing by itself, so leave it out for the
             tenant-wide token your grant allows.
-        scopes: The scopes to ask for. REQUIRED, though it is spelled as a
-            keyword: a token minted with no scopes carries none and is
-            refused by every route, so an empty one is a `ValueError` here
-            rather than a puzzle in production. `fax:read` and `fax:write`
+        scopes: The scopes to ask for, as a list of names. REQUIRED, though
+            it is spelled as a keyword: a token minted with no scopes
+            carries none and is refused by every route, so an empty list —
+            or one bare string, which splits into one-character scopes — is
+            a `ValueError` here rather than a puzzle in production.
+            `fax:read` and `fax:write`
             are what this client's own calls need. What the token ends up
             carrying is the intersection with what your grant allows, and
             a scope outside that is dropped rather than refused, so an
@@ -109,6 +112,17 @@ class AsyncRingivo:
             raise ValueError("base_url is required")
         if not client_id or not client_secret:
             raise ValueError("client_id and client_secret are required")
+        # A str IS a `Sequence[str]`, so `scopes="fax:read"` type-checks and
+        # asks for eight one-character scopes — the inert token this guard
+        # exists to refuse, walking past it. Shape before content, as in
+        # client.py.
+        if isinstance(scopes, str):
+            raise ValueError(
+                "scopes must be a list of scope names, not one string: a str is read "
+                "one character at a time, so scopes=\"fax:read\" asks for eight scopes "
+                "that do not exist and the platform silently drops every one. Pass "
+                'scopes=["fax:read"].'
+            )
         # Empty is not "the default" here — it is a token that carries no
         # scopes and is refused by every route (client.py's docstring).
         if not scopes:
