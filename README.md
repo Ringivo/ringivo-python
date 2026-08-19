@@ -92,7 +92,7 @@ did:
         print(fax.id, fax.from_, fax.pages_total)
 
     if page.next_cursor:                       # newest first; follow the cursor
-        page = client.faxes.list(cursor=page.next_cursor)
+        page = client.faxes.list(after=page.next_cursor)
 
     client.faxes.cancel(fax_id)                # before the far end answers
 
@@ -104,6 +104,26 @@ did:
 `media_link()` instead if you want the URL and its expiry — but do not cache
 it or pass it on: anyone holding it reads that document.
 
+### Walking the whole collection
+
+A page holds 25 rows by default, up to a ceiling of 100 with `page_size=`.
+To backfill every fax matching a filter, follow `next_cursor` — the
+server's own cursor — until it comes back `None`:
+
+```python
+    faxes = []
+    after = None
+    while True:
+        page = client.faxes.list(direction="inbound", after=after)
+        faxes.extend(page)
+        if page.next_cursor is None:            # the last page
+            break
+        after = page.next_cursor
+```
+
+`after=` walks forward; `before=` walks backward from a cursor instead —
+how you poll for rows that arrived since your last read.
+
 ## The async client
 
 `AsyncRingivo` is the same client for programs already running on asyncio.
@@ -112,6 +132,7 @@ replaces `with`:
 
 ```python
 import asyncio
+from pathlib import Path
 
 from ringivo import AsyncRingivo
 
@@ -206,7 +227,7 @@ are deliberately not wrapped.
 | `AsyncRingivo(…same arguments…)` | The asyncio twin. An async context manager, or await `aclose()`. Every method below is awaited. |
 | `client.faxes.send(*, fax_account, to, file=…\|urls=…, …)` | Send one fax. Returns the accepted `Fax`. |
 | `client.faxes.get(fax_id, *, include=None)` | One fax, complete. |
-| `client.faxes.list(*, filters…, cursor=None, page_size=None)` | A `FaxPage`: iterable, with `next_cursor`. |
+| `client.faxes.list(*, filters…, after=None, before=None, page_size=None)` | A `FaxPage`: iterable, with `next_cursor`. Default page size 25, ceiling 100. |
 | `client.faxes.cancel(fax_id)` | Withdraw a fax before it is answered. |
 | `client.faxes.media(fax_id, *, format="pdf")` | The document's `bytes`. |
 | `client.faxes.media_link(fax_id, *, format="pdf")` | The URL and its expiry, as a `MediaLink`. |
