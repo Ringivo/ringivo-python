@@ -58,12 +58,25 @@ class Ringivo:
             names no host of its own.
         client_id: The client id issued with your credential.
         client_secret: Its secret.
-        scopes: The scopes to ask for, or None to take your credential's
-            default. A scope outside your client's ceiling is dropped by
-            the server rather than refused, so read the scopes back rather
-            than assuming the request was honoured in full.
+        tenant: The provider you are acting for. Pass it: today the token
+            request needs one, and your credential must already hold a
+            grant for that tenant or the platform refuses it. Leave it out
+            only where the platform picks the single grant behind your
+            credential for you.
+        customer: One customer inside that tenant, when your grant names
+            one. It SELECTS a context somebody already granted you and
+            narrows nothing by itself, so leave it out for the
+            tenant-wide token your grant allows.
+        scopes: The scopes to ask for. What the token carries is the
+            intersection with what your grant allows, and a scope outside
+            it is dropped rather than refused — so read the scopes back
+            rather than assuming the request was honoured in full.
         timeout: Seconds any single request may take, token requests
             included.
+
+    The token itself never reaches you: it is bought on the first call,
+    lives about a quarter of an hour, and is re-minted transparently before
+    it expires and again if the platform ever refuses one.
 
     Use it as a context manager, or call `close()`, so the underlying
     connections are released.
@@ -75,6 +88,8 @@ class Ringivo:
         client_id: str,
         client_secret: str,
         *,
+        tenant: str | None = None,
+        customer: str | None = None,
         scopes: Sequence[str] | None = None,
         timeout: float = 30.0,
     ) -> None:
@@ -88,6 +103,8 @@ class Ringivo:
             base_url=self._base_url,
             client_id=client_id,
             client_secret=client_secret,
+            tenant=tenant,
+            customer=customer,
             scopes=scopes,
             timeout=timeout,
         )

@@ -1,9 +1,24 @@
-"""The OAuth 2.0 client-credentials grant, held so a caller never sees it.
+"""The integration token, minted and kept good so a caller never sees it.
 
-A caller hands over a client id and secret once, at construction. Everything
-after that — minting the token, caching it, replacing it before it expires,
-and replacing it again when the server says it is no longer good — happens
-here, on the way out of every request.
+A caller hands over a client id, a secret and the selectors naming what they
+act for, once, at construction. Everything after that — minting the token,
+caching it, replacing it before it expires, and replacing it again when the
+server says it is no longer good — happens here, on the way out of every
+request.
+
+-- WHERE THE TOKEN COMES FROM --------------------------------------------------
+`POST {base_url}/v1/integration/token`, one JSON body, no `Authorization`
+header: the credential and the selectors travel in the body, and the answer
+is the bearer every other request carries. That endpoint is the mint for the
+`/v1` API, and it is the only one — a token bought anywhere else is refused
+by every route this client calls.
+
+-- WHY THE SELECTORS ARE SENT ONLY WHEN SET ------------------------------------
+`tenant` and `customer` NAME a grant somebody already wrote for this
+credential; neither narrows a wider grant down. So an unset selector is
+left out of the body altogether rather than sent empty or null: absence is
+what asks the platform to choose, and a member carrying nothing is a
+different question with a different answer.
 
 -- WHY THIS IS AN httpx.Auth AND NOT A WRAPPER METHOD --------------------------
 `httpx.Auth` is a request/response GENERATOR: it may look at the response and
@@ -65,6 +80,34 @@ EXPIRY_MARGIN_SECONDS = 60
 # itself, which every other library in the process is also reading.
 _monotonic = time.monotonic
 
+# The one path that issues tokens the /v1 API accepts.
+TOKEN_PATH = "/v1/integration/token"
+
+
+def _token_request_body(
+    *,
+    client_id: str,
+    client_secret: str,
+    tenant: str | None,
+    customer: str | None,
+    scopes: tuple[str, ...] | None,
+) -> dict[str, object]:
+    """The JSON the mint reads, with every unset member ABSENT.
+
+    Shared by the sync and async auth, which share no other machinery: the
+    lifecycle around this differs down to the lock, but the body does not,
+    and a body that diverged between the two clients would send one of them
+    to the wrong context with nothing to show for it.
+    """
+    body: dict[str, object] = {"client_id": client_id, "client_secret": client_secret}
+    if tenant is not None:
+        body["tenant"] = tenant
+    if customer is not None:
+        body["customer"] = customer
+    if scopes:
+        body["scopes"] = list(scopes)
+    return body
+
 
 class ClientCredentialsAuth(httpx.Auth):
     """Signs requests with a bearer token, and keeps that token good."""
@@ -75,12 +118,16 @@ class ClientCredentialsAuth(httpx.Auth):
         base_url: str,
         client_id: str,
         client_secret: str,
+        tenant: str | None = None,
+        customer: str | None = None,
         scopes: Sequence[str] | None = None,
         timeout: float = 30.0,
     ) -> None:
-        self._token_url = f"{base_url.rstrip('/')}/oauth/token"
+        self._token_url = f"{base_url.rstrip('/')}{TOKEN_PATH}"
         self._client_id = client_id
         self._client_secret = client_secret
+        self._tenant = tenant
+        self._customer = customer
         self._scopes = tuple(scopes) if scopes is not None else None
         self._lock = threading.Lock()
         self._access_token: str | None = None
@@ -176,15 +223,15 @@ class ClientCredentialsAuth(httpx.Auth):
         return _monotonic() < self._expires_at
 
     def _mint(self) -> str:
-        form = {
-            "grant_type": "client_credentials",
-            "client_id": self._client_id,
-            "client_secret": self._client_secret,
-        }
-        if self._scopes:
-            form["scope"] = " ".join(self._scopes)
+        body = _token_request_body(
+            client_id=self._client_id,
+            client_secret=self._client_secret,
+            tenant=self._tenant,
+            customer=self._customer,
+            scopes=self._scopes,
+        )
 
-        response = self._http.post(self._token_url, data=form)
+        response = self._http.post(self._token_url, json=body)
         raise_for_response(response)
 
         payload = response.json()

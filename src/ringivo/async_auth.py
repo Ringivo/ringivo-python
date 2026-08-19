@@ -1,4 +1,4 @@
-"""The same client-credentials grant, for a caller on asyncio.
+"""The same integration token, for a caller on asyncio.
 
 This is the deliberate TWIN of auth.py and not a layer over it. The token
 lifecycle is identical — mint once, keep it until a minute before it
@@ -11,9 +11,17 @@ loop, which is the failure auth.py already refuses out loud.
 
 -- READ auth.py FIRST ----------------------------------------------------------
 Every "why" behind this file is written out there and is NOT repeated
-here: why an `httpx.Auth` rather than a wrapper method, why the token is
+here: why an `httpx.Auth` rather than a wrapper method, why the mint is
+`POST /v1/integration/token` with the credential in the body, why an
+unset selector is left out of that body altogether, why the token is
 replaced `expires_in - 60` seconds in, and why expiry is measured on a
 monotonic clock. What follows is only what is different.
+
+-- THE BODY IS THE ONE THING SHARED --------------------------------------------
+`_token_request_body` is imported rather than written twice. The
+lifecycle around it differs down to the lock, but the request does not,
+and a body that drifted between the two clients would send one of them to
+a context its caller never asked for.
 
 -- THE GUARD POINTS THE OTHER WAY ----------------------------------------------
 auth.py's `async_auth_flow` refuses an async client. This file's
@@ -30,7 +38,7 @@ from collections.abc import AsyncGenerator, Generator, Sequence
 
 import httpx
 
-from .auth import EXPIRY_MARGIN_SECONDS, USER_AGENT
+from .auth import EXPIRY_MARGIN_SECONDS, TOKEN_PATH, USER_AGENT, _token_request_body
 from .errors import AuthenticationError, raise_for_response
 
 __all__ = ["AsyncClientCredentialsAuth"]
@@ -50,12 +58,16 @@ class AsyncClientCredentialsAuth(httpx.Auth):
         base_url: str,
         client_id: str,
         client_secret: str,
+        tenant: str | None = None,
+        customer: str | None = None,
         scopes: Sequence[str] | None = None,
         timeout: float = 30.0,
     ) -> None:
-        self._token_url = f"{base_url.rstrip('/')}/oauth/token"
+        self._token_url = f"{base_url.rstrip('/')}{TOKEN_PATH}"
         self._client_id = client_id
         self._client_secret = client_secret
+        self._tenant = tenant
+        self._customer = customer
         self._scopes = tuple(scopes) if scopes is not None else None
         # Constructed here rather than on first use: since 3.10 an
         # `asyncio.Lock` binds to a loop lazily, on the first `await`, so
@@ -162,15 +174,15 @@ class AsyncClientCredentialsAuth(httpx.Auth):
         return _monotonic() < self._expires_at
 
     async def _mint(self) -> str:
-        form = {
-            "grant_type": "client_credentials",
-            "client_id": self._client_id,
-            "client_secret": self._client_secret,
-        }
-        if self._scopes:
-            form["scope"] = " ".join(self._scopes)
+        body = _token_request_body(
+            client_id=self._client_id,
+            client_secret=self._client_secret,
+            tenant=self._tenant,
+            customer=self._customer,
+            scopes=self._scopes,
+        )
 
-        response = await self._http.post(self._token_url, data=form)
+        response = await self._http.post(self._token_url, json=body)
         raise_for_response(response)
 
         payload = response.json()

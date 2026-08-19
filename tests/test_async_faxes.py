@@ -19,7 +19,7 @@ import respx
 from ringivo import ApiError, AsyncRingivo, Fax, __version__
 
 BASE_URL = "https://api.yourprovider.example"
-TOKEN_URL = f"{BASE_URL}/oauth/token"
+TOKEN_URL = f"{BASE_URL}/v1/integration/token"
 FAXES_URL = f"{BASE_URL}/v1/faxes"
 FAX_ID = "0198c4a1-2b3c-7d4e-8f50-1a2b3c4d5e6f"
 FAX_URL = f"{FAXES_URL}/{FAX_ID}"
