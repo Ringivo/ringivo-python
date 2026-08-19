@@ -27,9 +27,9 @@ from typing import TYPE_CHECKING, Any
 from .faxes import (
     _JSON,
     _MAX_DOCUMENTS,
-    _cursor_of,
     _data_object,
     _documents,
+    _next_cursor,
     _next_link,
     _path_segment,
     _upload,
@@ -185,22 +185,28 @@ class AsyncFaxes:
         archived: bool | None = None,
         tags: Mapping[str, str] | None = None,
         include: str | None = None,
-        cursor: str | None = None,
+        after: str | None = None,
+        before: str | None = None,
         page_size: int | None = None,
     ) -> FaxPage:
         """One page of faxes, newest first — the inbox and the outbox together.
 
         The collection is cursor-paginated and nothing is sortable: the
         cursor's ordering IS the id ordering, so a client-supplied sort
-        would make pages overlap. Pass the previous page's `next_cursor`
-        back as `cursor` to walk it.
+        would make pages overlap.
 
         Args:
+            after: Walk forward: the previous page's `FaxPage.next_cursor`.
+            before: Walk backward from a cursor — how you poll for rows
+                that arrived since your last read.
+            page_size: Rows per page. The default is 25 and the ceiling is
+                100.
             tags: Match on your own tags, one member per tag name. Two of
                 them mean BOTH, never either.
         """
         params: dict[str, Any] = {
-            "page[cursor]": cursor,
+            "page[after]": after,
+            "page[before]": before,
             "page[size]": page_size,
             "include": include,
             "filter[fax_account]": fax_account,
@@ -228,12 +234,10 @@ class AsyncFaxes:
             for item in (data if isinstance(data, list) else [])
             if isinstance(item, Mapping)
         )
-        next_url = _next_link(document)
-
         return FaxPage(
             faxes=faxes,
-            next_url=next_url,
-            next_cursor=_cursor_of(next_url),
+            next_url=_next_link(document),
+            next_cursor=_next_cursor(document),
             raw=document,
         )
 

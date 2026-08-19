@@ -462,7 +462,7 @@ def test_list_builds_the_filter_query_including_the_deep_object_tag(
             archived=None,
             tags={"clinic": "north", "site": "east"},
             page_size=50,
-            cursor="0198c4a1",
+            after="0198c4a1",
         )
 
     params = route.calls.last.request.url.params
@@ -473,14 +473,31 @@ def test_list_builds_the_filter_query_including_the_deep_object_tag(
     assert params["filter[tag][clinic]"] == "north"
     assert params["filter[tag][site]"] == "east"
     assert params["page[size]"] == "50"
-    assert params["page[cursor]"] == "0198c4a1"
+    assert params["page[after]"] == "0198c4a1"
+    # `page[cursor]` is the retired 0.1.x param name; the API now 400s on
+    # it, so it must never appear on the wire.
+    assert "page[cursor]" not in params
     # An unset filter is absent, not empty: `filter[archived]=` would be a
     # 400 rather than "no opinion".
     assert "filter[archived]" not in params
     assert "filter[to]" not in params
 
 
-def test_list_lifts_the_servers_own_cursor_out_of_the_next_link(
+def test_list_sends_before_as_its_own_wire_param(
+    respx_mock: respx.MockRouter, client: Ringivo
+) -> None:
+    route = respx_mock.get(FAXES_URL).mock(return_value=httpx.Response(200, json={"data": []}))
+
+    with client:
+        client.faxes.list(before="0198c4a1-before")
+
+    params = route.calls.last.request.url.params
+
+    assert params["page[before]"] == "0198c4a1-before"
+    assert "page[after]" not in params
+
+
+def test_list_reads_the_next_cursor_from_page_meta(
     respx_mock: respx.MockRouter, client: Ringivo
 ) -> None:
     respx_mock.get(FAXES_URL).mock(
@@ -488,7 +505,8 @@ def test_list_lifts_the_servers_own_cursor_out_of_the_next_link(
             200,
             json={
                 "data": [_fax_resource()],
-                "links": {"next": f"{FAXES_URL}?page%5Bcursor%5D=0198c4a1-next&page%5Bsize%5D=50"},
+                "links": {"next": f"{FAXES_URL}?page%5Bafter%5D=0198c4a1-next&page%5Bsize%5D=50"},
+                "meta": {"page": {"size": 50, "nextCursor": "0198c4a1-next"}},
             },
         )
     )
@@ -499,14 +517,19 @@ def test_list_lifts_the_servers_own_cursor_out_of_the_next_link(
     assert len(page) == 1
     assert list(page)[0].id == FAX_ID
     assert page.next_cursor == "0198c4a1-next"
-    assert page.next_url is not None and "page%5Bcursor%5D" in page.next_url
+    assert page.next_url is not None and "page%5Bafter%5D" in page.next_url
 
 
 def test_the_last_page_has_no_cursor_to_follow(
     respx_mock: respx.MockRouter, client: Ringivo
 ) -> None:
+    # As deployed: `links.next` is ABSENT on the final page (no `links`
+    # member at all here), and `meta.page.nextCursor` is the mirror, `null`
+    # at the end.
     respx_mock.get(FAXES_URL).mock(
-        return_value=httpx.Response(200, json={"data": [], "links": {"next": None}})
+        return_value=httpx.Response(
+            200, json={"data": [], "meta": {"page": {"size": 25, "nextCursor": None}}}
+        )
     )
 
     with client:

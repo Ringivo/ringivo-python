@@ -195,10 +195,14 @@ class Fax:
 class FaxPage:
     """One page of `faxes.list()`, newest first.
 
-    `next_cursor` is the server's own cursor, lifted out of `links.next` —
-    never one this client built. The cursor encodes the row AND the
-    direction, and its meaning belongs to the server; pass it straight back
-    as `cursor=` to read the following page. It is None on the last page.
+    `next_cursor` is the server's own cursor, read from
+    `meta.page.nextCursor` — never one this client built. The cursor
+    encodes the row AND the direction, and its meaning belongs to the
+    server; pass it straight back as `after=` to read the following page.
+    It is None on the last page.
+
+    `next_url` mirrors `links.next` — present on every page but the last,
+    where it is absent.
     """
 
     faxes: tuple[Fax, ...] = ()
