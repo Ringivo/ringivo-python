@@ -295,25 +295,37 @@ def test_an_async_client_refuses_loudly_rather_than_sending_an_unauthenticated_r
     caller makes through the vendored generated client" — and that client
     publishes `asyncio` functions beside its `sync` ones.
 
-    So the two assertions below are one gate. Raising is only half of it; the
-    half that matters is that NOTHING WENT OUT.
+    Two assertions, one gate. Raising is only half of it; the half that
+    matters is that NOTHING WENT OUT — so that half is asserted FIRST.
+
+    Deliberately not `pytest.raises`: with the guard deleted the request
+    SUCCEEDS, `pytest.raises` fails on that line, and the counts below
+    never run — the test would then report "DID NOT RAISE" rather than the
+    failure it is written to catch. Probed by deleting the `raise` in
+    `async_auth_flow`: the message that comes back is the one on the next
+    line.
     """
     token = respx.post(TOKEN_URL).mock(return_value=_token_response())
     fax = respx.get(FAX_URL).mock(return_value=httpx.Response(200, json=_fax_document()))
+    refusal: BaseException | None = None
 
     async def attempt() -> None:
+        nonlocal refusal
         client = Ringivo(base_url=BASE_URL, client_id="cid", client_secret="csecret")
         try:
             async with httpx.AsyncClient(auth=client._auth) as async_client:
                 await async_client.get(FAX_URL)
+        except NotImplementedError as caught:
+            refusal = caught
         finally:
             client.close()
 
-    with pytest.raises(NotImplementedError, match="sync-only"):
-        asyncio.run(attempt())
+    asyncio.run(attempt())
 
     assert fax.call_count == 0, "an unauthenticated request reached the API"
     assert token.call_count == 0
+    assert refusal is not None, "an async client was allowed to use the sync-only auth"
+    assert "sync-only" in str(refusal)
 
 
 def test_the_base_url_is_taken_whole_and_normalised() -> None:
