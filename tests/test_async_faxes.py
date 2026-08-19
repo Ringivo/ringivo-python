@@ -257,6 +257,39 @@ async def test_send_refuses_to_guess_between_uploads_and_urls(
 
 
 @pytest.mark.anyio
+async def test_send_refuses_an_empty_document_before_anything_is_sent(
+    respx_mock: respx.MockRouter, client: AsyncRingivo, tmp_path: Path
+) -> None:
+    """The same refusal, awaited — and asserted rather than assumed.
+
+    `AsyncFaxes` reuses faxes.py's `_upload`, so this guard is inherited
+    rather than mirrored. That is exactly why it is worth a test on this
+    side: an async twin that grew its own copy of the upload helper would
+    lose the check without a single line of faxes.py changing.
+    """
+    route = respx_mock.post(FAXES_URL).mock(return_value=httpx.Response(202, json=_accepted()))
+    still_being_written = tmp_path / "chart-4471.pdf"
+    still_being_written.write_bytes(b"")
+
+    async with client:
+        with pytest.raises(ValueError, match="empty document cannot be sent"):
+            await client.faxes.send(fax_account=ACCOUNT_ID, to="+1302", file=b"")
+
+        with pytest.raises(ValueError, match="empty document cannot be sent"):
+            await client.faxes.send(
+                fax_account=ACCOUNT_ID, to="+1302", file=still_being_written
+            )
+
+        with pytest.raises(ValueError, match="empty document cannot be sent"):
+            await client.faxes.send(
+                fax_account=ACCOUNT_ID, to="+1302", file=[b"%PDF-1.7 real", b""]
+            )
+
+    assert route.call_count == 0
+    assert respx_mock.calls.call_count == 0, "an empty document reached the wire"
+
+
+@pytest.mark.anyio
 async def test_send_refuses_more_than_five_documents(
     respx_mock: respx.MockRouter, client: AsyncRingivo
 ) -> None:

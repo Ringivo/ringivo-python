@@ -274,6 +274,42 @@ def test_send_refuses_to_guess_between_uploads_and_urls(
             )
 
 
+def test_send_refuses_an_empty_document_before_anything_is_sent(
+    respx_mock: respx.MockRouter, client: Ringivo, tmp_path: Path
+) -> None:
+    """A zero-byte page has nothing to fax, and it is caught here.
+
+    The server refuses it too, but only after the upload — and the file
+    that is empty is usually the one another process is still writing, so
+    the caller wants to be told WHICH document, not handed a 422 about the
+    whole send.
+
+    The CALL COUNT is the assertion that carries the weight: a check that
+    ran after the POST would satisfy `pytest.raises` just as well, and
+    would have spent the request and burned the idempotency key.
+    """
+    route = respx_mock.post(FAXES_URL).mock(return_value=httpx.Response(202, json=_accepted()))
+    still_being_written = tmp_path / "chart-4471.pdf"
+    still_being_written.write_bytes(b"")
+
+    with client:
+        with pytest.raises(ValueError, match="empty document cannot be sent"):
+            client.faxes.send(fax_account=ACCOUNT_ID, to="+1302", file=b"")
+
+        with pytest.raises(ValueError, match="empty document cannot be sent"):
+            client.faxes.send(fax_account=ACCOUNT_ID, to="+1302", file=still_being_written)
+
+        # One good page beside an empty one is still the whole send refused:
+        # a fax with a blank page in the middle is not what was asked for.
+        with pytest.raises(ValueError, match="empty document cannot be sent"):
+            client.faxes.send(fax_account=ACCOUNT_ID, to="+1302", file=[b"%PDF-1.7 real", b""])
+
+    assert route.call_count == 0
+    # Nothing at all, not even the token: the refusal happens before the
+    # first request this client would otherwise have to make.
+    assert respx_mock.calls.call_count == 0, "an empty document reached the wire"
+
+
 def test_send_refuses_more_than_five_documents(
     respx_mock: respx.MockRouter, client: Ringivo
 ) -> None:

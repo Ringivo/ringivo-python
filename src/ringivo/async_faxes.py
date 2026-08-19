@@ -69,7 +69,9 @@ class AsyncFaxes:
             to: The destination in E.164 — this string is dialled, so
                 nothing looser will do.
             file: The pages to upload: one `Path`, one `bytes`, or a
-                sequence of up to five of either. Give this or `urls`.
+                sequence of up to five of either. Give this or `urls`. A
+                zero-byte page refuses the whole send, before any request
+                goes out.
             urls: Up to five `https` URLs to fetch the pages from instead.
             from_: The caller ID. Omit it to use the account's default; a
                 number the account does not hold is refused.

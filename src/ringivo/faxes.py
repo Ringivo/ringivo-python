@@ -89,7 +89,9 @@ class Faxes:
             to: The destination in E.164 — this string is dialled, so
                 nothing looser will do.
             file: The pages to upload: one `Path`, one `bytes`, or a
-                sequence of up to five of either. Give this or `urls`.
+                sequence of up to five of either. Give this or `urls`. A
+                zero-byte page refuses the whole send, before any request
+                goes out.
             urls: Up to five `https` URLs to fetch the pages from instead.
             from_: The caller ID. Omit it to use the account's default; a
                 number the account does not hold is refused.
@@ -323,6 +325,12 @@ def _upload(document: Path | bytes, index: int) -> tuple[str, bytes, str]:
     The declared type is a courtesy for anything reading the request, not a
     claim: the server sniffs the BYTES, and neither the name nor the header
     decides what a document is.
+
+    An empty document is refused HERE, and here is the only place that
+    works: this is where a `Path` and a `bytes` value — two very different
+    things on the way in — have both become the same read bytes. It runs
+    while the multipart body is still being assembled, so a refusal costs
+    no request and burns no idempotency key.
     """
     if isinstance(document, Path):
         name = document.name
@@ -330,6 +338,12 @@ def _upload(document: Path | bytes, index: int) -> tuple[str, bytes, str]:
     else:
         name = f"document-{index}"
         content = bytes(document)
+
+    if not content:
+        raise ValueError(
+            f"an empty document cannot be sent: {name} is zero bytes. A file another "
+            f"process is still writing is the usual cause."
+        )
 
     guessed, _ = mimetypes.guess_type(name)
     return (name, content, guessed or "application/octet-stream")
