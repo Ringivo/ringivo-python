@@ -24,6 +24,19 @@ the replacement happens before a request ever carries the dying token. The
 401 retry stays anyway — a token can also be revoked, or a server restarted,
 long before its clock runs out.
 
+-- WHY THE FAILED TOKEN IS PASSED BACK -----------------------------------------
+A 401 is normally seen by every request in flight at once, not by one.
+Each of them asks for a replacement and they queue on the lock — and a
+force-refresh that minted unconditionally gave each one its own token,
+throwing the one in front away. Ten in-flight requests meant ten mints for
+one dead token, which is how a client that is behaving correctly walks
+into the token endpoint's rate limit.
+
+So a caller says WHICH token failed: `access_token(force_refresh=True,
+stale=…)`. Under the lock, a caller whose stale token has already been
+replaced takes the replacement instead of buying its own. One dead token
+costs one mint.
+
 -- WHY A MONOTONIC CLOCK -------------------------------------------------------
 Expiry is measured with `time.monotonic()`, which cannot be moved by an NTP
 correction or a daylight-saving jump. Wall-clock arithmetic would treat a
@@ -77,7 +90,8 @@ class ClientCredentialsAuth(httpx.Auth):
         self._http = httpx.Client(timeout=timeout, headers={"User-Agent": USER_AGENT})
 
     def sync_auth_flow(self, request: httpx.Request) -> Generator[httpx.Request, httpx.Response]:
-        request.headers["Authorization"] = f"Bearer {self.access_token()}"
+        sent = self.access_token()
+        request.headers["Authorization"] = f"Bearer {sent}"
         response = yield request
 
         if response.status_code != 401:
@@ -86,7 +100,12 @@ class ClientCredentialsAuth(httpx.Auth):
         # ONCE. A second 401 is answered by the caller's exception, not by
         # another mint: a credential that has lost its reach would otherwise
         # spin, and every attempt costs the server a token.
-        request.headers["Authorization"] = f"Bearer {self.access_token(force_refresh=True)}"
+        #
+        # `stale=sent` names the token that was refused, so a thread that
+        # queued behind another thread's refresh takes ITS replacement
+        # rather than buying a second one.
+        replacement = self.access_token(force_refresh=True, stale=sent)
+        request.headers["Authorization"] = f"Bearer {replacement}"
         yield request
 
     async def async_auth_flow(
@@ -119,11 +138,28 @@ class ClientCredentialsAuth(httpx.Auth):
         )
         yield request  # pragma: no cover - unreachable; makes this an async generator
 
-    def access_token(self, *, force_refresh: bool = False) -> str:
-        """The token to send, minting or replacing it if that is what it takes."""
+    def access_token(self, *, force_refresh: bool = False, stale: str | None = None) -> str:
+        """The token to send, minting or replacing it if that is what it takes.
+
+        Args:
+            force_refresh: Replace the cached token even though it still
+                looks fresh — what a 401 asks for.
+            stale: The token that was refused, when a caller knows. Callers
+                that see the same 401 queue here, and without this each one
+                mints a replacement for a token the caller in front has
+                already replaced. Given it, a caller holding a stale token
+                that is no longer the cached one takes the cached one and
+                mints nothing. Omitting it keeps the old unconditional
+                behaviour, which is right when there is no failed token to
+                name.
+        """
         with self._lock:
             cached = self._access_token
-            if force_refresh or cached is None or not self._is_fresh():
+            if force_refresh:
+                if stale is not None and cached is not None and cached != stale:
+                    return cached
+                return self._mint()
+            if cached is None or not self._is_fresh():
                 return self._mint()
             return cached
 

@@ -14,6 +14,8 @@ unauthenticated send is available in that direction too.
 
 from __future__ import annotations
 
+import asyncio
+import itertools
 from urllib.parse import parse_qs
 
 import httpx
@@ -42,6 +44,26 @@ def _fax_document() -> dict[str, object]:
 
 def _client() -> AsyncRingivo:
     return AsyncRingivo(base_url=BASE_URL, client_id="cid", client_secret="csecret")
+
+
+class _Gate:
+    """Hold every arrival until `parties` of them are waiting.
+
+    `asyncio.Barrier` would say this in one line, and it landed in 3.11 —
+    this package supports 3.10. The timeout is what turns a task that never
+    arrives into a failure instead of a hung suite.
+    """
+
+    def __init__(self, parties: int) -> None:
+        self._parties = parties
+        self._arrived = 0
+        self._open = asyncio.Event()
+
+    async def wait(self) -> None:
+        self._arrived += 1
+        if self._arrived >= self._parties:
+            self._open.set()
+        await asyncio.wait_for(self._open.wait(), timeout=10)
 
 
 @pytest.mark.anyio
@@ -177,6 +199,55 @@ async def test_a_second_401_is_not_retried_again() -> None:
 
     assert fax.call_count == 2
     assert caught.value.status_code == 401
+
+
+@pytest.mark.anyio
+@respx.mock
+async def test_two_tasks_that_both_see_a_401_mint_exactly_one_replacement() -> None:
+    """The twin of the sync test, and the same rule: one dead token, one mint.
+
+    Concurrency is the reason the async client is worth having, so this is
+    the shape it will meet first: a gather of requests that all carry the
+    token the server has just stopped accepting. While `force_refresh`
+    minted unconditionally, each task in turn bought its own replacement
+    and threw the one in front away.
+
+    The counts are the whole test. Both tasks succeed either way — the bug
+    wasted tokens, it did not break calls.
+    """
+    minted = itertools.count(1)
+    token = respx.post(TOKEN_URL).mock(
+        side_effect=lambda request: _token_response(f"tok-{next(minted)}")
+    )
+
+    # Neither task may start refusing until BOTH are holding their 401.
+    # Without this the first could finish its whole retry before the second
+    # even sent, and the test would pass against the bug it exists for.
+    both_refused = _Gate(2)
+
+    async def answer(request: httpx.Request) -> httpx.Response:
+        if request.headers["authorization"] == "Bearer tok-1":
+            await both_refused.wait()
+            return httpx.Response(401, json={"errors": [{"status": "401"}]})
+        return httpx.Response(200, json=_fax_document())
+
+    fax = respx.get(FAX_URL).mock(side_effect=answer)
+
+    async with _client() as client:
+        results = await asyncio.gather(client.faxes.get(FAX_ID), client.faxes.get(FAX_ID))
+
+    assert [result.id for result in results] == [FAX_ID, FAX_ID]
+    assert token.call_count == 2, (
+        "the first mint, then exactly one replacement for the 401 both tasks saw"
+    )
+    # Order-independent: which task is recorded first is a race. What
+    # matters is that the two retries carried the SAME new token.
+    assert sorted(call.request.headers["authorization"] for call in fax.calls) == [
+        "Bearer tok-1",
+        "Bearer tok-1",
+        "Bearer tok-2",
+        "Bearer tok-2",
+    ]
 
 
 @pytest.mark.anyio

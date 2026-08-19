@@ -14,6 +14,8 @@ requests were made, and the one proving a 401 is retried exactly ONCE.
 from __future__ import annotations
 
 import asyncio
+import itertools
+import threading
 from urllib.parse import parse_qs
 
 import httpx
@@ -176,6 +178,71 @@ def test_a_second_401_is_not_retried_again() -> None:
 
     assert fax.call_count == 2
     assert caught.value.status_code == 401
+
+
+@respx.mock
+def test_two_threads_that_both_see_a_401_mint_exactly_one_replacement() -> None:
+    """One dead token costs the server ONE mint, however many callers saw it.
+
+    A 401 is normally seen by every request in flight at once, not by one.
+    Each of them asks for a replacement and they queue on the lock; while
+    `force_refresh` minted unconditionally, each one in turn bought its own
+    token and threw the one in front away. Ten in-flight requests meant ten
+    mints for one expired token, which is how a client that is working
+    correctly walks into the token endpoint's rate limit.
+
+    The counts are the whole test. Both threads succeed either way — the
+    bug wasted tokens, it did not break calls — so an outcome assertion
+    proves nothing here.
+    """
+    minted = itertools.count(1)
+    token = respx.post(TOKEN_URL).mock(
+        side_effect=lambda request: _token_response(f"tok-{next(minted)}")
+    )
+
+    # Neither thread may start refusing until BOTH are holding their 401.
+    # Without this the first could finish its whole retry before the second
+    # even sent, and the test would pass against the bug it exists for.
+    both_refused = threading.Barrier(2, timeout=10)
+
+    def answer(request: httpx.Request) -> httpx.Response:
+        if request.headers["authorization"] == "Bearer tok-1":
+            both_refused.wait()
+            return httpx.Response(401, json={"errors": [{"status": "401"}]})
+        return httpx.Response(200, json=_fax_document())
+
+    fax = respx.get(FAX_URL).mock(side_effect=answer)
+    outcomes: list[object] = []
+
+    with _client() as client:
+
+        def call() -> None:
+            # Recorded rather than raised: an exception on a worker thread
+            # is invisible to pytest, so a thread that died would otherwise
+            # look like a thread that passed.
+            try:
+                outcomes.append(client.faxes.get(FAX_ID).id)
+            except BaseException as exc:  # noqa: BLE001 - asserted on below
+                outcomes.append(exc)
+
+        threads = [threading.Thread(target=call) for _ in range(2)]
+        for thread in threads:
+            thread.start()
+        for thread in threads:
+            thread.join(timeout=10)
+
+    assert outcomes == [FAX_ID, FAX_ID]
+    assert token.call_count == 2, (
+        "the first mint, then exactly one replacement for the 401 both threads saw"
+    )
+    # Order-independent: which thread is recorded first is a race. What
+    # matters is that the two retries carried the SAME new token.
+    assert sorted(call.request.headers["authorization"] for call in fax.calls) == [
+        "Bearer tok-1",
+        "Bearer tok-1",
+        "Bearer tok-2",
+        "Bearer tok-2",
+    ]
 
 
 @respx.mock

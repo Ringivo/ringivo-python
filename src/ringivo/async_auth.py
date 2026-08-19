@@ -103,7 +103,8 @@ class AsyncClientCredentialsAuth(httpx.Auth):
     async def async_auth_flow(
         self, request: httpx.Request
     ) -> AsyncGenerator[httpx.Request, httpx.Response]:
-        request.headers["Authorization"] = f"Bearer {await self.access_token()}"
+        sent = await self.access_token()
+        request.headers["Authorization"] = f"Bearer {sent}"
         response = yield request
 
         if response.status_code != 401:
@@ -112,15 +113,39 @@ class AsyncClientCredentialsAuth(httpx.Auth):
         # ONCE. A second 401 is answered by the caller's exception, not by
         # another mint: a credential that has lost its reach would otherwise
         # spin, and every attempt costs the server a token.
-        token = await self.access_token(force_refresh=True)
-        request.headers["Authorization"] = f"Bearer {token}"
+        #
+        # `stale=sent` names the token that was refused, so a task that
+        # queued behind another task's refresh takes ITS replacement rather
+        # than buying a second one. This matters more here than in the sync
+        # client: concurrency is the reason to reach for this one, so a
+        # gather of in-flight requests all meeting the same 401 is the
+        # normal case rather than the unlucky one.
+        replacement = await self.access_token(force_refresh=True, stale=sent)
+        request.headers["Authorization"] = f"Bearer {replacement}"
         yield request
 
-    async def access_token(self, *, force_refresh: bool = False) -> str:
-        """The token to send, minting or replacing it if that is what it takes."""
+    async def access_token(self, *, force_refresh: bool = False, stale: str | None = None) -> str:
+        """The token to send, minting or replacing it if that is what it takes.
+
+        Args:
+            force_refresh: Replace the cached token even though it still
+                looks fresh — what a 401 asks for.
+            stale: The token that was refused, when a caller knows. Callers
+                that see the same 401 queue here, and without this each one
+                mints a replacement for a token the caller in front has
+                already replaced. Given it, a caller holding a stale token
+                that is no longer the cached one takes the cached one and
+                mints nothing. Omitting it keeps the old unconditional
+                behaviour, which is right when there is no failed token to
+                name.
+        """
         async with self._lock:
             cached = self._access_token
-            if force_refresh or cached is None or not self._is_fresh():
+            if force_refresh:
+                if stale is not None and cached is not None and cached != stale:
+                    return cached
+                return await self._mint()
+            if cached is None or not self._is_fresh():
                 return await self._mint()
             return cached
 
