@@ -211,14 +211,19 @@ class Faxes:
     ) -> FaxPage:
         """One page of faxes, newest first — the inbox and the outbox together.
 
-        The collection is cursor-paginated and nothing is sortable: the
-        cursor's ordering IS the id ordering, so a client-supplied sort
-        would make pages overlap.
+        The collection is cursor-paginated. Sortable fields are
+        `createdAt` and `id`, newest first by default. A cursor is bound
+        to the sort and filter it was minted under; replaying it against a
+        different one is refused with a 400, rather than silently walking
+        a re-sorted set.
 
         Args:
             after: Walk forward: the previous page's `FaxPage.next_cursor`.
+                Mutually exclusive with `before` — passing both is refused
+                with a 400.
             before: Walk backward from a cursor — how you poll for rows
-                that arrived since your last read.
+                that arrived since your last read. Mutually exclusive with
+                `after`.
             page_size: Rows per page. The default is 25 and the ceiling is
                 100.
             tags: Match on your own tags, one member per tag name. Two of

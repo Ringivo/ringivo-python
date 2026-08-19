@@ -124,14 +124,14 @@ class ClientCredentialsAuth(httpx.Auth):
 
         Not implemented rather than made to work, because the token mint below
         is blocking I/O behind a `threading.Lock`, and an async flow needs its
-        own client and its own lock to be honest. 0.1.x is sync-only.
+        own client and its own lock to be honest. This auth is sync-only.
 
         The unreachable `yield` is load-bearing: without it this is a
         coroutine rather than an async generator, and httpx would fail on
         `.__anext__()` with an `AttributeError` naming nothing useful.
         """
         raise NotImplementedError(
-            "ringivo's authentication is sync-only in 0.1.x, and an async client would "
+            "ringivo's authentication is sync-only, and an async client would "
             "otherwise send this request with NO Authorization header. Use the sync "
             "ringivo.Ringivo client, or mint a token yourself and set the header on your "
             "own async requests."
