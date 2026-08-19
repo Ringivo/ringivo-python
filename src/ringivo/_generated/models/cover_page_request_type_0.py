@@ -17,9 +17,6 @@ class CoverPageRequestType0:
     `pages_total` and it bills. `null` is accepted the same as omitting the field or sending
     `{}` — none of the three add a cover page.
 
-    Shared by both send bodies on purpose: the ceiling on each field is one validation rule in
-    the application, so two copies here would be two places for it to drift.
-
         Attributes:
             to_name (str | Unset):
             from_name (str | Unset):

@@ -33,9 +33,6 @@ class SendFaxUrlRequest:
                 page — it is counted in
                 `pages_total` and it bills. `null` is accepted the same as omitting the field or sending
                 `{}` — none of the three add a cover page.
-
-                Shared by both send bodies on purpose: the ceiling on each field is one validation rule in
-                the application, so two copies here would be two places for it to drift.
             client_reference (str | Unset):
             tags (None | TagsType0 | Unset): A flat map of short labels you own — the only filing system there is. Replaced
                 wholesale on
