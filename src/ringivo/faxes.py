@@ -3,7 +3,7 @@
 -- WHY THIS IS HAND-ROLLED httpx AND NOT THE GENERATED CLIENT ------------------
 `ringivo._generated` is a faithful, spec-derived client and it stays vendored:
 it is the typed record of the whole endpoint surface, including the resources
-this hand-written layer does not cover in 0.1.0. It is not on the call path
+this hand-written layer does not cover. It is not on the call path
 here, and the four reasons are concrete rather than stylistic:
 
 1. `send_fax` CANNOT BE IMPORTED. openapi-python-client 0.29.0 omits the
