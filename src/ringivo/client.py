@@ -67,10 +67,13 @@ class Ringivo:
             one. It SELECTS a context somebody already granted you and
             narrows nothing by itself, so leave it out for the
             tenant-wide token your grant allows.
-        scopes: The scopes to ask for. What the token carries is the
+        scopes: The scopes to ask for — `fax:read` and `fax:write` are
+            what this client's own calls need. Ask for them: a token
+            minted with no scopes at all carries none, and every route
+            refuses it. What the token ends up carrying is the
             intersection with what your grant allows, and a scope outside
-            it is dropped rather than refused — so read the scopes back
-            rather than assuming the request was honoured in full.
+            that is dropped rather than refused, so an over-broad request
+            fails later at the resource rather than here.
         timeout: Seconds any single request may take, token requests
             included.
 

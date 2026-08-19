@@ -18,15 +18,39 @@ without a token, so an `httpx.AsyncClient` handed `Ringivo`'s auth — or an
 `httpx.Client` handed `AsyncRingivo`'s — raises `NotImplementedError` naming
 the reason.
 
-## Your base URL
+## Your base URL and your credential
 
 There is no default host, and none is compiled in. Your provider gives you
-the API root, a client id and a client secret; everything in this README
-uses `https://api.yourprovider.example` where yours goes.
+the API root, a client id, a client secret, and the id of the tenant your
+credential acts for; everything in this README uses
+`https://api.yourprovider.example` where yours goes.
 
-The client exchanges your credentials for a bearer token on the first call,
-caches it until a minute before it expires, and replaces it if the server
-ever refuses one. You never handle the token.
+```python
+with Ringivo(
+    base_url="https://api.yourprovider.example",
+    client_id="0198c4a1-1f2e-7a3b-9c40-5f6e7d8a9b01",
+    client_secret="9tK2xr4mQ7vBnZ1sD5hL0pWfC8jY3aE6",
+    tenant="0198c4a1-3d4e-7f50-a1b2-c3d4e5f6a7b8",
+    scopes=["fax:read", "fax:write"],
+) as client:
+    ...
+```
+
+On the first call the client sends all of that in one request and gets back
+a bearer token that lasts about a quarter of an hour. It caches the token,
+mints a new one a minute before that one expires, and mints another if the
+platform ever refuses one — you never handle the token.
+
+**Ask for the scopes you need.** A token minted without `scopes=` carries
+none, and every route then refuses it. Ask for more than your credential
+was granted and the extra is dropped rather than refused, so a call can
+still fail later at the resource. The scopes this client's calls need are
+`fax:read` and `fax:write`.
+
+Pass `customer=` as well when your credential was issued for one customer
+inside that tenant. Both selectors NAME a grant your provider already wrote
+for your credential; they never widen one, and a selector no grant covers is
+refused with a 403 however good your credentials are.
 
 ## Send a fax
 
@@ -39,6 +63,8 @@ with Ringivo(
     base_url="https://api.yourprovider.example",
     client_id="0198c4a1-1f2e-7a3b-9c40-5f6e7d8a9b01",
     client_secret="9tK2xr4mQ7vBnZ1sD5hL0pWfC8jY3aE6",
+    tenant="0198c4a1-3d4e-7f50-a1b2-c3d4e5f6a7b8",
+    scopes=["fax:read", "fax:write"],
 ) as client:
     fax = client.faxes.send(
         fax_account="0198c4a1-3c4d-7e5f-9061-2b3c4d5e6f70",
@@ -142,6 +168,8 @@ async def main():
         base_url="https://api.yourprovider.example",
         client_id="0198c4a1-1f2e-7a3b-9c40-5f6e7d8a9b01",
         client_secret="9tK2xr4mQ7vBnZ1sD5hL0pWfC8jY3aE6",
+        tenant="0198c4a1-3d4e-7f50-a1b2-c3d4e5f6a7b8",
+        scopes=["fax:read", "fax:write"],
     ) as client:
         fax = await client.faxes.send(
             fax_account="0198c4a1-3c4d-7e5f-9061-2b3c4d5e6f70",
@@ -229,7 +257,7 @@ are deliberately not wrapped.
 
 | | |
 |---|---|
-| `Ringivo(base_url, client_id, client_secret, *, scopes=None, timeout=30.0)` | The client. A context manager, or call `close()`. |
+| `Ringivo(base_url, client_id, client_secret, *, tenant=None, customer=None, scopes=None, timeout=30.0)` | The client. A context manager, or call `close()`. |
 | `AsyncRingivo(…same arguments…)` | The asyncio twin. An async context manager, or await `aclose()`. Every method below is awaited. |
 | `client.faxes.send(*, fax_account, to, file=…\|urls=…, …)` | Send one fax. Returns the accepted `Fax`. |
 | `client.faxes.get(fax_id, *, include=None)` | One fax, complete. |
