@@ -276,9 +276,7 @@ async def test_send_refuses_an_empty_document_before_anything_is_sent(
             await client.faxes.send(fax_account=ACCOUNT_ID, to="+1302", file=b"")
 
         with pytest.raises(ValueError, match="empty document cannot be sent"):
-            await client.faxes.send(
-                fax_account=ACCOUNT_ID, to="+1302", file=still_being_written
-            )
+            await client.faxes.send(fax_account=ACCOUNT_ID, to="+1302", file=still_being_written)
 
         with pytest.raises(ValueError, match="empty document cannot be sent"):
             await client.faxes.send(

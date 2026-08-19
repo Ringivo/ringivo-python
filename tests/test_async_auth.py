@@ -289,7 +289,7 @@ async def test_every_request_carries_the_versioned_user_agent() -> None:
 
 @pytest.mark.anyio
 @respx.mock
-async def test_a_sync_client_refuses_loudly_rather_than_sending_an_unauthenticated_request() -> None:
+async def test_a_sync_client_refuses_loudly_rather_than_sending_it_unauthenticated() -> None:
     """The INVERSION of tests/test_auth.py's async guard, and the same trap.
 
     `httpx.Auth.sync_auth_flow` has a default body of one line — `yield
