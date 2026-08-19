@@ -295,9 +295,11 @@ class Faxes:
     def media(self, fax_id: str, *, format: str = "pdf") -> bytes:
         """The document's bytes: mint the link, then follow it.
 
-        The download itself goes out UNAUTHENTICATED — the URL is
-        pre-signed and points at an object store, which must never be sent
-        this client's bearer token.
+        The download itself goes out UNAUTHENTICATED. The URL is
+        pre-signed and lives on the tenant's own API host, but it is a
+        capability in its own right — one document, briefly — so this
+        client's bearer token, which reads every fax, never travels with
+        it.
 
         A fax accepted a second ago has no rendered PDF yet, and a purged
         one has none any more; both are an `ApiError` with status 404.

@@ -570,10 +570,13 @@ def test_a_fax_the_far_end_answered_cannot_be_cancelled(
 def test_media_mints_a_link_and_then_downloads_it_without_the_bearer(
     respx_mock: respx.MockRouter, client: Ringivo
 ) -> None:
-    # The URL is pre-signed and points at an object store that is NOT the
-    # API. Sending our bearer token there would hand a third party a
-    # credential that reads every fax this client can reach.
-    download_url = "https://objects.example.net/fax/0198c4a1/document.pdf?signature=abc"
+    # The URL is pre-signed and lives on the tenant's OWN API host — media
+    # is served through their branded proxy — and it is still fetched with
+    # no bearer token. Same host is exactly why this test is worth having:
+    # the URL is a capability for one document, the token reads every fax
+    # this client can reach, and "it is our own host" is not a reason to
+    # staple the second to the first.
+    download_url = f"{BASE_URL}/media/0198c4a1/document.pdf?signature=abc"
     link = respx_mock.get(f"{FAX_URL}/media").mock(
         return_value=httpx.Response(
             200,
@@ -596,8 +599,8 @@ def test_media_mints_a_link_and_then_downloads_it_without_the_bearer(
     assert link.calls.last.request.headers["authorization"] == "Bearer tok"
     assert "authorization" not in download.calls.last.request.headers
     # It drops the token and NOTHING else: the download is still this SDK
-    # asking, and an operator reading an object store's access log should see
-    # which client fetched the document.
+    # asking, and an operator reading the tenant API host's access log should
+    # see which client fetched the document.
     assert download.calls.last.request.headers["user-agent"] == f"Ringivo/Python {__version__}"
     assert link.calls.last.request.url.params["format"] == "pdf"
 
@@ -609,7 +612,7 @@ def test_media_link_hands_back_the_capability_and_its_facts(
         return_value=httpx.Response(
             200,
             json={
-                "url": "https://objects.example.net/fax/0198c4a1/document.tiff?signature=abc",
+                "url": f"{BASE_URL}/media/0198c4a1/document.tiff?signature=abc",
                 "expires_at": "2026-08-16T11:07:31+00:00",
                 "byte_size": 128,
                 "sha256": "d" * 64,

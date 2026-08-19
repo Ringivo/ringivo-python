@@ -15,8 +15,15 @@ by reading the installed source.
 Every request goes through the same `httpx.Client`, so token caching, the
 expiry margin and the single 401 retry apply once and apply everywhere
 (see auth.py). Pre-signed media downloads are the deliberate exception: they
-go through a second, UNAUTHENTICATED client, because the download URL points
-at an object store that is not us and must never receive our bearer token.
+go through a second, UNAUTHENTICATED client.
+
+The URL is on the tenant's own API host — media is served through their
+branded proxy, so it is not somebody else's server — and it is STILL
+fetched with no `Authorization` header. A pre-signed URL is already a
+capability: it reads ONE document, briefly, and it is the kind of string
+that ends up in a browser bar, a ticket or an access log. The bearer token
+reads every fax this client can reach, and must never travel attached to
+it.
 """
 
 from __future__ import annotations
@@ -161,7 +168,10 @@ class Ringivo:
         """Follow a pre-signed URL and return the bytes behind it.
 
         Deliberately not through `self._http`: that client carries our
-        bearer token, and this URL is somebody else's host.
+        bearer token. The URL is on the tenant's own API host, but it is a
+        capability in its own right — one document, briefly — and attaching
+        our credential to it would give whoever ends up holding the URL far
+        more than the URL grants.
         """
         response = self._downloads.get(url)
         raise_for_response(response)
