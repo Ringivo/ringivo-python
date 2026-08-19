@@ -80,6 +80,8 @@ from .fax_update_request_data_type import FaxUpdateRequestDataType
 from .get_fax_include import GetFaxInclude
 from .get_fax_media_format import GetFaxMediaFormat
 from .get_webhook_delivery_include import GetWebhookDeliveryInclude
+from .integration_token_request import IntegrationTokenRequest
+from .integration_token_response import IntegrationTokenResponse
 from .list_faxes_filtertag import ListFaxesFiltertag
 from .list_faxes_include import ListFaxesInclude
 from .list_webhook_deliveries_include import ListWebhookDeliveriesInclude
@@ -211,6 +213,8 @@ __all__ = (
     "GetFaxInclude",
     "GetFaxMediaFormat",
     "GetWebhookDeliveryInclude",
+    "IntegrationTokenRequest",
+    "IntegrationTokenResponse",
     "ListFaxesFiltertag",
     "ListFaxesInclude",
     "ListWebhookDeliveriesInclude",
