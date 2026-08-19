@@ -12,6 +12,7 @@ from ..types import UNSET, Unset
 
 if TYPE_CHECKING:
     from ..models.resource_links import ResourceLinks
+    from ..models.resource_meta import ResourceMeta
     from ..models.webhook_endpoint_attributes import WebhookEndpointAttributes
 
 
@@ -26,12 +27,14 @@ class WebhookEndpointResource:
         id (UUID):
         attributes (WebhookEndpointAttributes | Unset):
         links (ResourceLinks | Unset): Links belonging to one resource object.
+        meta (ResourceMeta | Unset): Metadata belonging to one resource object.
     """
 
     type_: WebhookEndpointResourceType
     id: UUID
     attributes: WebhookEndpointAttributes | Unset = UNSET
     links: ResourceLinks | Unset = UNSET
+    meta: ResourceMeta | Unset = UNSET
     additional_properties: dict[str, Any] = _attrs_field(init=False, factory=dict)
 
     def to_dict(self) -> dict[str, Any]:
@@ -47,6 +50,10 @@ class WebhookEndpointResource:
         if not isinstance(self.links, Unset):
             links = self.links.to_dict()
 
+        meta: dict[str, Any] | Unset = UNSET
+        if not isinstance(self.meta, Unset):
+            meta = self.meta.to_dict()
+
         field_dict: dict[str, Any] = {}
         field_dict.update(self.additional_properties)
         field_dict.update(
@@ -59,12 +66,15 @@ class WebhookEndpointResource:
             field_dict["attributes"] = attributes
         if links is not UNSET:
             field_dict["links"] = links
+        if meta is not UNSET:
+            field_dict["meta"] = meta
 
         return field_dict
 
     @classmethod
     def from_dict(cls: type[T], src_dict: Mapping[str, Any]) -> T:
         from ..models.resource_links import ResourceLinks
+        from ..models.resource_meta import ResourceMeta
         from ..models.webhook_endpoint_attributes import WebhookEndpointAttributes
 
         d = dict(src_dict)
@@ -86,11 +96,19 @@ class WebhookEndpointResource:
         else:
             links = ResourceLinks.from_dict(_links)
 
+        _meta = d.pop("meta", UNSET)
+        meta: ResourceMeta | Unset
+        if isinstance(_meta, Unset):
+            meta = UNSET
+        else:
+            meta = ResourceMeta.from_dict(_meta)
+
         webhook_endpoint_resource = cls(
             type_=type_,
             id=id,
             attributes=attributes,
             links=links,
+            meta=meta,
         )
 
         webhook_endpoint_resource.additional_properties = d

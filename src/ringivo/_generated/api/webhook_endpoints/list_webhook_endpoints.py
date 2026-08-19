@@ -14,8 +14,9 @@ from ...types import UNSET, Response, Unset
 
 def _get_kwargs(
     *,
-    pagenumber: int | Unset = UNSET,
     pagesize: int | Unset = UNSET,
+    pageafter: str | Unset = UNSET,
+    pagebefore: str | Unset = UNSET,
     sort: str | Unset = UNSET,
     filterscope_type: WebhookScopeType | Unset = UNSET,
     filterscope_id: UUID | Unset = UNSET,
@@ -24,9 +25,11 @@ def _get_kwargs(
 
     params: dict[str, Any] = {}
 
-    params["page[number]"] = pagenumber
-
     params["page[size]"] = pagesize
+
+    params["page[after]"] = pageafter
+
+    params["page[before]"] = pagebefore
 
     params["sort"] = sort
 
@@ -102,8 +105,9 @@ def _build_response(
 def sync_detailed(
     *,
     client: AuthenticatedClient,
-    pagenumber: int | Unset = UNSET,
     pagesize: int | Unset = UNSET,
+    pageafter: str | Unset = UNSET,
+    pagebefore: str | Unset = UNSET,
     sort: str | Unset = UNSET,
     filterscope_type: WebhookScopeType | Unset = UNSET,
     filterscope_id: UUID | Unset = UNSET,
@@ -119,8 +123,9 @@ def sync_detailed(
     tenant-scoped endpoints are absent from that list and require `webhooks:read`.
 
     Args:
-        pagenumber (int | Unset):
         pagesize (int | Unset):
+        pageafter (str | Unset):
+        pagebefore (str | Unset):
         sort (str | Unset):
         filterscope_type (WebhookScopeType | Unset): What an endpoint hears about. All three are
             matched as a containment order, so a
@@ -137,8 +142,9 @@ def sync_detailed(
     """
 
     kwargs = _get_kwargs(
-        pagenumber=pagenumber,
         pagesize=pagesize,
+        pageafter=pageafter,
+        pagebefore=pagebefore,
         sort=sort,
         filterscope_type=filterscope_type,
         filterscope_id=filterscope_id,
@@ -155,8 +161,9 @@ def sync_detailed(
 def sync(
     *,
     client: AuthenticatedClient,
-    pagenumber: int | Unset = UNSET,
     pagesize: int | Unset = UNSET,
+    pageafter: str | Unset = UNSET,
+    pagebefore: str | Unset = UNSET,
     sort: str | Unset = UNSET,
     filterscope_type: WebhookScopeType | Unset = UNSET,
     filterscope_id: UUID | Unset = UNSET,
@@ -172,8 +179,9 @@ def sync(
     tenant-scoped endpoints are absent from that list and require `webhooks:read`.
 
     Args:
-        pagenumber (int | Unset):
         pagesize (int | Unset):
+        pageafter (str | Unset):
+        pagebefore (str | Unset):
         sort (str | Unset):
         filterscope_type (WebhookScopeType | Unset): What an endpoint hears about. All three are
             matched as a containment order, so a
@@ -191,8 +199,9 @@ def sync(
 
     return sync_detailed(
         client=client,
-        pagenumber=pagenumber,
         pagesize=pagesize,
+        pageafter=pageafter,
+        pagebefore=pagebefore,
         sort=sort,
         filterscope_type=filterscope_type,
         filterscope_id=filterscope_id,
@@ -203,8 +212,9 @@ def sync(
 async def asyncio_detailed(
     *,
     client: AuthenticatedClient,
-    pagenumber: int | Unset = UNSET,
     pagesize: int | Unset = UNSET,
+    pageafter: str | Unset = UNSET,
+    pagebefore: str | Unset = UNSET,
     sort: str | Unset = UNSET,
     filterscope_type: WebhookScopeType | Unset = UNSET,
     filterscope_id: UUID | Unset = UNSET,
@@ -220,8 +230,9 @@ async def asyncio_detailed(
     tenant-scoped endpoints are absent from that list and require `webhooks:read`.
 
     Args:
-        pagenumber (int | Unset):
         pagesize (int | Unset):
+        pageafter (str | Unset):
+        pagebefore (str | Unset):
         sort (str | Unset):
         filterscope_type (WebhookScopeType | Unset): What an endpoint hears about. All three are
             matched as a containment order, so a
@@ -238,8 +249,9 @@ async def asyncio_detailed(
     """
 
     kwargs = _get_kwargs(
-        pagenumber=pagenumber,
         pagesize=pagesize,
+        pageafter=pageafter,
+        pagebefore=pagebefore,
         sort=sort,
         filterscope_type=filterscope_type,
         filterscope_id=filterscope_id,
@@ -254,8 +266,9 @@ async def asyncio_detailed(
 async def asyncio(
     *,
     client: AuthenticatedClient,
-    pagenumber: int | Unset = UNSET,
     pagesize: int | Unset = UNSET,
+    pageafter: str | Unset = UNSET,
+    pagebefore: str | Unset = UNSET,
     sort: str | Unset = UNSET,
     filterscope_type: WebhookScopeType | Unset = UNSET,
     filterscope_id: UUID | Unset = UNSET,
@@ -271,8 +284,9 @@ async def asyncio(
     tenant-scoped endpoints are absent from that list and require `webhooks:read`.
 
     Args:
-        pagenumber (int | Unset):
         pagesize (int | Unset):
+        pageafter (str | Unset):
+        pagebefore (str | Unset):
         sort (str | Unset):
         filterscope_type (WebhookScopeType | Unset): What an endpoint hears about. All three are
             matched as a containment order, so a
@@ -291,8 +305,9 @@ async def asyncio(
     return (
         await asyncio_detailed(
             client=client,
-            pagenumber=pagenumber,
             pagesize=pagesize,
+            pageafter=pageafter,
+            pagebefore=pagebefore,
             sort=sort,
             filterscope_type=filterscope_type,
             filterscope_id=filterscope_id,

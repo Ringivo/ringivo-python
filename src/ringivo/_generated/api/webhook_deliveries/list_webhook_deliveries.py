@@ -16,8 +16,10 @@ from ...types import UNSET, Response, Unset
 
 def _get_kwargs(
     *,
-    pagecursor: str | Unset = UNSET,
     pagesize: int | Unset = UNSET,
+    pageafter: str | Unset = UNSET,
+    pagebefore: str | Unset = UNSET,
+    sort: str | Unset = UNSET,
     include: ListWebhookDeliveriesInclude | Unset = UNSET,
     filterendpoint: UUID | Unset = UNSET,
     filterevent_type: WebhookEventType | Unset = UNSET,
@@ -26,9 +28,13 @@ def _get_kwargs(
 
     params: dict[str, Any] = {}
 
-    params["page[cursor]"] = pagecursor
-
     params["page[size]"] = pagesize
+
+    params["page[after]"] = pageafter
+
+    params["page[before]"] = pagebefore
+
+    params["sort"] = sort
 
     json_include: str | Unset = UNSET
     if not isinstance(include, Unset):
@@ -112,8 +118,10 @@ def _build_response(
 def sync_detailed(
     *,
     client: AuthenticatedClient,
-    pagecursor: str | Unset = UNSET,
     pagesize: int | Unset = UNSET,
+    pageafter: str | Unset = UNSET,
+    pagebefore: str | Unset = UNSET,
+    sort: str | Unset = UNSET,
     include: ListWebhookDeliveriesInclude | Unset = UNSET,
     filterendpoint: UUID | Unset = UNSET,
     filterevent_type: WebhookEventType | Unset = UNSET,
@@ -136,8 +144,10 @@ def sync_detailed(
     require `webhooks:read`.
 
     Args:
-        pagecursor (str | Unset):
         pagesize (int | Unset):
+        pageafter (str | Unset):
+        pagebefore (str | Unset):
+        sort (str | Unset):
         include (ListWebhookDeliveriesInclude | Unset):
         filterendpoint (UUID | Unset):
         filterevent_type (WebhookEventType | Unset): Every event name a subscriber may ask for.
@@ -154,8 +164,10 @@ def sync_detailed(
     """
 
     kwargs = _get_kwargs(
-        pagecursor=pagecursor,
         pagesize=pagesize,
+        pageafter=pageafter,
+        pagebefore=pagebefore,
+        sort=sort,
         include=include,
         filterendpoint=filterendpoint,
         filterevent_type=filterevent_type,
@@ -172,8 +184,10 @@ def sync_detailed(
 def sync(
     *,
     client: AuthenticatedClient,
-    pagecursor: str | Unset = UNSET,
     pagesize: int | Unset = UNSET,
+    pageafter: str | Unset = UNSET,
+    pagebefore: str | Unset = UNSET,
+    sort: str | Unset = UNSET,
     include: ListWebhookDeliveriesInclude | Unset = UNSET,
     filterendpoint: UUID | Unset = UNSET,
     filterevent_type: WebhookEventType | Unset = UNSET,
@@ -196,8 +210,10 @@ def sync(
     require `webhooks:read`.
 
     Args:
-        pagecursor (str | Unset):
         pagesize (int | Unset):
+        pageafter (str | Unset):
+        pagebefore (str | Unset):
+        sort (str | Unset):
         include (ListWebhookDeliveriesInclude | Unset):
         filterendpoint (UUID | Unset):
         filterevent_type (WebhookEventType | Unset): Every event name a subscriber may ask for.
@@ -215,8 +231,10 @@ def sync(
 
     return sync_detailed(
         client=client,
-        pagecursor=pagecursor,
         pagesize=pagesize,
+        pageafter=pageafter,
+        pagebefore=pagebefore,
+        sort=sort,
         include=include,
         filterendpoint=filterendpoint,
         filterevent_type=filterevent_type,
@@ -227,8 +245,10 @@ def sync(
 async def asyncio_detailed(
     *,
     client: AuthenticatedClient,
-    pagecursor: str | Unset = UNSET,
     pagesize: int | Unset = UNSET,
+    pageafter: str | Unset = UNSET,
+    pagebefore: str | Unset = UNSET,
+    sort: str | Unset = UNSET,
     include: ListWebhookDeliveriesInclude | Unset = UNSET,
     filterendpoint: UUID | Unset = UNSET,
     filterevent_type: WebhookEventType | Unset = UNSET,
@@ -251,8 +271,10 @@ async def asyncio_detailed(
     require `webhooks:read`.
 
     Args:
-        pagecursor (str | Unset):
         pagesize (int | Unset):
+        pageafter (str | Unset):
+        pagebefore (str | Unset):
+        sort (str | Unset):
         include (ListWebhookDeliveriesInclude | Unset):
         filterendpoint (UUID | Unset):
         filterevent_type (WebhookEventType | Unset): Every event name a subscriber may ask for.
@@ -269,8 +291,10 @@ async def asyncio_detailed(
     """
 
     kwargs = _get_kwargs(
-        pagecursor=pagecursor,
         pagesize=pagesize,
+        pageafter=pageafter,
+        pagebefore=pagebefore,
+        sort=sort,
         include=include,
         filterendpoint=filterendpoint,
         filterevent_type=filterevent_type,
@@ -285,8 +309,10 @@ async def asyncio_detailed(
 async def asyncio(
     *,
     client: AuthenticatedClient,
-    pagecursor: str | Unset = UNSET,
     pagesize: int | Unset = UNSET,
+    pageafter: str | Unset = UNSET,
+    pagebefore: str | Unset = UNSET,
+    sort: str | Unset = UNSET,
     include: ListWebhookDeliveriesInclude | Unset = UNSET,
     filterendpoint: UUID | Unset = UNSET,
     filterevent_type: WebhookEventType | Unset = UNSET,
@@ -309,8 +335,10 @@ async def asyncio(
     require `webhooks:read`.
 
     Args:
-        pagecursor (str | Unset):
         pagesize (int | Unset):
+        pageafter (str | Unset):
+        pagebefore (str | Unset):
+        sort (str | Unset):
         include (ListWebhookDeliveriesInclude | Unset):
         filterendpoint (UUID | Unset):
         filterevent_type (WebhookEventType | Unset): Every event name a subscriber may ask for.
@@ -329,8 +357,10 @@ async def asyncio(
     return (
         await asyncio_detailed(
             client=client,
-            pagecursor=pagecursor,
             pagesize=pagesize,
+            pageafter=pageafter,
+            pagebefore=pagebefore,
+            sort=sort,
             include=include,
             filterendpoint=filterendpoint,
             filterevent_type=filterevent_type,

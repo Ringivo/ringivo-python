@@ -1,62 +1,52 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
-from typing import TYPE_CHECKING, Any, TypeVar
+from typing import Any, TypeVar
 
 from attrs import define as _attrs_define
 from attrs import field as _attrs_field
 
 from ..types import UNSET, Unset
 
-if TYPE_CHECKING:
-    from ..models.page_meta import PageMeta
-
-
-T = TypeVar("T", bound="DocumentMeta")
+T = TypeVar("T", bound="ResourceMetaPage")
 
 
 @_attrs_define
-class DocumentMeta:
-    """Document-level metadata. A paged collection carries `page` here.
+class ResourceMetaPage:
+    """This row's own place in the collection that served it. Present on the members of a
+    paginated collection, and absent everywhere else — a single-resource read and a
+    side-loaded `included` row were never positions in a walk.
 
-    Attributes:
-        page (PageMeta | Unset): Where this page sits in the collection it came from.
+        Attributes:
+            cursor (str | Unset): An opaque cursor for THIS row. Send it as `page[after]` for the rows after it or as
+                `page[before]` for the rows before it, under the same `filter` and `sort`.
     """
 
-    page: PageMeta | Unset = UNSET
+    cursor: str | Unset = UNSET
     additional_properties: dict[str, Any] = _attrs_field(init=False, factory=dict)
 
     def to_dict(self) -> dict[str, Any]:
-        page: dict[str, Any] | Unset = UNSET
-        if not isinstance(self.page, Unset):
-            page = self.page.to_dict()
+        cursor = self.cursor
 
         field_dict: dict[str, Any] = {}
         field_dict.update(self.additional_properties)
         field_dict.update({})
-        if page is not UNSET:
-            field_dict["page"] = page
+        if cursor is not UNSET:
+            field_dict["cursor"] = cursor
 
         return field_dict
 
     @classmethod
     def from_dict(cls: type[T], src_dict: Mapping[str, Any]) -> T:
-        from ..models.page_meta import PageMeta
-
         d = dict(src_dict)
-        _page = d.pop("page", UNSET)
-        page: PageMeta | Unset
-        if isinstance(_page, Unset):
-            page = UNSET
-        else:
-            page = PageMeta.from_dict(_page)
+        cursor = d.pop("cursor", UNSET)
 
-        document_meta = cls(
-            page=page,
+        resource_meta_page = cls(
+            cursor=cursor,
         )
 
-        document_meta.additional_properties = d
-        return document_meta
+        resource_meta_page.additional_properties = d
+        return resource_meta_page
 
     @property
     def additional_keys(self) -> list[str]:

@@ -17,8 +17,10 @@ from ...types import UNSET, Response, Unset
 
 def _get_kwargs(
     *,
-    pagecursor: str | Unset = UNSET,
     pagesize: int | Unset = UNSET,
+    pageafter: str | Unset = UNSET,
+    pagebefore: str | Unset = UNSET,
+    sort: str | Unset = UNSET,
     include: ListFaxesInclude | Unset = UNSET,
     filterfax_account: UUID | Unset = UNSET,
     filterdirection: FaxDirection | Unset = UNSET,
@@ -35,9 +37,13 @@ def _get_kwargs(
 
     params: dict[str, Any] = {}
 
-    params["page[cursor]"] = pagecursor
-
     params["page[size]"] = pagesize
+
+    params["page[after]"] = pageafter
+
+    params["page[before]"] = pagebefore
+
+    params["sort"] = sort
 
     json_include: str | Unset = UNSET
     if not isinstance(include, Unset):
@@ -141,8 +147,10 @@ def _build_response(
 def sync_detailed(
     *,
     client: AuthenticatedClient,
-    pagecursor: str | Unset = UNSET,
     pagesize: int | Unset = UNSET,
+    pageafter: str | Unset = UNSET,
+    pagebefore: str | Unset = UNSET,
+    sort: str | Unset = UNSET,
     include: ListFaxesInclude | Unset = UNSET,
     filterfax_account: UUID | Unset = UNSET,
     filterdirection: FaxDirection | Unset = UNSET,
@@ -158,13 +166,13 @@ def sync_detailed(
 ) -> Response[ErrorDocument | FaxCollectionDocument]:
     """List faxes
 
-     The inbox and the outbox in one cursor-paginated collection, newest first. Nothing is
-    sortable: the cursor's ordering IS the id ordering, so a client-supplied sort would make
-    pages overlap.
+     The inbox and the outbox in one collection, newest first.
 
     Args:
-        pagecursor (str | Unset):
         pagesize (int | Unset):
+        pageafter (str | Unset):
+        pagebefore (str | Unset):
+        sort (str | Unset):
         include (ListFaxesInclude | Unset):
         filterfax_account (UUID | Unset):
         filterdirection (FaxDirection | Unset):
@@ -189,8 +197,10 @@ def sync_detailed(
     """
 
     kwargs = _get_kwargs(
-        pagecursor=pagecursor,
         pagesize=pagesize,
+        pageafter=pageafter,
+        pagebefore=pagebefore,
+        sort=sort,
         include=include,
         filterfax_account=filterfax_account,
         filterdirection=filterdirection,
@@ -215,8 +225,10 @@ def sync_detailed(
 def sync(
     *,
     client: AuthenticatedClient,
-    pagecursor: str | Unset = UNSET,
     pagesize: int | Unset = UNSET,
+    pageafter: str | Unset = UNSET,
+    pagebefore: str | Unset = UNSET,
+    sort: str | Unset = UNSET,
     include: ListFaxesInclude | Unset = UNSET,
     filterfax_account: UUID | Unset = UNSET,
     filterdirection: FaxDirection | Unset = UNSET,
@@ -232,13 +244,13 @@ def sync(
 ) -> ErrorDocument | FaxCollectionDocument | None:
     """List faxes
 
-     The inbox and the outbox in one cursor-paginated collection, newest first. Nothing is
-    sortable: the cursor's ordering IS the id ordering, so a client-supplied sort would make
-    pages overlap.
+     The inbox and the outbox in one collection, newest first.
 
     Args:
-        pagecursor (str | Unset):
         pagesize (int | Unset):
+        pageafter (str | Unset):
+        pagebefore (str | Unset):
+        sort (str | Unset):
         include (ListFaxesInclude | Unset):
         filterfax_account (UUID | Unset):
         filterdirection (FaxDirection | Unset):
@@ -264,8 +276,10 @@ def sync(
 
     return sync_detailed(
         client=client,
-        pagecursor=pagecursor,
         pagesize=pagesize,
+        pageafter=pageafter,
+        pagebefore=pagebefore,
+        sort=sort,
         include=include,
         filterfax_account=filterfax_account,
         filterdirection=filterdirection,
@@ -284,8 +298,10 @@ def sync(
 async def asyncio_detailed(
     *,
     client: AuthenticatedClient,
-    pagecursor: str | Unset = UNSET,
     pagesize: int | Unset = UNSET,
+    pageafter: str | Unset = UNSET,
+    pagebefore: str | Unset = UNSET,
+    sort: str | Unset = UNSET,
     include: ListFaxesInclude | Unset = UNSET,
     filterfax_account: UUID | Unset = UNSET,
     filterdirection: FaxDirection | Unset = UNSET,
@@ -301,13 +317,13 @@ async def asyncio_detailed(
 ) -> Response[ErrorDocument | FaxCollectionDocument]:
     """List faxes
 
-     The inbox and the outbox in one cursor-paginated collection, newest first. Nothing is
-    sortable: the cursor's ordering IS the id ordering, so a client-supplied sort would make
-    pages overlap.
+     The inbox and the outbox in one collection, newest first.
 
     Args:
-        pagecursor (str | Unset):
         pagesize (int | Unset):
+        pageafter (str | Unset):
+        pagebefore (str | Unset):
+        sort (str | Unset):
         include (ListFaxesInclude | Unset):
         filterfax_account (UUID | Unset):
         filterdirection (FaxDirection | Unset):
@@ -332,8 +348,10 @@ async def asyncio_detailed(
     """
 
     kwargs = _get_kwargs(
-        pagecursor=pagecursor,
         pagesize=pagesize,
+        pageafter=pageafter,
+        pagebefore=pagebefore,
+        sort=sort,
         include=include,
         filterfax_account=filterfax_account,
         filterdirection=filterdirection,
@@ -356,8 +374,10 @@ async def asyncio_detailed(
 async def asyncio(
     *,
     client: AuthenticatedClient,
-    pagecursor: str | Unset = UNSET,
     pagesize: int | Unset = UNSET,
+    pageafter: str | Unset = UNSET,
+    pagebefore: str | Unset = UNSET,
+    sort: str | Unset = UNSET,
     include: ListFaxesInclude | Unset = UNSET,
     filterfax_account: UUID | Unset = UNSET,
     filterdirection: FaxDirection | Unset = UNSET,
@@ -373,13 +393,13 @@ async def asyncio(
 ) -> ErrorDocument | FaxCollectionDocument | None:
     """List faxes
 
-     The inbox and the outbox in one cursor-paginated collection, newest first. Nothing is
-    sortable: the cursor's ordering IS the id ordering, so a client-supplied sort would make
-    pages overlap.
+     The inbox and the outbox in one collection, newest first.
 
     Args:
-        pagecursor (str | Unset):
         pagesize (int | Unset):
+        pageafter (str | Unset):
+        pagebefore (str | Unset):
+        sort (str | Unset):
         include (ListFaxesInclude | Unset):
         filterfax_account (UUID | Unset):
         filterdirection (FaxDirection | Unset):
@@ -406,8 +426,10 @@ async def asyncio(
     return (
         await asyncio_detailed(
             client=client,
-            pagecursor=pagecursor,
             pagesize=pagesize,
+            pageafter=pageafter,
+            pagebefore=pagebefore,
+            sort=sort,
             include=include,
             filterfax_account=filterfax_account,
             filterdirection=filterdirection,

@@ -9,18 +9,36 @@ from ... import errors
 from ...client import AuthenticatedClient, Client
 from ...models.error_document import ErrorDocument
 from ...models.phone_number_collection_document import PhoneNumberCollectionDocument
-from ...types import Response
+from ...types import UNSET, Response, Unset
 
 
 def _get_kwargs(
     fax_account: UUID,
+    *,
+    pagesize: int | Unset = UNSET,
+    pageafter: str | Unset = UNSET,
+    pagebefore: str | Unset = UNSET,
+    sort: str | Unset = UNSET,
 ) -> dict[str, Any]:
+
+    params: dict[str, Any] = {}
+
+    params["page[size]"] = pagesize
+
+    params["page[after]"] = pageafter
+
+    params["page[before]"] = pagebefore
+
+    params["sort"] = sort
+
+    params = {k: v for k, v in params.items() if v is not UNSET and v is not None}
 
     _kwargs: dict[str, Any] = {
         "method": "get",
         "url": "/v1/fax-accounts/{fax_account}/numbers".format(
             fax_account=quote(str(fax_account), safe=""),
         ),
+        "params": params,
     }
 
     return _kwargs
@@ -75,6 +93,10 @@ def sync_detailed(
     fax_account: UUID,
     *,
     client: AuthenticatedClient,
+    pagesize: int | Unset = UNSET,
+    pageafter: str | Unset = UNSET,
+    pagebefore: str | Unset = UNSET,
+    sort: str | Unset = UNSET,
 ) -> Response[ErrorDocument | PhoneNumberCollectionDocument]:
     """List the numbers routed to a fax account
 
@@ -83,6 +105,10 @@ def sync_detailed(
 
     Args:
         fax_account (UUID):
+        pagesize (int | Unset):
+        pageafter (str | Unset):
+        pagebefore (str | Unset):
+        sort (str | Unset):
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
@@ -94,6 +120,10 @@ def sync_detailed(
 
     kwargs = _get_kwargs(
         fax_account=fax_account,
+        pagesize=pagesize,
+        pageafter=pageafter,
+        pagebefore=pagebefore,
+        sort=sort,
     )
 
     response = client.get_httpx_client().request(
@@ -107,6 +137,10 @@ def sync(
     fax_account: UUID,
     *,
     client: AuthenticatedClient,
+    pagesize: int | Unset = UNSET,
+    pageafter: str | Unset = UNSET,
+    pagebefore: str | Unset = UNSET,
+    sort: str | Unset = UNSET,
 ) -> ErrorDocument | PhoneNumberCollectionDocument | None:
     """List the numbers routed to a fax account
 
@@ -115,6 +149,10 @@ def sync(
 
     Args:
         fax_account (UUID):
+        pagesize (int | Unset):
+        pageafter (str | Unset):
+        pagebefore (str | Unset):
+        sort (str | Unset):
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
@@ -127,6 +165,10 @@ def sync(
     return sync_detailed(
         fax_account=fax_account,
         client=client,
+        pagesize=pagesize,
+        pageafter=pageafter,
+        pagebefore=pagebefore,
+        sort=sort,
     ).parsed
 
 
@@ -134,6 +176,10 @@ async def asyncio_detailed(
     fax_account: UUID,
     *,
     client: AuthenticatedClient,
+    pagesize: int | Unset = UNSET,
+    pageafter: str | Unset = UNSET,
+    pagebefore: str | Unset = UNSET,
+    sort: str | Unset = UNSET,
 ) -> Response[ErrorDocument | PhoneNumberCollectionDocument]:
     """List the numbers routed to a fax account
 
@@ -142,6 +188,10 @@ async def asyncio_detailed(
 
     Args:
         fax_account (UUID):
+        pagesize (int | Unset):
+        pageafter (str | Unset):
+        pagebefore (str | Unset):
+        sort (str | Unset):
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
@@ -153,6 +203,10 @@ async def asyncio_detailed(
 
     kwargs = _get_kwargs(
         fax_account=fax_account,
+        pagesize=pagesize,
+        pageafter=pageafter,
+        pagebefore=pagebefore,
+        sort=sort,
     )
 
     response = await client.get_async_httpx_client().request(**kwargs)
@@ -164,6 +218,10 @@ async def asyncio(
     fax_account: UUID,
     *,
     client: AuthenticatedClient,
+    pagesize: int | Unset = UNSET,
+    pageafter: str | Unset = UNSET,
+    pagebefore: str | Unset = UNSET,
+    sort: str | Unset = UNSET,
 ) -> ErrorDocument | PhoneNumberCollectionDocument | None:
     """List the numbers routed to a fax account
 
@@ -172,6 +230,10 @@ async def asyncio(
 
     Args:
         fax_account (UUID):
+        pagesize (int | Unset):
+        pageafter (str | Unset):
+        pagebefore (str | Unset):
+        sort (str | Unset):
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
@@ -185,5 +247,9 @@ async def asyncio(
         await asyncio_detailed(
             fax_account=fax_account,
             client=client,
+            pagesize=pagesize,
+            pageafter=pageafter,
+            pagebefore=pagebefore,
+            sort=sort,
         )
     ).parsed

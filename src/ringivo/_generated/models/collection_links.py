@@ -13,22 +13,25 @@ T = TypeVar("T", bound="CollectionLinks")
 
 @_attrs_define
 class CollectionLinks:
-    """Pagination links. `next` is the one to follow on a cursor-paginated collection; it is absent
-    or null on the last page.
+    """Pagination links. `first` is always present, `prev` whenever a previous page exists, and
+    `next` on every page but the last — on the final page `next` is ABSENT from the document
+    altogether. Branch on `meta.page.nextCursor` instead: it is `null` at the end and present on
+    every page, so one member answers "is there more?" everywhere. There is no `last` link.
+
+    A link that does not apply is ABSENT rather than null — the encoder cannot carry a null
+    href — so these three are plain strings whenever they appear at all.
 
         Attributes:
             self_ (None | str | Unset):
-            first (None | str | Unset):
-            last (None | str | Unset):
-            prev (None | str | Unset):
-            next_ (None | str | Unset):
+            first (str | Unset):
+            prev (str | Unset):
+            next_ (str | Unset):
     """
 
     self_: None | str | Unset = UNSET
-    first: None | str | Unset = UNSET
-    last: None | str | Unset = UNSET
-    prev: None | str | Unset = UNSET
-    next_: None | str | Unset = UNSET
+    first: str | Unset = UNSET
+    prev: str | Unset = UNSET
+    next_: str | Unset = UNSET
     additional_properties: dict[str, Any] = _attrs_field(init=False, factory=dict)
 
     def to_dict(self) -> dict[str, Any]:
@@ -38,29 +41,11 @@ class CollectionLinks:
         else:
             self_ = self.self_
 
-        first: None | str | Unset
-        if isinstance(self.first, Unset):
-            first = UNSET
-        else:
-            first = self.first
+        first = self.first
 
-        last: None | str | Unset
-        if isinstance(self.last, Unset):
-            last = UNSET
-        else:
-            last = self.last
+        prev = self.prev
 
-        prev: None | str | Unset
-        if isinstance(self.prev, Unset):
-            prev = UNSET
-        else:
-            prev = self.prev
-
-        next_: None | str | Unset
-        if isinstance(self.next_, Unset):
-            next_ = UNSET
-        else:
-            next_ = self.next_
+        next_ = self.next_
 
         field_dict: dict[str, Any] = {}
         field_dict.update(self.additional_properties)
@@ -69,8 +54,6 @@ class CollectionLinks:
             field_dict["self"] = self_
         if first is not UNSET:
             field_dict["first"] = first
-        if last is not UNSET:
-            field_dict["last"] = last
         if prev is not UNSET:
             field_dict["prev"] = prev
         if next_ is not UNSET:
@@ -91,46 +74,15 @@ class CollectionLinks:
 
         self_ = _parse_self_(d.pop("self", UNSET))
 
-        def _parse_first(data: object) -> None | str | Unset:
-            if data is None:
-                return data
-            if isinstance(data, Unset):
-                return data
-            return cast(None | str | Unset, data)
+        first = d.pop("first", UNSET)
 
-        first = _parse_first(d.pop("first", UNSET))
+        prev = d.pop("prev", UNSET)
 
-        def _parse_last(data: object) -> None | str | Unset:
-            if data is None:
-                return data
-            if isinstance(data, Unset):
-                return data
-            return cast(None | str | Unset, data)
-
-        last = _parse_last(d.pop("last", UNSET))
-
-        def _parse_prev(data: object) -> None | str | Unset:
-            if data is None:
-                return data
-            if isinstance(data, Unset):
-                return data
-            return cast(None | str | Unset, data)
-
-        prev = _parse_prev(d.pop("prev", UNSET))
-
-        def _parse_next_(data: object) -> None | str | Unset:
-            if data is None:
-                return data
-            if isinstance(data, Unset):
-                return data
-            return cast(None | str | Unset, data)
-
-        next_ = _parse_next_(d.pop("next", UNSET))
+        next_ = d.pop("next", UNSET)
 
         collection_links = cls(
             self_=self_,
             first=first,
-            last=last,
             prev=prev,
             next_=next_,
         )

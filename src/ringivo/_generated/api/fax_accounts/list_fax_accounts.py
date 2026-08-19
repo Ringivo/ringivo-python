@@ -14,8 +14,9 @@ from ...types import UNSET, Response, Unset
 
 def _get_kwargs(
     *,
-    pagenumber: int | Unset = UNSET,
     pagesize: int | Unset = UNSET,
+    pageafter: str | Unset = UNSET,
+    pagebefore: str | Unset = UNSET,
     sort: str | Unset = UNSET,
     filtercustomer: UUID | Unset = UNSET,
     filterstatus: FaxAccountStatus | Unset = UNSET,
@@ -23,9 +24,11 @@ def _get_kwargs(
 
     params: dict[str, Any] = {}
 
-    params["page[number]"] = pagenumber
-
     params["page[size]"] = pagesize
+
+    params["page[after]"] = pageafter
+
+    params["page[before]"] = pagebefore
 
     params["sort"] = sort
 
@@ -99,21 +102,22 @@ def _build_response(
 def sync_detailed(
     *,
     client: AuthenticatedClient,
-    pagenumber: int | Unset = UNSET,
     pagesize: int | Unset = UNSET,
+    pageafter: str | Unset = UNSET,
+    pagebefore: str | Unset = UNSET,
     sort: str | Unset = UNSET,
     filtercustomer: UUID | Unset = UNSET,
     filterstatus: FaxAccountStatus | Unset = UNSET,
 ) -> Response[ErrorDocument | FaxAccountCollectionDocument]:
     """List fax accounts
 
-     Not paged by default — an account list is small and a backend syncing state wants all of it.
-    A token issued for a person lists only the accounts that person was granted; a machine
+     A token issued for a person lists only the accounts that person was granted; a machine
     credential lists every account in its scope.
 
     Args:
-        pagenumber (int | Unset):
         pagesize (int | Unset):
+        pageafter (str | Unset):
+        pagebefore (str | Unset):
         sort (str | Unset):
         filtercustomer (UUID | Unset):
         filterstatus (FaxAccountStatus | Unset): A suspended account may receive faxes but not
@@ -128,8 +132,9 @@ def sync_detailed(
     """
 
     kwargs = _get_kwargs(
-        pagenumber=pagenumber,
         pagesize=pagesize,
+        pageafter=pageafter,
+        pagebefore=pagebefore,
         sort=sort,
         filtercustomer=filtercustomer,
         filterstatus=filterstatus,
@@ -145,21 +150,22 @@ def sync_detailed(
 def sync(
     *,
     client: AuthenticatedClient,
-    pagenumber: int | Unset = UNSET,
     pagesize: int | Unset = UNSET,
+    pageafter: str | Unset = UNSET,
+    pagebefore: str | Unset = UNSET,
     sort: str | Unset = UNSET,
     filtercustomer: UUID | Unset = UNSET,
     filterstatus: FaxAccountStatus | Unset = UNSET,
 ) -> ErrorDocument | FaxAccountCollectionDocument | None:
     """List fax accounts
 
-     Not paged by default — an account list is small and a backend syncing state wants all of it.
-    A token issued for a person lists only the accounts that person was granted; a machine
+     A token issued for a person lists only the accounts that person was granted; a machine
     credential lists every account in its scope.
 
     Args:
-        pagenumber (int | Unset):
         pagesize (int | Unset):
+        pageafter (str | Unset):
+        pagebefore (str | Unset):
         sort (str | Unset):
         filtercustomer (UUID | Unset):
         filterstatus (FaxAccountStatus | Unset): A suspended account may receive faxes but not
@@ -175,8 +181,9 @@ def sync(
 
     return sync_detailed(
         client=client,
-        pagenumber=pagenumber,
         pagesize=pagesize,
+        pageafter=pageafter,
+        pagebefore=pagebefore,
         sort=sort,
         filtercustomer=filtercustomer,
         filterstatus=filterstatus,
@@ -186,21 +193,22 @@ def sync(
 async def asyncio_detailed(
     *,
     client: AuthenticatedClient,
-    pagenumber: int | Unset = UNSET,
     pagesize: int | Unset = UNSET,
+    pageafter: str | Unset = UNSET,
+    pagebefore: str | Unset = UNSET,
     sort: str | Unset = UNSET,
     filtercustomer: UUID | Unset = UNSET,
     filterstatus: FaxAccountStatus | Unset = UNSET,
 ) -> Response[ErrorDocument | FaxAccountCollectionDocument]:
     """List fax accounts
 
-     Not paged by default — an account list is small and a backend syncing state wants all of it.
-    A token issued for a person lists only the accounts that person was granted; a machine
+     A token issued for a person lists only the accounts that person was granted; a machine
     credential lists every account in its scope.
 
     Args:
-        pagenumber (int | Unset):
         pagesize (int | Unset):
+        pageafter (str | Unset):
+        pagebefore (str | Unset):
         sort (str | Unset):
         filtercustomer (UUID | Unset):
         filterstatus (FaxAccountStatus | Unset): A suspended account may receive faxes but not
@@ -215,8 +223,9 @@ async def asyncio_detailed(
     """
 
     kwargs = _get_kwargs(
-        pagenumber=pagenumber,
         pagesize=pagesize,
+        pageafter=pageafter,
+        pagebefore=pagebefore,
         sort=sort,
         filtercustomer=filtercustomer,
         filterstatus=filterstatus,
@@ -230,21 +239,22 @@ async def asyncio_detailed(
 async def asyncio(
     *,
     client: AuthenticatedClient,
-    pagenumber: int | Unset = UNSET,
     pagesize: int | Unset = UNSET,
+    pageafter: str | Unset = UNSET,
+    pagebefore: str | Unset = UNSET,
     sort: str | Unset = UNSET,
     filtercustomer: UUID | Unset = UNSET,
     filterstatus: FaxAccountStatus | Unset = UNSET,
 ) -> ErrorDocument | FaxAccountCollectionDocument | None:
     """List fax accounts
 
-     Not paged by default — an account list is small and a backend syncing state wants all of it.
-    A token issued for a person lists only the accounts that person was granted; a machine
+     A token issued for a person lists only the accounts that person was granted; a machine
     credential lists every account in its scope.
 
     Args:
-        pagenumber (int | Unset):
         pagesize (int | Unset):
+        pageafter (str | Unset):
+        pagebefore (str | Unset):
         sort (str | Unset):
         filtercustomer (UUID | Unset):
         filterstatus (FaxAccountStatus | Unset): A suspended account may receive faxes but not
@@ -261,8 +271,9 @@ async def asyncio(
     return (
         await asyncio_detailed(
             client=client,
-            pagenumber=pagenumber,
             pagesize=pagesize,
+            pageafter=pageafter,
+            pagebefore=pagebefore,
             sort=sort,
             filtercustomer=filtercustomer,
             filterstatus=filterstatus,

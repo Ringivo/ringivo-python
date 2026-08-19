@@ -9,21 +9,24 @@ from attrs import field as _attrs_field
 from ..types import UNSET, Unset
 
 if TYPE_CHECKING:
-    from ..models.page_meta import PageMeta
+    from ..models.resource_meta_page import ResourceMetaPage
 
 
-T = TypeVar("T", bound="DocumentMeta")
+T = TypeVar("T", bound="ResourceMeta")
 
 
 @_attrs_define
-class DocumentMeta:
-    """Document-level metadata. A paged collection carries `page` here.
+class ResourceMeta:
+    """Metadata belonging to one resource object.
 
     Attributes:
-        page (PageMeta | Unset): Where this page sits in the collection it came from.
+        page (ResourceMetaPage | Unset): This row's own place in the collection that served it. Present on the members
+            of a
+            paginated collection, and absent everywhere else — a single-resource read and a
+            side-loaded `included` row were never positions in a walk.
     """
 
-    page: PageMeta | Unset = UNSET
+    page: ResourceMetaPage | Unset = UNSET
     additional_properties: dict[str, Any] = _attrs_field(init=False, factory=dict)
 
     def to_dict(self) -> dict[str, Any]:
@@ -41,22 +44,22 @@ class DocumentMeta:
 
     @classmethod
     def from_dict(cls: type[T], src_dict: Mapping[str, Any]) -> T:
-        from ..models.page_meta import PageMeta
+        from ..models.resource_meta_page import ResourceMetaPage
 
         d = dict(src_dict)
         _page = d.pop("page", UNSET)
-        page: PageMeta | Unset
+        page: ResourceMetaPage | Unset
         if isinstance(_page, Unset):
             page = UNSET
         else:
-            page = PageMeta.from_dict(_page)
+            page = ResourceMetaPage.from_dict(_page)
 
-        document_meta = cls(
+        resource_meta = cls(
             page=page,
         )
 
-        document_meta.additional_properties = d
-        return document_meta
+        resource_meta.additional_properties = d
+        return resource_meta
 
     @property
     def additional_keys(self) -> list[str]:

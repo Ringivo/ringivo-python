@@ -85,6 +85,7 @@ from .list_faxes_include import ListFaxesInclude
 from .list_webhook_deliveries_include import ListWebhookDeliveriesInclude
 from .media_link import MediaLink
 from .o_auth_error import OAuthError
+from .page_meta import PageMeta
 from .phone_number_collection_document import PhoneNumberCollectionDocument
 from .phone_number_resource import PhoneNumberResource
 from .phone_number_resource_attributes import PhoneNumberResourceAttributes
@@ -101,6 +102,8 @@ from .relationship_to_many import RelationshipToMany
 from .relationship_to_one import RelationshipToOne
 from .resource_identifier import ResourceIdentifier
 from .resource_links import ResourceLinks
+from .resource_meta import ResourceMeta
+from .resource_meta_page import ResourceMetaPage
 from .send_fax_accepted import SendFaxAccepted
 from .send_fax_accepted_data import SendFaxAcceptedData
 from .send_fax_multipart_request import SendFaxMultipartRequest
@@ -213,6 +216,7 @@ __all__ = (
     "ListWebhookDeliveriesInclude",
     "MediaLink",
     "OAuthError",
+    "PageMeta",
     "PhoneNumberCollectionDocument",
     "PhoneNumberResource",
     "PhoneNumberResourceAttributes",
@@ -225,6 +229,8 @@ __all__ = (
     "RelationshipToOne",
     "ResourceIdentifier",
     "ResourceLinks",
+    "ResourceMeta",
+    "ResourceMetaPage",
     "SendFaxAccepted",
     "SendFaxAcceptedData",
     "SendFaxMultipartRequest",

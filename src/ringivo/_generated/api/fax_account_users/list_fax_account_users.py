@@ -13,17 +13,23 @@ from ...types import UNSET, Response, Unset
 
 def _get_kwargs(
     *,
-    pagenumber: int | Unset = UNSET,
     pagesize: int | Unset = UNSET,
+    pageafter: str | Unset = UNSET,
+    pagebefore: str | Unset = UNSET,
+    sort: str | Unset = UNSET,
     filterfax_account: UUID | Unset = UNSET,
     filteruser: UUID | Unset = UNSET,
 ) -> dict[str, Any]:
 
     params: dict[str, Any] = {}
 
-    params["page[number]"] = pagenumber
-
     params["page[size]"] = pagesize
+
+    params["page[after]"] = pageafter
+
+    params["page[before]"] = pagebefore
+
+    params["sort"] = sort
 
     json_filterfax_account: str | Unset = UNSET
     if not isinstance(filterfax_account, Unset):
@@ -94,8 +100,10 @@ def _build_response(
 def sync_detailed(
     *,
     client: AuthenticatedClient,
-    pagenumber: int | Unset = UNSET,
     pagesize: int | Unset = UNSET,
+    pageafter: str | Unset = UNSET,
+    pagebefore: str | Unset = UNSET,
+    sort: str | Unset = UNSET,
     filterfax_account: UUID | Unset = UNSET,
     filteruser: UUID | Unset = UNSET,
 ) -> Response[ErrorDocument | FaxAccountUserCollectionDocument]:
@@ -104,8 +112,10 @@ def sync_detailed(
      One row per (user, fax account) pair — the answer to \"who can see this account's faxes?\".
 
     Args:
-        pagenumber (int | Unset):
         pagesize (int | Unset):
+        pageafter (str | Unset):
+        pagebefore (str | Unset):
+        sort (str | Unset):
         filterfax_account (UUID | Unset):
         filteruser (UUID | Unset):
 
@@ -118,8 +128,10 @@ def sync_detailed(
     """
 
     kwargs = _get_kwargs(
-        pagenumber=pagenumber,
         pagesize=pagesize,
+        pageafter=pageafter,
+        pagebefore=pagebefore,
+        sort=sort,
         filterfax_account=filterfax_account,
         filteruser=filteruser,
     )
@@ -134,8 +146,10 @@ def sync_detailed(
 def sync(
     *,
     client: AuthenticatedClient,
-    pagenumber: int | Unset = UNSET,
     pagesize: int | Unset = UNSET,
+    pageafter: str | Unset = UNSET,
+    pagebefore: str | Unset = UNSET,
+    sort: str | Unset = UNSET,
     filterfax_account: UUID | Unset = UNSET,
     filteruser: UUID | Unset = UNSET,
 ) -> ErrorDocument | FaxAccountUserCollectionDocument | None:
@@ -144,8 +158,10 @@ def sync(
      One row per (user, fax account) pair — the answer to \"who can see this account's faxes?\".
 
     Args:
-        pagenumber (int | Unset):
         pagesize (int | Unset):
+        pageafter (str | Unset):
+        pagebefore (str | Unset):
+        sort (str | Unset):
         filterfax_account (UUID | Unset):
         filteruser (UUID | Unset):
 
@@ -159,8 +175,10 @@ def sync(
 
     return sync_detailed(
         client=client,
-        pagenumber=pagenumber,
         pagesize=pagesize,
+        pageafter=pageafter,
+        pagebefore=pagebefore,
+        sort=sort,
         filterfax_account=filterfax_account,
         filteruser=filteruser,
     ).parsed
@@ -169,8 +187,10 @@ def sync(
 async def asyncio_detailed(
     *,
     client: AuthenticatedClient,
-    pagenumber: int | Unset = UNSET,
     pagesize: int | Unset = UNSET,
+    pageafter: str | Unset = UNSET,
+    pagebefore: str | Unset = UNSET,
+    sort: str | Unset = UNSET,
     filterfax_account: UUID | Unset = UNSET,
     filteruser: UUID | Unset = UNSET,
 ) -> Response[ErrorDocument | FaxAccountUserCollectionDocument]:
@@ -179,8 +199,10 @@ async def asyncio_detailed(
      One row per (user, fax account) pair — the answer to \"who can see this account's faxes?\".
 
     Args:
-        pagenumber (int | Unset):
         pagesize (int | Unset):
+        pageafter (str | Unset):
+        pagebefore (str | Unset):
+        sort (str | Unset):
         filterfax_account (UUID | Unset):
         filteruser (UUID | Unset):
 
@@ -193,8 +215,10 @@ async def asyncio_detailed(
     """
 
     kwargs = _get_kwargs(
-        pagenumber=pagenumber,
         pagesize=pagesize,
+        pageafter=pageafter,
+        pagebefore=pagebefore,
+        sort=sort,
         filterfax_account=filterfax_account,
         filteruser=filteruser,
     )
@@ -207,8 +231,10 @@ async def asyncio_detailed(
 async def asyncio(
     *,
     client: AuthenticatedClient,
-    pagenumber: int | Unset = UNSET,
     pagesize: int | Unset = UNSET,
+    pageafter: str | Unset = UNSET,
+    pagebefore: str | Unset = UNSET,
+    sort: str | Unset = UNSET,
     filterfax_account: UUID | Unset = UNSET,
     filteruser: UUID | Unset = UNSET,
 ) -> ErrorDocument | FaxAccountUserCollectionDocument | None:
@@ -217,8 +243,10 @@ async def asyncio(
      One row per (user, fax account) pair — the answer to \"who can see this account's faxes?\".
 
     Args:
-        pagenumber (int | Unset):
         pagesize (int | Unset):
+        pageafter (str | Unset):
+        pagebefore (str | Unset):
+        sort (str | Unset):
         filterfax_account (UUID | Unset):
         filteruser (UUID | Unset):
 
@@ -233,8 +261,10 @@ async def asyncio(
     return (
         await asyncio_detailed(
             client=client,
-            pagenumber=pagenumber,
             pagesize=pagesize,
+            pageafter=pageafter,
+            pagebefore=pagebefore,
+            sort=sort,
             filterfax_account=filterfax_account,
             filteruser=filteruser,
         )

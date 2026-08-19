@@ -25,9 +25,7 @@ class FaxDocumentResponse:
         data (FaxResource):
         included (list[FaxAttemptResource] | Unset): The side-loaded resources `include` asked for.
         links (ResourceLinks | Unset): Links belonging to one resource object.
-        meta (DocumentMeta | Unset): Document-level metadata. On a paged collection this carries the pagination
-            counters; the
-            member names are implementation-defined and should not be branched on.
+        meta (DocumentMeta | Unset): Document-level metadata. A paged collection carries `page` here.
     """
 
     data: FaxResource

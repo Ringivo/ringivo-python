@@ -14,6 +14,7 @@ if TYPE_CHECKING:
     from ..models.fax_attributes import FaxAttributes
     from ..models.fax_relationships import FaxRelationships
     from ..models.resource_links import ResourceLinks
+    from ..models.resource_meta import ResourceMeta
 
 
 T = TypeVar("T", bound="FaxResource")
@@ -28,6 +29,7 @@ class FaxResource:
         attributes (FaxAttributes | Unset):
         relationships (FaxRelationships | Unset):
         links (ResourceLinks | Unset): Links belonging to one resource object.
+        meta (ResourceMeta | Unset): Metadata belonging to one resource object.
     """
 
     type_: FaxResourceType
@@ -35,6 +37,7 @@ class FaxResource:
     attributes: FaxAttributes | Unset = UNSET
     relationships: FaxRelationships | Unset = UNSET
     links: ResourceLinks | Unset = UNSET
+    meta: ResourceMeta | Unset = UNSET
     additional_properties: dict[str, Any] = _attrs_field(init=False, factory=dict)
 
     def to_dict(self) -> dict[str, Any]:
@@ -54,6 +57,10 @@ class FaxResource:
         if not isinstance(self.links, Unset):
             links = self.links.to_dict()
 
+        meta: dict[str, Any] | Unset = UNSET
+        if not isinstance(self.meta, Unset):
+            meta = self.meta.to_dict()
+
         field_dict: dict[str, Any] = {}
         field_dict.update(self.additional_properties)
         field_dict.update(
@@ -68,6 +75,8 @@ class FaxResource:
             field_dict["relationships"] = relationships
         if links is not UNSET:
             field_dict["links"] = links
+        if meta is not UNSET:
+            field_dict["meta"] = meta
 
         return field_dict
 
@@ -76,6 +85,7 @@ class FaxResource:
         from ..models.fax_attributes import FaxAttributes
         from ..models.fax_relationships import FaxRelationships
         from ..models.resource_links import ResourceLinks
+        from ..models.resource_meta import ResourceMeta
 
         d = dict(src_dict)
         type_ = FaxResourceType(d.pop("type"))
@@ -103,12 +113,20 @@ class FaxResource:
         else:
             links = ResourceLinks.from_dict(_links)
 
+        _meta = d.pop("meta", UNSET)
+        meta: ResourceMeta | Unset
+        if isinstance(_meta, Unset):
+            meta = UNSET
+        else:
+            meta = ResourceMeta.from_dict(_meta)
+
         fax_resource = cls(
             type_=type_,
             id=id,
             attributes=attributes,
             relationships=relationships,
             links=links,
+            meta=meta,
         )
 
         fax_resource.additional_properties = d

@@ -22,12 +22,15 @@ class FaxAccountUserCollectionDocument:
     """
     Attributes:
         data (list[FaxAccountUserResource]):
-        links (CollectionLinks | Unset): Pagination links. `next` is the one to follow on a cursor-paginated collection;
-            it is absent
-            or null on the last page.
-        meta (DocumentMeta | Unset): Document-level metadata. On a paged collection this carries the pagination
-            counters; the
-            member names are implementation-defined and should not be branched on.
+        links (CollectionLinks | Unset): Pagination links. `first` is always present, `prev` whenever a previous page
+            exists, and
+            `next` on every page but the last — on the final page `next` is ABSENT from the document
+            altogether. Branch on `meta.page.nextCursor` instead: it is `null` at the end and present on
+            every page, so one member answers "is there more?" everywhere. There is no `last` link.
+
+            A link that does not apply is ABSENT rather than null — the encoder cannot carry a null
+            href — so these three are plain strings whenever they appear at all.
+        meta (DocumentMeta | Unset): Document-level metadata. A paged collection carries `page` here.
     """
 
     data: list[FaxAccountUserResource]
