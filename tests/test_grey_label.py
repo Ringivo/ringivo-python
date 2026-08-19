@@ -71,12 +71,38 @@ def test_no_packaged_file_names_a_platform_brand_or_a_provider_host() -> None:
     )
 
 
-def test_the_client_compiles_in_no_base_url_of_its_own() -> None:
+def test_no_client_compiles_in_a_base_url_of_its_own() -> None:
     # The same rule from the API's side: there is no default to fall back
     # to, so a caller who forgets their provider's URL is told, not
     # silently pointed at somebody's server.
+    #
+    # EVERY client, found rather than listed. The file scan above catches a
+    # brand or a known host wherever it appears, but a default argument
+    # naming some other provider — `api.acme.example` — is forbidden by
+    # this rule and by nothing else, so a client this test does not reach
+    # is a client the rule does not cover.
     import inspect
 
-    parameter = inspect.signature(ringivo.Ringivo).parameters["base_url"]
+    def takes_a_base_url(exported: object) -> bool:
+        if not inspect.isclass(exported):
+            return False
+        try:
+            return "base_url" in inspect.signature(exported).parameters
+        except (TypeError, ValueError):
+            # `inspect.signature` refuses a bare Exception subclass, and
+            # most of what else this package exports is one.
+            return False
 
-    assert parameter.default is inspect.Parameter.empty
+    clients = {
+        name: exported
+        for name in ringivo.__all__
+        if takes_a_base_url(exported := getattr(ringivo, name))
+    }
+
+    # The DENOMINATOR: "no client defaults its base_url" and "no client was
+    # searched" must not look alike.
+    assert len(clients) >= 2, f"only {sorted(clients)} was searched — the sweep is broken"
+
+    for name, client in clients.items():
+        parameter = inspect.signature(client).parameters["base_url"]
+        assert parameter.default is inspect.Parameter.empty, f"{name} defaults its base_url"
