@@ -11,6 +11,24 @@ host would name one of them in every traceback, every log line and every
 `--help`. tests/test_grey_label.py asserts the absence from the other side,
 by reading the installed source.
 
+-- WHY A CLIENT WITH NO SCOPES IS REFUSED AT CONSTRUCTION ----------------------
+The token carries exactly the scopes it was asked for, intersected with what
+the grant behind the credential allows. Ask for none and that intersection
+is EMPTY: the mint answers 200, hands back a real token, and every route
+then refuses it. So a client built without scopes has no working call in it —
+not a narrower client, an inert one.
+
+That failure is cheap here and expensive anywhere else. A `ValueError` on
+the constructor line names the missing argument while the developer is
+looking at it; the alternative is a 403 from a resource that has nothing
+wrong with it, read as an access problem, hours or a deployment later. Same
+reasoning as the empty-upload refusal in faxes.py: refuse what cannot work,
+at the first moment it can be seen.
+
+The SDK still names no scope of its own — WHICH scopes a credential may hold
+is the platform's to decide and the grant's to answer. This only refuses the
+empty question.
+
 -- ONE CLIENT, ONE AUTH FLOW ---------------------------------------------------
 Every request goes through the same `httpx.Client`, so token caching, the
 expiry margin and the single 401 retry apply once and apply everywhere
@@ -67,13 +85,15 @@ class Ringivo:
             one. It SELECTS a context somebody already granted you and
             narrows nothing by itself, so leave it out for the
             tenant-wide token your grant allows.
-        scopes: The scopes to ask for — `fax:read` and `fax:write` are
-            what this client's own calls need. Ask for them: a token
-            minted with no scopes at all carries none, and every route
-            refuses it. What the token ends up carrying is the
-            intersection with what your grant allows, and a scope outside
-            that is dropped rather than refused, so an over-broad request
-            fails later at the resource rather than here.
+        scopes: The scopes to ask for. REQUIRED, though it is spelled as a
+            keyword: a token minted with no scopes carries none and is
+            refused by every route, so an empty one is a `ValueError` here
+            rather than a puzzle in production. `fax:read` and `fax:write`
+            are what this client's own calls need. What the token ends up
+            carrying is the intersection with what your grant allows, and
+            a scope outside that is dropped rather than refused, so an
+            over-broad request fails later at the resource rather than
+            here.
         timeout: Seconds any single request may take, token requests
             included.
 
@@ -100,6 +120,15 @@ class Ringivo:
             raise ValueError("base_url is required")
         if not client_id or not client_secret:
             raise ValueError("client_id and client_secret are required")
+        # Empty is not "the default" here — it is a token that carries no
+        # scopes and is refused by every route (module docstring, above).
+        if not scopes:
+            raise ValueError(
+                "scopes are required: a token minted without them carries no scopes "
+                "at all, and every API route refuses it. Pass the scopes your "
+                'integration was granted — the calls this client makes need '
+                'scopes=["fax:read", "fax:write"].'
+            )
 
         self._base_url = base_url.rstrip("/")
         self._auth = ClientCredentialsAuth(

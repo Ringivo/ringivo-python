@@ -62,8 +62,19 @@ def _fax_document() -> dict[str, object]:
     return {"data": {"type": "faxes", "id": FAX_ID, "attributes": {"status": "delivered"}}}
 
 
+#: Every client here names scopes, because a client with none is refused at
+#: construction — see `test_a_client_that_asks_for_no_scopes_is_refused`.
+SCOPES = ["fax:read", "fax:write"]
+
+
 def _client() -> AsyncRingivo:
-    return AsyncRingivo(base_url=BASE_URL, client_id="cid", client_secret="csecret", tenant=TENANT)
+    return AsyncRingivo(
+        base_url=BASE_URL,
+        client_id="cid",
+        client_secret="csecret",
+        tenant=TENANT,
+        scopes=SCOPES,
+    )
 
 
 class _Gate:
@@ -101,6 +112,7 @@ async def test_the_mint_is_a_json_post_carrying_the_credential_and_the_tenant() 
         "client_id": "cid",
         "client_secret": "csecret",
         "tenant": TENANT,
+        "scopes": SCOPES,
     }
 
 
@@ -147,23 +159,26 @@ async def test_the_selectors_are_sent_only_when_the_caller_names_them() -> None:
         client_secret="csecret",
         tenant=TENANT,
         customer=CUSTOMER,
+        scopes=SCOPES,
     ) as client:
         await client.faxes.get(FAX_ID)
 
     assert _sent(token)["customer"] == CUSTOMER
 
-    async with AsyncRingivo(base_url=BASE_URL, client_id="cid", client_secret="csecret") as client:
+    async with AsyncRingivo(
+        base_url=BASE_URL, client_id="cid", client_secret="csecret", scopes=SCOPES
+    ) as client:
         await client.faxes.get(FAX_ID)
 
     named_nothing = _sent(token)
     assert "customer" not in named_nothing, "an unnamed customer was sent anyway"
     assert "tenant" not in named_nothing, "an unnamed tenant was sent anyway"
-    assert named_nothing == {"client_id": "cid", "client_secret": "csecret"}
+    assert named_nothing == {"client_id": "cid", "client_secret": "csecret", "scopes": SCOPES}
 
 
 @pytest.mark.anyio
 @respx.mock
-async def test_scopes_are_sent_as_an_array_and_omitted_when_not_asked_for() -> None:
+async def test_scopes_are_sent_as_the_endpoints_json_array() -> None:
     token = respx.post(TOKEN_URL).mock(return_value=_token_response())
     respx.get(FAX_URL).mock(return_value=httpx.Response(200, json=_fax_document()))
 
@@ -172,16 +187,12 @@ async def test_scopes_are_sent_as_an_array_and_omitted_when_not_asked_for() -> N
         client_id="cid",
         client_secret="csecret",
         tenant=TENANT,
-        scopes=["fax:read", "fax:write"],
+        scopes=["fax:read"],
     ) as client:
         await client.faxes.get(FAX_ID)
 
-    assert _sent(token)["scopes"] == ["fax:read", "fax:write"]
-
-    async with _client() as client:
-        await client.faxes.get(FAX_ID)
-
-    assert "scopes" not in _sent(token)
+    assert _sent(token)["scopes"] == ["fax:read"]
+    assert "scope" not in _sent(token), "the OAuth form's scope member, on a JSON body"
 
 
 @pytest.mark.anyio
@@ -428,6 +439,7 @@ async def test_a_malformed_selector_is_the_422_and_it_names_the_member() -> None
         client_secret="csecret",
         tenant=TENANT,
         customer="not-a-uuid",
+        scopes=SCOPES,
     ) as client:
         with pytest.raises(ApiError) as caught:
             await client.faxes.get(FAX_ID)
@@ -522,8 +534,72 @@ async def test_a_sync_client_refuses_loudly_rather_than_sending_it_unauthenticat
 async def test_the_base_url_is_taken_whole_and_normalised() -> None:
     # No hostname is compiled in here either — the caller's base URL is the
     # only one there is. A trailing slash is the one thing normalised.
-    async with AsyncRingivo(base_url=f"{BASE_URL}/", client_id="c", client_secret="s") as client:
+    async with AsyncRingivo(
+        base_url=f"{BASE_URL}/", client_id="c", client_secret="s", scopes=SCOPES
+    ) as client:
         assert client.base_url == BASE_URL
 
     with pytest.raises(ValueError):
-        AsyncRingivo(base_url="", client_id="c", client_secret="s")
+        AsyncRingivo(base_url="", client_id="c", client_secret="s", scopes=SCOPES)
+
+
+@pytest.mark.anyio
+@respx.mock
+async def test_a_client_that_asks_for_no_scopes_is_refused_at_construction() -> None:
+    """The twin of the sync refusal: a scopeless client is not built.
+
+    Written a second time rather than inherited, because the constructors
+    are twins: `AsyncRingivo` could lose this guard on its own and the sync
+    suite would stay green.
+
+    None and [] are the same mistake and both are refused; the CONTROL
+    underneath proves the guard rejects the empty question rather than
+    every question.
+
+    Probed by deleting the `if not scopes` block in async_client.py: this
+    test fails at `unset is not None` with "a client with no scopes was
+    built".
+    """
+    token = respx.post(TOKEN_URL).mock(return_value=_token_response())
+    respx.get(FAX_URL).mock(return_value=httpx.Response(200, json=_fax_document()))
+
+    async def refusal(scopes: object) -> BaseException | None:
+        # Released rather than leaked when the guard is gone: an unclosed
+        # httpx.AsyncClient would turn a failing probe into a noisy one.
+        try:
+            built = AsyncRingivo(
+                base_url=BASE_URL,
+                client_id="cid",
+                client_secret="csecret",
+                tenant=TENANT,
+                scopes=scopes,  # type: ignore[arg-type] - [] and None are the point
+            )
+        except ValueError as caught:
+            return caught
+        await built.aclose()
+        return None
+
+    unset = await refusal(None)
+    empty = await refusal([])
+
+    # Nothing may reach the network to discover this: the refusal is local,
+    # and asserting it first keeps "refused" and "asked the server" apart.
+    assert token.call_count == 0, "a refused client still reached the mint"
+    assert unset is not None, "a client with no scopes was built"
+    assert empty is not None, "a client with an empty scope list was built"
+    assert "scopes" in str(unset), unset
+    assert "fax:read" in str(unset), "the refusal does not name a scope to pass"
+
+    # THE CONTROL: one variable changed — a scope is named — and the same
+    # construction works and mints.
+    async with AsyncRingivo(
+        base_url=BASE_URL,
+        client_id="cid",
+        client_secret="csecret",
+        tenant=TENANT,
+        scopes=["fax:read"],
+    ) as client:
+        await client.faxes.get(FAX_ID)
+
+    assert token.call_count == 1
+    assert _sent(token)["scopes"] == ["fax:read"]

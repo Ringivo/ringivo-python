@@ -74,8 +74,19 @@ def _fax_document() -> dict[str, object]:
     return {"data": {"type": "faxes", "id": FAX_ID, "attributes": {"status": "delivered"}}}
 
 
+#: Every client here names scopes, because a client with none is refused at
+#: construction — see `test_a_client_that_asks_for_no_scopes_is_refused`.
+SCOPES = ["fax:read", "fax:write"]
+
+
 def _client() -> Ringivo:
-    return Ringivo(base_url=BASE_URL, client_id="cid", client_secret="csecret", tenant=TENANT)
+    return Ringivo(
+        base_url=BASE_URL,
+        client_id="cid",
+        client_secret="csecret",
+        tenant=TENANT,
+        scopes=SCOPES,
+    )
 
 
 @respx.mock
@@ -95,6 +106,7 @@ def test_the_mint_is_a_json_post_carrying_the_credential_and_the_tenant() -> Non
         "client_id": "cid",
         "client_secret": "csecret",
         "tenant": TENANT,
+        "scopes": SCOPES,
     }
 
 
@@ -142,24 +154,27 @@ def test_the_selectors_are_sent_only_when_the_caller_names_them() -> None:
         client_secret="csecret",
         tenant=TENANT,
         customer=CUSTOMER,
+        scopes=SCOPES,
     ) as client:
         client.faxes.get(FAX_ID)
 
     assert _sent(token)["customer"] == CUSTOMER
 
-    with Ringivo(base_url=BASE_URL, client_id="cid", client_secret="csecret") as client:
+    with Ringivo(
+        base_url=BASE_URL, client_id="cid", client_secret="csecret", scopes=SCOPES
+    ) as client:
         client.faxes.get(FAX_ID)
 
     named_nothing = _sent(token)
     assert "customer" not in named_nothing, "an unnamed customer was sent anyway"
     assert "tenant" not in named_nothing, "an unnamed tenant was sent anyway"
-    assert named_nothing == {"client_id": "cid", "client_secret": "csecret"}
+    assert named_nothing == {"client_id": "cid", "client_secret": "csecret", "scopes": SCOPES}
 
 
 @respx.mock
-def test_scopes_are_sent_as_an_array_and_omitted_when_not_asked_for() -> None:
+def test_scopes_are_sent_as_the_endpoints_json_array() -> None:
     # `scopes` is a JSON array on this endpoint, not the space-separated
-    # string of an OAuth form post.
+    # `scope` string of an OAuth form post.
     token = respx.post(TOKEN_URL).mock(return_value=_token_response())
     respx.get(FAX_URL).mock(return_value=httpx.Response(200, json=_fax_document()))
 
@@ -168,16 +183,30 @@ def test_scopes_are_sent_as_an_array_and_omitted_when_not_asked_for() -> None:
         client_id="cid",
         client_secret="csecret",
         tenant=TENANT,
-        scopes=["fax:read", "fax:write"],
+        scopes=["fax:read"],
     ) as client:
         client.faxes.get(FAX_ID)
 
-    assert _sent(token)["scopes"] == ["fax:read", "fax:write"]
+    assert _sent(token)["scopes"] == ["fax:read"]
+    assert "scope" not in _sent(token), "the OAuth form's scope member, on a JSON body"
 
-    with _client() as client:
-        client.faxes.get(FAX_ID)
 
-    assert "scopes" not in _sent(token)
+def test_the_body_builder_leaves_scopes_out_rather_than_sending_an_empty_member() -> None:
+    # Not reachable through `Ringivo` any more — that constructor refuses an
+    # empty scope set outright — so it is asserted at the layer that can
+    # still produce it. `ringivo.auth.ClientCredentialsAuth` takes
+    # `scopes=None` by default, and an absent member has to stay absent: a
+    # `scopes: null` or a `scopes: []` on the wire is a different question
+    # from asking nothing, and only one of the three is what this means.
+    body = ringivo.auth._token_request_body(
+        client_id="cid",
+        client_secret="csecret",
+        tenant=TENANT,
+        customer=None,
+        scopes=None,
+    )
+
+    assert body == {"client_id": "cid", "client_secret": "csecret", "tenant": TENANT}
 
 
 @respx.mock
@@ -439,6 +468,7 @@ def test_a_malformed_selector_is_the_422_and_it_names_the_member() -> None:
         client_secret="csecret",
         tenant=TENANT,
         customer="not-a-uuid",
+        scopes=SCOPES,
     ) as client:
         with pytest.raises(ApiError) as caught:
             client.faxes.get(FAX_ID)
@@ -519,7 +549,11 @@ def test_an_async_client_refuses_loudly_rather_than_sending_an_unauthenticated_r
     async def attempt() -> None:
         nonlocal refusal
         client = Ringivo(
-            base_url=BASE_URL, client_id="cid", client_secret="csecret", tenant=TENANT
+            base_url=BASE_URL,
+            client_id="cid",
+            client_secret="csecret",
+            tenant=TENANT,
+            scopes=SCOPES,
         )
         try:
             async with httpx.AsyncClient(auth=client._auth) as async_client:
@@ -542,8 +576,72 @@ def test_the_base_url_is_taken_whole_and_normalised() -> None:
     # is (the grey-label rule, asserted from the other side in
     # tests/test_grey_label.py). A trailing slash is the one thing normalised,
     # so `.../` and `...` build the same request URL.
-    with Ringivo(base_url=f"{BASE_URL}/", client_id="c", client_secret="s") as client:
+    with Ringivo(
+        base_url=f"{BASE_URL}/", client_id="c", client_secret="s", scopes=SCOPES
+    ) as client:
         assert client.base_url == BASE_URL
 
     with pytest.raises(ValueError):
-        Ringivo(base_url="", client_id="c", client_secret="s")
+        Ringivo(base_url="", client_id="c", client_secret="s", scopes=SCOPES)
+
+
+@respx.mock
+def test_a_client_that_asks_for_no_scopes_is_refused_at_construction() -> None:
+    """A scopeless client has no working call in it, so it is not built.
+
+    The token carries what it asked for, intersected with the grant behind
+    the credential. Ask for nothing and that intersection is empty: the
+    mint answers 200 with a real token, and every route then refuses it —
+    a 403 that looks like an access problem and is not one.
+
+    Refused on the constructor line instead, while the missing argument is
+    on screen. None and [] are the same mistake and both are refused; the
+    CONTROL underneath is what proves the guard rejects the empty question
+    rather than every question.
+
+    Probed by deleting the `if not scopes` block in client.py: this test
+    fails at `unset is not None` with "a client with no scopes was built".
+    """
+    token = respx.post(TOKEN_URL).mock(return_value=_token_response())
+    respx.get(FAX_URL).mock(return_value=httpx.Response(200, json=_fax_document()))
+
+    def refusal(scopes: object) -> BaseException | None:
+        # Closed rather than leaked when the guard is gone: an unclosed
+        # httpx.Client would turn a failing probe into a noisy one.
+        try:
+            built = Ringivo(
+                base_url=BASE_URL,
+                client_id="cid",
+                client_secret="csecret",
+                tenant=TENANT,
+                scopes=scopes,  # type: ignore[arg-type] - [] and None are the point
+            )
+        except ValueError as caught:
+            return caught
+        built.close()
+        return None
+
+    unset = refusal(None)
+    empty = refusal([])
+
+    # Nothing may reach the network to discover this: the refusal is local,
+    # and asserting it first keeps "refused" and "asked the server" apart.
+    assert token.call_count == 0, "a refused client still reached the mint"
+    assert unset is not None, "a client with no scopes was built"
+    assert empty is not None, "a client with an empty scope list was built"
+    assert "scopes" in str(unset), unset
+    assert "fax:read" in str(unset), "the refusal does not name a scope to pass"
+
+    # THE CONTROL: one variable changed — a scope is named — and the same
+    # construction works and mints.
+    with Ringivo(
+        base_url=BASE_URL,
+        client_id="cid",
+        client_secret="csecret",
+        tenant=TENANT,
+        scopes=["fax:read"],
+    ) as client:
+        client.faxes.get(FAX_ID)
+
+    assert token.call_count == 1
+    assert _sent(token)["scopes"] == ["fax:read"]

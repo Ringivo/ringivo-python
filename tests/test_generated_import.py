@@ -82,8 +82,13 @@ def test_list_faxes_deep_object_filter_has_known_generator_bug():
 def test_ringivo_client_still_works():
     from ringivo import Ringivo
 
-    client = Ringivo(base_url="https://api.example.com/", client_id="x", client_secret="y")
+    client = Ringivo(
+        base_url="https://api.example.com/",
+        client_id="x",
+        client_secret="y",
+        scopes=["fax:read"],
+    )
     assert client.base_url == "https://api.example.com"
 
     with pytest.raises(ValueError):
-        Ringivo(base_url="", client_id="x", client_secret="y")
+        Ringivo(base_url="", client_id="x", client_secret="y", scopes=["fax:read"])

@@ -41,11 +41,13 @@ a bearer token that lasts about a quarter of an hour. It caches the token,
 mints a new one a minute before that one expires, and mints another if the
 platform ever refuses one — you never handle the token.
 
-**Ask for the scopes you need.** A token minted without `scopes=` carries
-none, and every route then refuses it. Ask for more than your credential
-was granted and the extra is dropped rather than refused, so a call can
-still fail later at the resource. The scopes this client's calls need are
-`fax:read` and `fax:write`.
+**Ask for the scopes you need.** The client refuses to construct without
+`scopes=`, and raises `ValueError` naming the fix: a token minted without
+them carries no scopes at all, so every route would refuse it — a 403 you
+would otherwise meet in production rather than on the line that caused it.
+Ask for more than your credential was granted and the extra is dropped
+rather than refused, so a call can still fail later at the resource. The
+scopes this client's calls need are `fax:read` and `fax:write`.
 
 Pass `customer=` as well when your credential was issued for one customer
 inside that tenant. Both selectors NAME a grant your provider already wrote
@@ -257,7 +259,7 @@ are deliberately not wrapped.
 
 | | |
 |---|---|
-| `Ringivo(base_url, client_id, client_secret, *, tenant=None, customer=None, scopes=None, timeout=30.0)` | The client. A context manager, or call `close()`. |
+| `Ringivo(base_url, client_id, client_secret, *, tenant=None, customer=None, scopes=None, timeout=30.0)` | The client. A context manager, or call `close()`. `scopes` is spelled as a keyword but required — an empty one raises. |
 | `AsyncRingivo(…same arguments…)` | The asyncio twin. An async context manager, or await `aclose()`. Every method below is awaited. |
 | `client.faxes.send(*, fax_account, to, file=…\|urls=…, …)` | Send one fax. Returns the accepted `Fax`. |
 | `client.faxes.get(fax_id, *, include=None)` | One fax, complete. |

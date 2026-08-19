@@ -14,6 +14,12 @@ out: this package is grey-label, and a default host would name one
 provider in every traceback of another's. tests/test_grey_label.py reads
 the installed source and asserts the absence from the other side.
 
+-- AND NO SCOPES IS REFUSED HERE TOO -------------------------------------------
+An empty `scopes` is a `ValueError` on this constructor for the reason
+client.py sets out in full: the token would carry no scopes, every route
+would refuse it, and the client would have no working call in it. The
+refusal is written twice because the constructors are twins, not one.
+
 -- ONE CLIENT, ONE AUTH FLOW ---------------------------------------------------
 Every request goes through the same `httpx.AsyncClient`, so token caching,
 the expiry margin and the single 401 retry apply once and apply everywhere
@@ -68,13 +74,15 @@ class AsyncRingivo:
             one. It SELECTS a context somebody already granted you and
             narrows nothing by itself, so leave it out for the
             tenant-wide token your grant allows.
-        scopes: The scopes to ask for — `fax:read` and `fax:write` are
-            what this client's own calls need. Ask for them: a token
-            minted with no scopes at all carries none, and every route
-            refuses it. What the token ends up carrying is the
-            intersection with what your grant allows, and a scope outside
-            that is dropped rather than refused, so an over-broad request
-            fails later at the resource rather than here.
+        scopes: The scopes to ask for. REQUIRED, though it is spelled as a
+            keyword: a token minted with no scopes carries none and is
+            refused by every route, so an empty one is a `ValueError` here
+            rather than a puzzle in production. `fax:read` and `fax:write`
+            are what this client's own calls need. What the token ends up
+            carrying is the intersection with what your grant allows, and
+            a scope outside that is dropped rather than refused, so an
+            over-broad request fails later at the resource rather than
+            here.
         timeout: Seconds any single request may take, token requests
             included.
 
@@ -101,6 +109,15 @@ class AsyncRingivo:
             raise ValueError("base_url is required")
         if not client_id or not client_secret:
             raise ValueError("client_id and client_secret are required")
+        # Empty is not "the default" here — it is a token that carries no
+        # scopes and is refused by every route (client.py's docstring).
+        if not scopes:
+            raise ValueError(
+                "scopes are required: a token minted without them carries no scopes "
+                "at all, and every API route refuses it. Pass the scopes your "
+                'integration was granted — the calls this client makes need '
+                'scopes=["fax:read", "fax:write"].'
+            )
 
         self._base_url = base_url.rstrip("/")
         self._auth = AsyncClientCredentialsAuth(

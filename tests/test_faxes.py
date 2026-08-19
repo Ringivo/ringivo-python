@@ -49,7 +49,15 @@ def _token(respx_mock: respx.MockRouter) -> None:
 
 @pytest.fixture
 def client() -> Ringivo:
-    return Ringivo(base_url=BASE_URL, client_id="cid", client_secret="csecret")
+    # Scopes are named because the constructor requires them — a client that
+    # asks for none would be refused before it could send anything (the rule
+    # itself is tested in tests/test_auth.py).
+    return Ringivo(
+        base_url=BASE_URL,
+        client_id="cid",
+        client_secret="csecret",
+        scopes=["fax:read", "fax:write"],
+    )
 
 
 def _accepted(**overrides: object) -> dict[str, object]:
@@ -190,7 +198,9 @@ def test_send_reports_whether_the_server_replayed_an_earlier_send(
 
     respx_mock.post(FAXES_URL).mock(return_value=httpx.Response(202, json=_accepted()))
 
-    with Ringivo(base_url=BASE_URL, client_id="c", client_secret="s") as fresh_client:
+    with Ringivo(
+        base_url=BASE_URL, client_id="c", client_secret="s", scopes=["fax:write"]
+    ) as fresh_client:
         fresh = fresh_client.faxes.send(fax_account=ACCOUNT_ID, to="+1302", file=b"a")
 
     assert fresh.idempotent_replay is False

@@ -6,6 +6,8 @@
         base_url="https://api.yourprovider.example",
         client_id="...",
         client_secret="...",
+        tenant="...",
+        scopes=["fax:read", "fax:write"],
     ) as client:
         fax = client.faxes.send(
             fax_account="0198c4a1-3c4d-7e5f-9061-2b3c4d5e6f70",
@@ -22,7 +24,9 @@ arguments, the same methods, awaited, and `async with` in place of `with`:
         fax = await client.faxes.get(fax_id)
 
 The base URL has no default and no hostname is compiled into this package:
-your provider gives you theirs.
+your provider gives you theirs. `scopes` has no default either, and an
+empty one is refused: a token minted without scopes carries none, and every
+route refuses it.
 
 Webhook receivers want `ringivo.webhooks.verify()`, which needs no client
 and no network — it is pure computation, so both clients share the one.
