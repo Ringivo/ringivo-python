@@ -77,7 +77,7 @@ def _build_response(
 
 def sync_detailed(
     *,
-    client: AuthenticatedClient | Client,
+    client: AuthenticatedClient,
     body: IntegrationTokenRequest,
 ) -> Response[ErrorDocument | IntegrationTokenResponse]:
     r"""Exchange client credentials for a tenant- or customer-scoped token
@@ -86,11 +86,30 @@ def sync_detailed(
     you were issued, name the **tenant** you are acting for, and you get back a token that
     carries that tenant — and, when you name one, a **customer** inside it.
 
+    Both halves have a second spelling, so an OAuth client library can call this endpoint the
+    way it already writes: the credentials may ride an `Authorization: Basic` header instead of
+    the body, and the tenant may be left out when your client holds exactly one active grant.
+    Each has its own section below.
+
     Which rows you reach is decided by the token, never by a header or a path you send later.
     That is why the tenant is named here and nowhere else: acting for another tenant means
     asking for another token, and one token is one context for its whole life.
 
     The token lasts **15 minutes**. There is no refresh token — mint another when it expires.
+
+    ## Two ways to send your credentials
+
+    Put `client_id` and `client_secret` in the JSON body, **or** send them as an
+    `Authorization: Basic` header — base64 of `client_id:client_secret`, the spelling
+    RFC 6749 section 2.3.1 defines and every OAuth client library already writes. The two are
+    equal: the same secret check runs either way, and you are rate-limited as the same client
+    whichever you pick.
+
+    **Send one, never both.** A request carrying credentials in the body *and* in the header is
+    refused with a **422**, because RFC 6749 section 2.3 says a client must not use more than
+    one authentication method. Presence is the conflict, not disagreement — the same pair sent
+    twice is still two methods, and picking one silently would leave you unable to tell from
+    the wire which credential was checked.
 
     ## Your client must already hold a grant
 
@@ -101,6 +120,30 @@ def sync_detailed(
 
     Grants are made out of band and never through this API. Ask the reseller whose platform you
     are integrating with for a client id, its secret, and the grant behind them.
+
+    ## `tenant` is optional when your client holds exactly one active grant
+
+    Leave `tenant` out and we resolve it from your client's own grants, because a client with a
+    single active grant has a single context it could possibly mean. That grant's **customer**
+    comes with it, so a client granted one customer gets its customer-scoped token from a
+    request that names neither.
+
+    | your client's ACTIVE grants | what you get |
+    |---|---|
+    | exactly one | a token for that grant's tenant, and its customer when the grant names one |
+    | more than one | **422** naming the ambiguity — start sending `tenant` |
+    | none | **403**, the same refusal a tenant nobody granted you gets |
+
+    Naming `tenant` yourself keeps exactly the behaviour it always had, ambiguity or not — the
+    resolution is a fallback, never a preference. Only **active** grants are counted, so a
+    suspended grant beside an active one does not make a determinate request ambiguous.
+
+    Two things this does not mean. `customer` without `tenant` is half a selector — a customer
+    id names a context inside a tenant the request never gave — and is a **422**; send both or
+    neither. And omitting the member is the only way to ask for this: `tenant` must be a
+    **string** when it is present at all, so `\"\"` or `null` is a **422** and never a request
+    for auto-selection. (`customer` is the exception, by design: an explicit `null` there is
+    the tenant-wide request it has always meant.)
 
     ## Two acts stand behind a customer-scoped credential
 
@@ -136,9 +179,14 @@ def sync_detailed(
     ```
 
     **A scope outside that set is dropped, not refused.** You get a 200 carrying a token that
-    simply does not hold it. That covers a scope your grant does not carry, a scope no customer
-    credential may hold, **and a scope name this platform does not publish at all** — so a typo
-    costs you a capability rather than an error.
+    simply does not hold it. That covers a scope your grant does not carry and a scope no
+    customer credential may hold. Both are permission answers, and both are silent.
+
+    **A scope NAME this platform does not publish at all is the one exception: a 422 that lists
+    the offenders.** That is a typo, not a permission answer, and it is the one case you could
+    never diagnose by reading `scopes` back off a 200 — a misspelled scope and a withheld one
+    look identical there. The line is drawn at existence: a real scope you were not granted is
+    still dropped in silence.
 
     So **read `scopes` back off the response** and treat it as the authoritative answer. A call
     made on the assumption that you got what you asked for fails later at the resource instead,
@@ -147,6 +195,11 @@ def sync_detailed(
     **`scopes` is optional and you almost always want it.** Leave it out and the intersection is
     empty: the request succeeds and hands you a token that carries no scopes and is refused by
     every resource you spend it on.
+
+    **You may ask in either of two spellings.** `scopes` is an array of names; `scope` is one
+    space-delimited string, the spelling RFC 6749 section 3.3 defines. Send whichever your
+    client library writes — a request carrying both asks for the union of the two, since
+    neither can widen a token past its grant.
 
     ## Which scopes a customer-scoped token may hold
 
@@ -185,7 +238,11 @@ def sync_detailed(
     tokens already minted alive until they expire.
 
     Args:
-        body (IntegrationTokenRequest):
+        body (IntegrationTokenRequest): Every member here is optional only under a stated
+            condition. Send `client_id` and
+            `client_secret` unless they ride an `Authorization: Basic` header, and send `tenant`
+            unless
+            your client holds exactly one active grant. The operation description carries both rules.
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
@@ -208,7 +265,7 @@ def sync_detailed(
 
 def sync(
     *,
-    client: AuthenticatedClient | Client,
+    client: AuthenticatedClient,
     body: IntegrationTokenRequest,
 ) -> ErrorDocument | IntegrationTokenResponse | None:
     r"""Exchange client credentials for a tenant- or customer-scoped token
@@ -217,11 +274,30 @@ def sync(
     you were issued, name the **tenant** you are acting for, and you get back a token that
     carries that tenant — and, when you name one, a **customer** inside it.
 
+    Both halves have a second spelling, so an OAuth client library can call this endpoint the
+    way it already writes: the credentials may ride an `Authorization: Basic` header instead of
+    the body, and the tenant may be left out when your client holds exactly one active grant.
+    Each has its own section below.
+
     Which rows you reach is decided by the token, never by a header or a path you send later.
     That is why the tenant is named here and nowhere else: acting for another tenant means
     asking for another token, and one token is one context for its whole life.
 
     The token lasts **15 minutes**. There is no refresh token — mint another when it expires.
+
+    ## Two ways to send your credentials
+
+    Put `client_id` and `client_secret` in the JSON body, **or** send them as an
+    `Authorization: Basic` header — base64 of `client_id:client_secret`, the spelling
+    RFC 6749 section 2.3.1 defines and every OAuth client library already writes. The two are
+    equal: the same secret check runs either way, and you are rate-limited as the same client
+    whichever you pick.
+
+    **Send one, never both.** A request carrying credentials in the body *and* in the header is
+    refused with a **422**, because RFC 6749 section 2.3 says a client must not use more than
+    one authentication method. Presence is the conflict, not disagreement — the same pair sent
+    twice is still two methods, and picking one silently would leave you unable to tell from
+    the wire which credential was checked.
 
     ## Your client must already hold a grant
 
@@ -232,6 +308,30 @@ def sync(
 
     Grants are made out of band and never through this API. Ask the reseller whose platform you
     are integrating with for a client id, its secret, and the grant behind them.
+
+    ## `tenant` is optional when your client holds exactly one active grant
+
+    Leave `tenant` out and we resolve it from your client's own grants, because a client with a
+    single active grant has a single context it could possibly mean. That grant's **customer**
+    comes with it, so a client granted one customer gets its customer-scoped token from a
+    request that names neither.
+
+    | your client's ACTIVE grants | what you get |
+    |---|---|
+    | exactly one | a token for that grant's tenant, and its customer when the grant names one |
+    | more than one | **422** naming the ambiguity — start sending `tenant` |
+    | none | **403**, the same refusal a tenant nobody granted you gets |
+
+    Naming `tenant` yourself keeps exactly the behaviour it always had, ambiguity or not — the
+    resolution is a fallback, never a preference. Only **active** grants are counted, so a
+    suspended grant beside an active one does not make a determinate request ambiguous.
+
+    Two things this does not mean. `customer` without `tenant` is half a selector — a customer
+    id names a context inside a tenant the request never gave — and is a **422**; send both or
+    neither. And omitting the member is the only way to ask for this: `tenant` must be a
+    **string** when it is present at all, so `\"\"` or `null` is a **422** and never a request
+    for auto-selection. (`customer` is the exception, by design: an explicit `null` there is
+    the tenant-wide request it has always meant.)
 
     ## Two acts stand behind a customer-scoped credential
 
@@ -267,9 +367,14 @@ def sync(
     ```
 
     **A scope outside that set is dropped, not refused.** You get a 200 carrying a token that
-    simply does not hold it. That covers a scope your grant does not carry, a scope no customer
-    credential may hold, **and a scope name this platform does not publish at all** — so a typo
-    costs you a capability rather than an error.
+    simply does not hold it. That covers a scope your grant does not carry and a scope no
+    customer credential may hold. Both are permission answers, and both are silent.
+
+    **A scope NAME this platform does not publish at all is the one exception: a 422 that lists
+    the offenders.** That is a typo, not a permission answer, and it is the one case you could
+    never diagnose by reading `scopes` back off a 200 — a misspelled scope and a withheld one
+    look identical there. The line is drawn at existence: a real scope you were not granted is
+    still dropped in silence.
 
     So **read `scopes` back off the response** and treat it as the authoritative answer. A call
     made on the assumption that you got what you asked for fails later at the resource instead,
@@ -278,6 +383,11 @@ def sync(
     **`scopes` is optional and you almost always want it.** Leave it out and the intersection is
     empty: the request succeeds and hands you a token that carries no scopes and is refused by
     every resource you spend it on.
+
+    **You may ask in either of two spellings.** `scopes` is an array of names; `scope` is one
+    space-delimited string, the spelling RFC 6749 section 3.3 defines. Send whichever your
+    client library writes — a request carrying both asks for the union of the two, since
+    neither can widen a token past its grant.
 
     ## Which scopes a customer-scoped token may hold
 
@@ -316,7 +426,11 @@ def sync(
     tokens already minted alive until they expire.
 
     Args:
-        body (IntegrationTokenRequest):
+        body (IntegrationTokenRequest): Every member here is optional only under a stated
+            condition. Send `client_id` and
+            `client_secret` unless they ride an `Authorization: Basic` header, and send `tenant`
+            unless
+            your client holds exactly one active grant. The operation description carries both rules.
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
@@ -334,7 +448,7 @@ def sync(
 
 async def asyncio_detailed(
     *,
-    client: AuthenticatedClient | Client,
+    client: AuthenticatedClient,
     body: IntegrationTokenRequest,
 ) -> Response[ErrorDocument | IntegrationTokenResponse]:
     r"""Exchange client credentials for a tenant- or customer-scoped token
@@ -343,11 +457,30 @@ async def asyncio_detailed(
     you were issued, name the **tenant** you are acting for, and you get back a token that
     carries that tenant — and, when you name one, a **customer** inside it.
 
+    Both halves have a second spelling, so an OAuth client library can call this endpoint the
+    way it already writes: the credentials may ride an `Authorization: Basic` header instead of
+    the body, and the tenant may be left out when your client holds exactly one active grant.
+    Each has its own section below.
+
     Which rows you reach is decided by the token, never by a header or a path you send later.
     That is why the tenant is named here and nowhere else: acting for another tenant means
     asking for another token, and one token is one context for its whole life.
 
     The token lasts **15 minutes**. There is no refresh token — mint another when it expires.
+
+    ## Two ways to send your credentials
+
+    Put `client_id` and `client_secret` in the JSON body, **or** send them as an
+    `Authorization: Basic` header — base64 of `client_id:client_secret`, the spelling
+    RFC 6749 section 2.3.1 defines and every OAuth client library already writes. The two are
+    equal: the same secret check runs either way, and you are rate-limited as the same client
+    whichever you pick.
+
+    **Send one, never both.** A request carrying credentials in the body *and* in the header is
+    refused with a **422**, because RFC 6749 section 2.3 says a client must not use more than
+    one authentication method. Presence is the conflict, not disagreement — the same pair sent
+    twice is still two methods, and picking one silently would leave you unable to tell from
+    the wire which credential was checked.
 
     ## Your client must already hold a grant
 
@@ -358,6 +491,30 @@ async def asyncio_detailed(
 
     Grants are made out of band and never through this API. Ask the reseller whose platform you
     are integrating with for a client id, its secret, and the grant behind them.
+
+    ## `tenant` is optional when your client holds exactly one active grant
+
+    Leave `tenant` out and we resolve it from your client's own grants, because a client with a
+    single active grant has a single context it could possibly mean. That grant's **customer**
+    comes with it, so a client granted one customer gets its customer-scoped token from a
+    request that names neither.
+
+    | your client's ACTIVE grants | what you get |
+    |---|---|
+    | exactly one | a token for that grant's tenant, and its customer when the grant names one |
+    | more than one | **422** naming the ambiguity — start sending `tenant` |
+    | none | **403**, the same refusal a tenant nobody granted you gets |
+
+    Naming `tenant` yourself keeps exactly the behaviour it always had, ambiguity or not — the
+    resolution is a fallback, never a preference. Only **active** grants are counted, so a
+    suspended grant beside an active one does not make a determinate request ambiguous.
+
+    Two things this does not mean. `customer` without `tenant` is half a selector — a customer
+    id names a context inside a tenant the request never gave — and is a **422**; send both or
+    neither. And omitting the member is the only way to ask for this: `tenant` must be a
+    **string** when it is present at all, so `\"\"` or `null` is a **422** and never a request
+    for auto-selection. (`customer` is the exception, by design: an explicit `null` there is
+    the tenant-wide request it has always meant.)
 
     ## Two acts stand behind a customer-scoped credential
 
@@ -393,9 +550,14 @@ async def asyncio_detailed(
     ```
 
     **A scope outside that set is dropped, not refused.** You get a 200 carrying a token that
-    simply does not hold it. That covers a scope your grant does not carry, a scope no customer
-    credential may hold, **and a scope name this platform does not publish at all** — so a typo
-    costs you a capability rather than an error.
+    simply does not hold it. That covers a scope your grant does not carry and a scope no
+    customer credential may hold. Both are permission answers, and both are silent.
+
+    **A scope NAME this platform does not publish at all is the one exception: a 422 that lists
+    the offenders.** That is a typo, not a permission answer, and it is the one case you could
+    never diagnose by reading `scopes` back off a 200 — a misspelled scope and a withheld one
+    look identical there. The line is drawn at existence: a real scope you were not granted is
+    still dropped in silence.
 
     So **read `scopes` back off the response** and treat it as the authoritative answer. A call
     made on the assumption that you got what you asked for fails later at the resource instead,
@@ -404,6 +566,11 @@ async def asyncio_detailed(
     **`scopes` is optional and you almost always want it.** Leave it out and the intersection is
     empty: the request succeeds and hands you a token that carries no scopes and is refused by
     every resource you spend it on.
+
+    **You may ask in either of two spellings.** `scopes` is an array of names; `scope` is one
+    space-delimited string, the spelling RFC 6749 section 3.3 defines. Send whichever your
+    client library writes — a request carrying both asks for the union of the two, since
+    neither can widen a token past its grant.
 
     ## Which scopes a customer-scoped token may hold
 
@@ -442,7 +609,11 @@ async def asyncio_detailed(
     tokens already minted alive until they expire.
 
     Args:
-        body (IntegrationTokenRequest):
+        body (IntegrationTokenRequest): Every member here is optional only under a stated
+            condition. Send `client_id` and
+            `client_secret` unless they ride an `Authorization: Basic` header, and send `tenant`
+            unless
+            your client holds exactly one active grant. The operation description carries both rules.
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
@@ -463,7 +634,7 @@ async def asyncio_detailed(
 
 async def asyncio(
     *,
-    client: AuthenticatedClient | Client,
+    client: AuthenticatedClient,
     body: IntegrationTokenRequest,
 ) -> ErrorDocument | IntegrationTokenResponse | None:
     r"""Exchange client credentials for a tenant- or customer-scoped token
@@ -472,11 +643,30 @@ async def asyncio(
     you were issued, name the **tenant** you are acting for, and you get back a token that
     carries that tenant — and, when you name one, a **customer** inside it.
 
+    Both halves have a second spelling, so an OAuth client library can call this endpoint the
+    way it already writes: the credentials may ride an `Authorization: Basic` header instead of
+    the body, and the tenant may be left out when your client holds exactly one active grant.
+    Each has its own section below.
+
     Which rows you reach is decided by the token, never by a header or a path you send later.
     That is why the tenant is named here and nowhere else: acting for another tenant means
     asking for another token, and one token is one context for its whole life.
 
     The token lasts **15 minutes**. There is no refresh token — mint another when it expires.
+
+    ## Two ways to send your credentials
+
+    Put `client_id` and `client_secret` in the JSON body, **or** send them as an
+    `Authorization: Basic` header — base64 of `client_id:client_secret`, the spelling
+    RFC 6749 section 2.3.1 defines and every OAuth client library already writes. The two are
+    equal: the same secret check runs either way, and you are rate-limited as the same client
+    whichever you pick.
+
+    **Send one, never both.** A request carrying credentials in the body *and* in the header is
+    refused with a **422**, because RFC 6749 section 2.3 says a client must not use more than
+    one authentication method. Presence is the conflict, not disagreement — the same pair sent
+    twice is still two methods, and picking one silently would leave you unable to tell from
+    the wire which credential was checked.
 
     ## Your client must already hold a grant
 
@@ -487,6 +677,30 @@ async def asyncio(
 
     Grants are made out of band and never through this API. Ask the reseller whose platform you
     are integrating with for a client id, its secret, and the grant behind them.
+
+    ## `tenant` is optional when your client holds exactly one active grant
+
+    Leave `tenant` out and we resolve it from your client's own grants, because a client with a
+    single active grant has a single context it could possibly mean. That grant's **customer**
+    comes with it, so a client granted one customer gets its customer-scoped token from a
+    request that names neither.
+
+    | your client's ACTIVE grants | what you get |
+    |---|---|
+    | exactly one | a token for that grant's tenant, and its customer when the grant names one |
+    | more than one | **422** naming the ambiguity — start sending `tenant` |
+    | none | **403**, the same refusal a tenant nobody granted you gets |
+
+    Naming `tenant` yourself keeps exactly the behaviour it always had, ambiguity or not — the
+    resolution is a fallback, never a preference. Only **active** grants are counted, so a
+    suspended grant beside an active one does not make a determinate request ambiguous.
+
+    Two things this does not mean. `customer` without `tenant` is half a selector — a customer
+    id names a context inside a tenant the request never gave — and is a **422**; send both or
+    neither. And omitting the member is the only way to ask for this: `tenant` must be a
+    **string** when it is present at all, so `\"\"` or `null` is a **422** and never a request
+    for auto-selection. (`customer` is the exception, by design: an explicit `null` there is
+    the tenant-wide request it has always meant.)
 
     ## Two acts stand behind a customer-scoped credential
 
@@ -522,9 +736,14 @@ async def asyncio(
     ```
 
     **A scope outside that set is dropped, not refused.** You get a 200 carrying a token that
-    simply does not hold it. That covers a scope your grant does not carry, a scope no customer
-    credential may hold, **and a scope name this platform does not publish at all** — so a typo
-    costs you a capability rather than an error.
+    simply does not hold it. That covers a scope your grant does not carry and a scope no
+    customer credential may hold. Both are permission answers, and both are silent.
+
+    **A scope NAME this platform does not publish at all is the one exception: a 422 that lists
+    the offenders.** That is a typo, not a permission answer, and it is the one case you could
+    never diagnose by reading `scopes` back off a 200 — a misspelled scope and a withheld one
+    look identical there. The line is drawn at existence: a real scope you were not granted is
+    still dropped in silence.
 
     So **read `scopes` back off the response** and treat it as the authoritative answer. A call
     made on the assumption that you got what you asked for fails later at the resource instead,
@@ -533,6 +752,11 @@ async def asyncio(
     **`scopes` is optional and you almost always want it.** Leave it out and the intersection is
     empty: the request succeeds and hands you a token that carries no scopes and is refused by
     every resource you spend it on.
+
+    **You may ask in either of two spellings.** `scopes` is an array of names; `scope` is one
+    space-delimited string, the spelling RFC 6749 section 3.3 defines. Send whichever your
+    client library writes — a request carrying both asks for the union of the two, since
+    neither can widen a token past its grant.
 
     ## Which scopes a customer-scoped token may hold
 
@@ -571,7 +795,11 @@ async def asyncio(
     tokens already minted alive until they expire.
 
     Args:
-        body (IntegrationTokenRequest):
+        body (IntegrationTokenRequest): Every member here is optional only under a stated
+            condition. Send `client_id` and
+            `client_secret` unless they ride an `Authorization: Basic` header, and send `tenant`
+            unless
+            your client holds exactly one active grant. The operation description carries both rules.
 
     Raises:
         errors.UnexpectedStatus: If the server returns an undocumented status code and Client.raise_on_unexpected_status is True.
