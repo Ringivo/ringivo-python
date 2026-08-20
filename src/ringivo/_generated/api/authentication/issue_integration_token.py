@@ -138,8 +138,7 @@ def sync_detailed(
     **A scope outside that set is dropped, not refused.** You get a 200 carrying a token that
     simply does not hold it. That covers a scope your grant does not carry, a scope no customer
     credential may hold, **and a scope name this platform does not publish at all** — so a typo
-    costs you a capability rather than an error. (`POST /oauth/token` differs on that last case:
-    there an unpublished name is a 400 `invalid_scope`.)
+    costs you a capability rather than an error.
 
     So **read `scopes` back off the response** and treat it as the authoritative answer. A call
     made on the assumption that you got what you asked for fails later at the resource instead,
@@ -270,8 +269,7 @@ def sync(
     **A scope outside that set is dropped, not refused.** You get a 200 carrying a token that
     simply does not hold it. That covers a scope your grant does not carry, a scope no customer
     credential may hold, **and a scope name this platform does not publish at all** — so a typo
-    costs you a capability rather than an error. (`POST /oauth/token` differs on that last case:
-    there an unpublished name is a 400 `invalid_scope`.)
+    costs you a capability rather than an error.
 
     So **read `scopes` back off the response** and treat it as the authoritative answer. A call
     made on the assumption that you got what you asked for fails later at the resource instead,
@@ -397,8 +395,7 @@ async def asyncio_detailed(
     **A scope outside that set is dropped, not refused.** You get a 200 carrying a token that
     simply does not hold it. That covers a scope your grant does not carry, a scope no customer
     credential may hold, **and a scope name this platform does not publish at all** — so a typo
-    costs you a capability rather than an error. (`POST /oauth/token` differs on that last case:
-    there an unpublished name is a 400 `invalid_scope`.)
+    costs you a capability rather than an error.
 
     So **read `scopes` back off the response** and treat it as the authoritative answer. A call
     made on the assumption that you got what you asked for fails later at the resource instead,
@@ -527,8 +524,7 @@ async def asyncio(
     **A scope outside that set is dropped, not refused.** You get a 200 carrying a token that
     simply does not hold it. That covers a scope your grant does not carry, a scope no customer
     credential may hold, **and a scope name this platform does not publish at all** — so a typo
-    costs you a capability rather than an error. (`POST /oauth/token` differs on that last case:
-    there an unpublished name is a 400 `invalid_scope`.)
+    costs you a capability rather than an error.
 
     So **read `scopes` back off the response** and treat it as the authoritative answer. A call
     made on the assumption that you got what you asked for fails later at the resource instead,
