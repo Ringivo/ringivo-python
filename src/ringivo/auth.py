@@ -32,8 +32,9 @@ never invents a tenant to fill the gap.
 `httpx.Auth` is a request/response GENERATOR: it may look at the response and
 yield a second request. That is exactly the shape of "retry once on 401 with a
 fresh token", and putting it here means EVERY SYNC request through the shared
-client gets it — including any a caller makes through the vendored generated
-client, which knows nothing about tokens.
+client gets it — including the ones a caller sends themselves through
+`Ringivo.request`, the public escape hatch, which is the same code path as
+`client.faxes` and needs no token handling of its own.
 
 The ASYNC half of that promise is not kept, and is refused rather than
 half-kept: see `async_auth_flow`, which raises. Inheriting httpx's default

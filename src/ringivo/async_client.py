@@ -182,7 +182,7 @@ class AsyncRingivo:
     def __repr__(self) -> str:
         return f"<AsyncRingivo base_url={self._base_url!r} version={__version__!r}>"
 
-    async def _request(
+    async def request(
         self,
         method: str,
         path: str,
@@ -194,11 +194,51 @@ class AsyncRingivo:
         data: Mapping[str, Any] | None = None,
         files: Sequence[tuple[str, Any]] | None = None,
     ) -> httpx.Response:
-        """Send one request and hand back the response, or raise.
+        """Send one authenticated request and hand back the response, or raise.
 
-        Anything at or above 400 becomes a typed exception here, so no
-        caller of this method has to check a status code — including the
-        401 that has already been retried once by the auth flow.
+        The awaited twin of `Ringivo.request`, and the same ESCAPE HATCH:
+        this package wraps the fax surface, and an endpoint it does not
+        wrap is still reachable with your credential, your timeout, your
+        User-Agent and the same typed errors:
+
+            response = await client.request("GET", "/v1/webhook-endpoints")
+            endpoints = response.json()["data"]
+
+        `spec/openapi.yaml` in this package's repository is the reference
+        for what those endpoints take and answer, and
+        `ringivo._generated_types` carries the same shapes as `TypedDict`s
+        for a type checker to read.
+
+        WHAT IT CARRIES: the bearer token — bought, cached and re-minted
+        for you — one retry against a 401, the base URL, the timeout, the
+        User-Agent, and `raise_for_response`, so anything at or above 400
+        arrives as `ApiError` (or `AuthenticationError` for a 401 the
+        retry did not fix) rather than a status code you must remember to
+        check.
+
+        WHAT IT DOES NOT CARRY: any promise about what comes back. You get
+        an `httpx.Response`, because you are past this package's boundary:
+        the JSON behind it is the API's own — not parsed, not snake_cased,
+        not one of the frozen objects in models.py, and not held still by
+        this package's version number. The wrapped methods on
+        `client.faxes` are where those guarantees live.
+
+        Args:
+            method: The HTTP method, uppercase — `"GET"`, `"POST"`.
+            path: The path under the base URL, leading slash included.
+            params: Query parameters. A `None` value is left off rather
+                than sent empty, while `False` and `0` are sent.
+            accept: The `Accept` header. JSON:API resource routes want the
+                default; the plain-JSON routes want `"application/json"`.
+            headers: Anything else to send, merged over `accept`.
+            json: A body to send as JSON.
+            data: Form fields, for a multipart send.
+            files: File parts, for a multipart send.
+
+        Raises:
+            AuthenticationError: The credential was refused, and it had
+                already been re-minted and retried once.
+            ApiError: Any other response at or above 400.
         """
         sent_headers = {"Accept": accept}
         if headers:
@@ -215,6 +255,13 @@ class AsyncRingivo:
         )
         raise_for_response(response)
         return response
+
+    # The name this method had while it was private, kept pointing at the
+    # same object. Before 0.2.2 there was no public escape hatch, so a
+    # caller who needed an unwrapped endpoint had nothing else to reach
+    # for; renaming without leaving this behind would break exactly the
+    # people the public name is meant to serve.
+    _request = request
 
     async def _download(self, url: str) -> bytes:
         """Follow a pre-signed URL and return the bytes behind it.

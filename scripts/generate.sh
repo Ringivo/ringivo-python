@@ -1,74 +1,102 @@
 #!/usr/bin/env bash
-# Regenerate the Ringivo API client from the vendored OpenAPI spec.
+# Regenerate the API types from the vendored OpenAPI spec.
 #
-# Pinned tool: openapi-python-client 0.29.0 (matches the version upstream
-# CI smokes the spec against).
-# Bump the pin above AND in this script together; do not let them drift.
+# Pinned tools: datamodel-code-generator, plus the two formatters it shells
+# out to. All three are pinned in the variables below and passed to `uvx`,
+# which builds the environment from those exact versions rather than
+# resolving whatever the index offers today.
 #
-# Flow: uvx generates a fresh package into build/_gen (git-ignored scratch
-# space), then rsync mirrors it into src/ringivo/_generated/, which IS
-# committed — spec-sync diffs stay reviewable in PRs.
+# WHY THE FORMATTERS ARE PINNED TOO. datamodel-code-generator does not lay
+# out the file it writes; black and isort do, and they arrive as its own
+# loose dependencies. Unpinned, a newer black that wraps one Literal
+# differently rewrites this file on a run nobody asked for, and the diff
+# lands in whichever spec-sync PR happened to run next — attached to a spec
+# change that did not cause it. The predecessor of this script had exactly
+# that hole and said so.
 #
-# THIS REPO'S [tool.ruff] CONFIG IS A CODEGEN INPUT, not just a lint gate.
-# openapi-python-client runs a post-generation hook (`ruff check . --fix-only
-# --extend-select=I` then `ruff format .`) INSIDE build/_gen — and because
-# build/_gen resolves to a path under this repo, ruff's own upward config
-# discovery finds and applies THIS pyproject.toml's [tool.ruff]/[tool.ruff.lint]
-# tables. Editing `select` (or `line-length`, `target-version`) therefore
-# silently changes what the NEXT `scripts/generate.sh` run writes to
-# src/ringivo/_generated/ — it is not scoped to `ruff check` in CI. Confirmed
-# concretely: narrowing `select` to ["E4","E7","E9","F"] (dropping PYI019,
-# "use Self instead of a custom TypeVar") stopped the post-hook's safe-autofix
-# rewrite of every model's `from_dict(cls: type[T]) -> T` into
-# `from_dict(cls) -> Self` + `from typing_extensions import Self` — which is
-# why a `typing-extensions` runtime dependency appeared after the first
-# generate of this repo and silently went dead after a later one, once the
-# rewrite stopped happening (`git log -p pyproject.toml` shows both moves).
-# If you touch [tool.ruff] here, regenerate and diff src/ringivo/_generated
-# before committing either change alone.
+# WHAT THIS WRITES is ONE file of TYPES — `src/ringivo/_generated_types.py`,
+# one `TypedDict` per schema in the OpenAPI description. There is no
+# generated runtime here and no generated client: a `TypedDict` is a plain
+# `dict` once the interpreter has it, so the file adds no behaviour, no
+# import cost and no dependency of its own beyond `typing_extensions` on
+# Python 3.10. The hand-written layer in src/ringivo/*.py is the whole
+# client. Nothing generated crosses the public boundary — see models.py.
 #
-# The post-hook's own ruff is UNPINNED: it comes from openapi-python-client's
-# hard dependency `ruff>=0.2` inside the ephemeral `uvx` environment, not from
-# this repo's dev-dependency `ruff` pin. A future openapi-python-client
-# release can silently resolve a newer ruff there, changing which rules exist
-# and how they fix — independent of anything in this repo's lockfile.
+# The file IS committed, and pyright checks it like any other source file.
+# Committed so a spec-sync diff stays reviewable in a PR; checked because a
+# generated file excluded from the type checker is a claim about types
+# rather than a guarantee of them.
+#
+# THIS REPO'S pyproject.toml IS A CODEGEN INPUT. black and isort discover
+# configuration by walking up from the file they are formatting, and that
+# walk reaches this repo's pyproject.toml. There is no [tool.black] or
+# [tool.isort] table there today, so both run on their defaults — but ADD
+# one and it silently changes what the next run of this script writes.
+# Verified rather than assumed: a temporary `[tool.black] line-length = 60`
+# in pyproject.toml re-wrapped 4 lines of the generated file into 13, in 4
+# places. If you add either table, regenerate and diff before committing.
 set -euo pipefail
 
-GENERATOR_VERSION="0.29.0"
+GENERATOR_VERSION="0.74.0"
+BLACK_VERSION="26.5.1"
+ISORT_VERSION="8.0.1"
 
 cd "$(dirname "${BASH_SOURCE[0]}")/.."
 
 SPEC_PATH="spec/openapi.yaml"
-BUILD_DIR="build/_gen"
-DEST_DIR="src/ringivo/_generated"
+DEST="src/ringivo/_generated_types.py"
 
 if [[ ! -f "${SPEC_PATH}" ]]; then
   echo "generate.sh: ${SPEC_PATH} not found — vendor the spec first" >&2
   exit 1
 fi
 
-rm -rf "${BUILD_DIR}"
-mkdir -p "$(dirname "${BUILD_DIR}")"
+mkdir -p "$(dirname "${DEST}")"
 
-uvx "openapi-python-client@${GENERATOR_VERSION}" generate \
-  --path "${SPEC_PATH}" \
-  --output-path "${BUILD_DIR}" \
-  --meta none
+# Prepended ahead of the generator's own `# generated by` marker, so the
+# file opens with a real module docstring and still carries the machine
+# banner underneath it.
+HEADER=$(cat <<'EOF'
+"""The vendored spec's schemas, as types. Machine-written — do not edit.
 
-rm -rf "${DEST_DIR}"
-mkdir -p "${DEST_DIR}"
+Each `TypedDict` below describes one JSON shape from spec/openapi.yaml, and
+describes it at TYPE-CHECK TIME ONLY: a `TypedDict` is a plain `dict` at
+runtime, so this module defines no behaviour and constructs nothing. It is
+not imported by `ringivo/__init__.py`, so it costs an ordinary caller
+nothing.
 
-rsync -a --delete \
-  --exclude ".ruff_cache" \
-  --exclude "__pycache__" \
-  "${BUILD_DIR}/" "${DEST_DIR}/"
+Nothing generated crosses the public boundary — `models.py` owns the frozen
+objects this client hands back, and it reads the wire defensively rather
+than trusting these shapes. What these types are FOR is reading: they are
+the machine-checked record of what the API sends and accepts, for anyone
+reaching past the wrapped surface with `Ringivo.request()`.
 
-cat > "${DEST_DIR}/GENERATED_BY.txt" <<EOF
-Generated by openapi-python-client ${GENERATOR_VERSION}
-Source spec: ${SPEC_PATH}
-Regenerate with: scripts/generate.sh
-Do not hand-edit files under this directory — they are overwritten on the
-next run.
+Regenerate with scripts/generate.sh, which overwrites this file whole.
+"""
 EOF
+)
 
-echo "generate.sh: wrote ${DEST_DIR} from openapi-python-client ${GENERATOR_VERSION}"
+# `--target-python-version 3.10` is this package's own floor, and it decides
+# where `NotRequired` is imported from: `typing` only has it from 3.11, so
+# at 3.10 the generator writes `typing_extensions` and pyproject.toml
+# declares that dependency for those interpreters.
+#
+# `--disable-timestamp` is what makes a re-run reproducible. With the
+# timestamp left on, every run rewrites line 3 and the file is permanently
+# dirty.
+uvx --from "datamodel-code-generator==${GENERATOR_VERSION}" \
+    --with "black==${BLACK_VERSION}" \
+    --with "isort==${ISORT_VERSION}" \
+    datamodel-codegen \
+  --input "${SPEC_PATH}" \
+  --input-file-type openapi \
+  --output "${DEST}" \
+  --output-model-type typing.TypedDict \
+  --target-python-version 3.10 \
+  --disable-timestamp \
+  --enable-version-header \
+  --formatters black isort \
+  --custom-file-header "${HEADER}" \
+  --custom-file-header-mode prepend
+
+echo "generate.sh: wrote ${DEST} from datamodel-code-generator ${GENERATOR_VERSION}"

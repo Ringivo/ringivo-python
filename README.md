@@ -8,7 +8,9 @@ happened.
 pip install ringivo
 ```
 
-Python 3.10 or newer. The only runtime dependencies are `httpx` and `attrs`.
+Python 3.10 or newer. The only runtime dependency is `httpx` — plus
+`typing-extensions` on Python 3.10, where `typing` does not yet carry
+`NotRequired`.
 
 **There are two clients: `Ringivo` and `AsyncRingivo`.** They take the same
 arguments and have the same methods; the async one awaits them. Pick the one
@@ -273,9 +275,26 @@ are deliberately not wrapped.
 each keeps the JSON it was built from in `.raw` — so a field the API adds
 after this release reaches you without a new SDK.
 
-The full endpoint surface, generated from the OpenAPI document, is vendored
-at `ringivo._generated` for the resources this hand-written layer does not
-cover yet. It is private and its shape can change with a regeneration.
+### Reaching an endpoint this client does not wrap
+
+The table above is the fax surface. For anything else the API offers, use
+`client.request()` — the same escape hatch in both clients, awaited on the
+async one:
+
+```python
+response = client.request("GET", "/v1/webhook-endpoints")
+endpoints = response.json()["data"]
+```
+
+It carries your credential, your timeout, your User-Agent and the same
+typed errors, and it hands back the `httpx.Response` untouched: past that
+line the JSON is the API's own, not one of the frozen objects above.
+
+`spec/openapi.yaml` in this repository is the reference for what those
+endpoints take and answer. The same shapes are generated into
+`ringivo._generated_types` as `TypedDict`s, which your type checker can
+read; that module is private, machine-written, and rewritten wholesale
+whenever the spec changes.
 
 ## Licence
 

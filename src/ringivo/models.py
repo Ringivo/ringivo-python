@@ -1,10 +1,12 @@
 """What this client hands back: frozen, snake_cased, and ours.
 
-Nothing generated ever crosses the public boundary. The generated models
-under `ringivo._generated` are regenerated wholesale from the spec, so a
-caller who held one would be holding a type whose fields, names and
-nullability can change with a tool upgrade they never asked for. These
-dataclasses change only when this package decides they do.
+Nothing generated ever crosses the public boundary. The `TypedDict`s in
+`ringivo._generated_types` are rewritten wholesale from the spec, so a
+caller who held one would be holding a shape whose fields, names and
+nullability can change with a tool upgrade or a spec sync they never asked
+for. These dataclasses change only when this package decides they do — and
+they read the wire defensively rather than trusting those shapes, which is
+why the readers below check every value's type instead of assuming it.
 
 They are FROZEN because a fax is a record of something that already
 happened. Assigning to one would look like it changed the fax and would

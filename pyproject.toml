@@ -7,7 +7,12 @@ license = "MIT"
 requires-python = ">=3.10"
 dependencies = [
     "httpx>=0.27,<0.29",
-    "attrs>=22.2.0",
+    # `NotRequired`, which src/ringivo/_generated_types.py imports — `typing`
+    # only publishes it from 3.11, so the marker is the whole reason this is
+    # here and it drops off every newer interpreter. Declared rather than
+    # leaned on: httpx pulls anyio, which pulls typing-extensions on these
+    # same versions anyway, and a transitive dependency is not a promise.
+    "typing-extensions>=4.0; python_version < '3.11'",
 ]
 
 [build-system]
@@ -46,26 +51,16 @@ line-length = 100
 # Ruff's own documented defaults, restored explicitly: with no [tool.ruff]
 # section at all it was quietly enabling ~415 rules (stylistic pydocstyle/
 # flake8-simplify/flake8-pyi opinions included), which is a heavier bar than
-# committed generated code should be held to.
+# this package holds itself to.
 select = ["E4", "E7", "E9", "F"]
 
-[tool.ruff.lint.per-file-ignores]
-# openapi-python-client 0.29.0 omits the `Unset` import for an endpoint
-# whose requestBody declares more than one content type — sendFax accepts
-# both multipart/form-data and application/json (spec/openapi.yaml, POST
-# /v1/faxes). Confirmed present in the raw `--meta none` generator output
-# before scripts/generate.sh's rsync/rename step, so this is an upstream
-# generator bug, not something the vendoring pipeline introduced. Pinned by
-# tests/test_generated_import.py::test_send_fax_endpoint_has_known_generator_bug —
-# remove this ignore and that test together if a future generator version
-# fixes it. Do not hand-edit the generated file; it is overwritten on the
-# next scripts/generate.sh run.
-"src/ringivo/_generated/api/faxes/send_fax.py" = ["F821"]
-
 [tool.pyright]
+# There is NO `exclude`, and its absence is the point: every file under
+# these roots is checked, the machine-written src/ringivo/_generated_types.py
+# included. Generated code used to be carved out here on the grounds that a
+# regenerate, not an edit, is its fix vector — but the carve-out only ever
+# hid what the generator got wrong. The tree it protected shipped a module
+# that raised `NameError` the moment anything imported it, and the type
+# checker was configured not to look. A generated file outside the checker
+# is a claim about its types; inside, it is a checked fact.
 include = ["src", "tests"]
-# Generated code is not held to hand-written type-safety: its correctness
-# is validated by the import smoke tests in tests/, and the fix vector for
-# any generator imprecision is regenerating from a fixed spec/tool version,
-# never a local edit (scripts/generate.sh overwrites this directory).
-exclude = ["src/ringivo/_generated"]

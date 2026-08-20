@@ -502,8 +502,8 @@ async def test_a_sync_client_refuses_loudly_rather_than_sending_it_unauthenticat
     wrong.
 
     Reachable rather than theoretical: a caller who has both clients in one
-    codebase, or who reaches for the vendored generated client's `sync`
-    functions, wires this by hand in a minute.
+    codebase, and who reaches for `client._auth` to wire up a request the
+    wrapper does not cover, does this by hand in a minute.
 
     Two assertions, one gate. Raising is only half of it; the half that
     matters is that NOTHING WENT OUT — so that half is asserted FIRST.

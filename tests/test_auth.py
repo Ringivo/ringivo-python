@@ -1,6 +1,6 @@
 """The integration-token layer, from the caller's side.
 
-Every test here drives the real request path (`Ringivo._request`) against a
+Every test here drives the real request path (`Ringivo.request`) against a
 mocked transport, because the token is not a thing a caller ever handles: it
 is minted, cached, refreshed and retried on their behalf, and the only
 evidence any of that happened is the requests that went out.
@@ -528,10 +528,11 @@ def test_an_async_client_refuses_loudly_rather_than_sending_an_unauthenticated_r
     The server answers 401 and the caller reads it as their credential being
     wrong.
 
-    That is reachable, not theoretical: auth.py's own docstring advertises
-    that every request through the shared client is covered "including any a
-    caller makes through the vendored generated client" — and that client
-    publishes `asyncio` functions beside its `sync` ones.
+    That is reachable, not theoretical: this object is reachable as
+    `client._auth`, and a caller who wants an endpoint the wrapper does not
+    cover has every reason to reach for it — `Ringivo.request` is the
+    supported way to do that, and handing the SYNC auth object to an
+    `httpx.AsyncClient` is the mistake next door to it.
 
     Two assertions, one gate. Raising is only half of it; the half that
     matters is that NOTHING WENT OUT — so that half is asserted FIRST.
@@ -701,3 +702,51 @@ def test_one_bare_string_of_scopes_is_refused_rather_than_split_into_characters(
         client.faxes.get(FAX_ID)
 
     assert _sent(token)["scopes"] == ["fax:read"]
+
+
+@respx.mock
+def test_request_is_a_public_escape_hatch_that_carries_the_credential() -> None:
+    """The unwrapped-endpoint path, and why it lost its underscore in 0.2.2.
+
+    Before 0.2.2 there was no public way to reach an endpoint the fax
+    wrapper does not cover, so a caller who needed one reached for
+    `_request` — a private name this package never promised to keep, or
+    for the vendored generated client, which could not authenticate itself.
+    Both are gone. What this pins is the PROMISE rather than the plumbing:
+    the public name exists, a call through it goes out authenticated
+    exactly like a wrapped one, and a refusal comes back as this package's
+    typed error rather than a status code the caller must remember to
+    check.
+
+    `/v1/webhook-endpoints` is deliberately an endpoint this client does
+    NOT wrap. A route the wrapper already covers would exercise the
+    transport but prove nothing about the hatch.
+    """
+    token = respx.post(TOKEN_URL).mock(return_value=_token_response())
+    listing = respx.get(f"{BASE_URL}/v1/webhook-endpoints").mock(
+        return_value=httpx.Response(200, json={"data": []})
+    )
+
+    with _client() as client:
+        response = client.request("GET", "/v1/webhook-endpoints")
+
+        assert response.status_code == 200
+        assert response.json() == {"data": []}
+        assert token.call_count == 1
+        sent = listing.calls.last.request
+        assert sent.headers["authorization"] == "Bearer tok-1"
+        assert sent.headers["accept"] == "application/vnd.api+json"
+        assert sent.headers["user-agent"] == f"Ringivo/Python {ringivo.__version__}"
+
+        # The same object under both names, so a caller who reached for the
+        # private one before 0.2.2 is not broken by the promotion.
+        assert Ringivo.request is Ringivo._request
+
+        # And the refusal half of the promise: past the boundary the body is
+        # the API's own, but the FAILURE is still this package's.
+        respx.get(f"{BASE_URL}/v1/webhook-deliveries").mock(
+            return_value=httpx.Response(403, json={"errors": [{"detail": "no"}]})
+        )
+        with pytest.raises(ApiError) as refused:
+            client.request("GET", "/v1/webhook-deliveries")
+        assert refused.value.status_code == 403

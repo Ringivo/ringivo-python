@@ -469,9 +469,9 @@ def test_list_builds_the_filter_query_including_the_deep_object_tag(
 ) -> None:
     # `filter[tag][clinic]=north` — one query member per tag name, and two of
     # them mean BOTH. The wrapper is the part that matters: the generated
-    # client drops it (see tests/test_generated_import.py), and a filter that
-    # silently does nothing answers 200 with the WHOLE collection to a caller
-    # who believes they narrowed it.
+    # client this package used to vendor dropped it (faxes.py's preamble,
+    # reason 2), and a filter that silently does nothing answers 200 with the
+    # WHOLE collection to a caller who believes they narrowed it.
     route = respx_mock.get(FAXES_URL).mock(return_value=httpx.Response(200, json={"data": []}))
 
     with client:

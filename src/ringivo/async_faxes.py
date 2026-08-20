@@ -12,8 +12,8 @@ of them (`_path_segment`) is a security control: a second copy of it is a
 second thing to get wrong. So they are imported, not duplicated.
 
 Read faxes.py for the whys: why this layer is hand-rolled httpx rather
-than the vendored generated client, and why `POST /v1/faxes` has two
-mutually exclusive bodies.
+than a generated client, and why `POST /v1/faxes` has two mutually
+exclusive bodies.
 """
 
 from __future__ import annotations
@@ -123,7 +123,7 @@ class AsyncFaxes:
             if cover_page is not None:
                 fields["cover_page"] = dict(cover_page)
             fields["documents"] = list(urls)
-            response = await self._client._request(
+            response = await self._client.request(
                 "POST",
                 "/v1/faxes",
                 accept=_JSON,
@@ -142,7 +142,7 @@ class AsyncFaxes:
             for index, document in enumerate(documents):
                 parts.append(("documents[]", _upload(document, index)))
 
-            response = await self._client._request(
+            response = await self._client.request(
                 "POST",
                 "/v1/faxes",
                 accept=_JSON,
@@ -163,7 +163,7 @@ class AsyncFaxes:
             include: `attempts` to side-load the per-call attempt records,
                 which then arrive in `fax.raw`'s sibling `included` member.
         """
-        response = await self._client._request(
+        response = await self._client.request(
             "GET",
             f"/v1/faxes/{_path_segment(fax_id)}",
             params={"include": include},
@@ -228,7 +228,7 @@ class AsyncFaxes:
         for name, value in (tags or {}).items():
             params[f"filter[tag][{name}]"] = value
 
-        response = await self._client._request("GET", "/v1/faxes", params=params)
+        response = await self._client.request("GET", "/v1/faxes", params=params)
         document = response.json()
         if not isinstance(document, Mapping):
             document = {}
@@ -256,7 +256,7 @@ class AsyncFaxes:
         `terminal`. That refusal carries no `code`; the status is the
         contract.
         """
-        response = await self._client._request(
+        response = await self._client.request(
             "POST",
             f"/v1/faxes/{_path_segment(fax_id)}/cancel",
             accept=_JSON,
@@ -273,7 +273,7 @@ class AsyncFaxes:
         Every call mints a fresh capability and records who asked, so the
         URL is not something to cache past `expires_at` or to pass on.
         """
-        response = await self._client._request(
+        response = await self._client.request(
             "GET",
             f"/v1/faxes/{_path_segment(fax_id)}/media",
             accept=_JSON,

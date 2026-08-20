@@ -1,28 +1,38 @@
 """Send a fax, read one, list them, cancel one, fetch its pages.
 
--- WHY THIS IS HAND-ROLLED httpx AND NOT THE GENERATED CLIENT ------------------
-`ringivo._generated` is a faithful, spec-derived client and it stays vendored:
-it is the typed record of the whole endpoint surface, including the resources
-this hand-written layer does not cover. It is not on the call path
-here, and the four reasons are concrete rather than stylistic:
+-- WHY THIS IS HAND-ROLLED httpx AND NOT A GENERATED CLIENT --------------------
+Up to 0.2.1 this package also vendored a whole generated client —
+openapi-python-client output, 159 files, most of the wheel — kept as "the
+typed record of the entire endpoint surface". 0.2.2 deleted it. Nothing
+imported it, pyright was configured to skip it, and one of its endpoint
+modules raised `NameError` the moment anything imported it, so the record it
+was keeping had never been checked. What stands in its place is types alone
+— `_generated_types.py`, one `TypedDict` per schema, which pyright DOES
+check — and a public escape hatch, `Ringivo.request`, for the endpoints this
+layer does not wrap.
 
-1. `send_fax` CANNOT BE IMPORTED. openapi-python-client 0.29.0 omits the
+The four reasons that client was never on the call path are the same four
+that make a generated runtime the wrong shape here, and they are concrete
+rather than stylistic:
+
+1. `send_fax` COULD NOT BE IMPORTED. openapi-python-client 0.29.0 omits the
    `Unset` import for an endpoint whose requestBody declares two content
-   types, and `POST /v1/faxes` declares multipart and JSON. Pinned by
-   tests/test_generated_import.py::test_send_fax_endpoint_has_known_generator_bug.
+   types, and `POST /v1/faxes` declares multipart and JSON. 0.29.0 is still
+   that generator's latest release.
 
-2. `list_faxes` SERIALISES `filter[tag]` WRONGLY. The generated code ends its
-   deepObject handling with `params.update(json_filtertag)`, which puts
-   `{"clinic": "north"}` on the query string as `clinic=north` — the
-   `filter[tag]` wrapper is dropped, so the filter silently does nothing
-   while the caller believes they narrowed the collection. Pinned by
-   tests/test_generated_import.py::test_list_faxes_deep_object_filter_has_known_generator_bug.
+2. `list_faxes` SERIALISED `filter[tag]` WRONGLY. Its deepObject handling
+   ended with `params.update(json_filtertag)`, which puts `{"clinic":
+   "north"}` on the query string as `clinic=north` — the `filter[tag]`
+   wrapper dropped, so the filter silently did nothing while the caller
+   believed they had narrowed the collection. What this module sends
+   instead is asserted by tests/test_faxes.py::
+   test_list_builds_the_filter_query_including_the_deep_object_tag.
 
-3. The generated functions RETURN their error documents rather than raising,
-   so a wrapper has to inspect the status of every response anyway. Typed
-   exceptions (errors.py) are what a caller can branch on.
+3. The generated functions RETURNED their error documents rather than
+   raising, so a wrapper had to inspect the status of every response
+   anyway. Typed exceptions (errors.py) are what a caller can branch on.
 
-4. The generated models spell every field `X | None | Unset`, and
+4. The generated models spelled every field `X | None | Unset`, and
    `failure_code` as a union of three enum classes — the nullable-enum
    split. Unwrapping that for each of eighteen attributes is more code than
    reading the wire JSON, and a field the API adds tomorrow disappears until
@@ -143,7 +153,7 @@ class Faxes:
             if cover_page is not None:
                 fields["cover_page"] = dict(cover_page)
             fields["documents"] = list(urls)
-            response = self._client._request(
+            response = self._client.request(
                 "POST",
                 "/v1/faxes",
                 accept=_JSON,
@@ -162,7 +172,7 @@ class Faxes:
             for index, document in enumerate(documents):
                 parts.append(("documents[]", _upload(document, index)))
 
-            response = self._client._request(
+            response = self._client.request(
                 "POST",
                 "/v1/faxes",
                 accept=_JSON,
@@ -183,7 +193,7 @@ class Faxes:
             include: `attempts` to side-load the per-call attempt records,
                 which then arrive in `fax.raw`'s sibling `included` member.
         """
-        response = self._client._request(
+        response = self._client.request(
             "GET",
             f"/v1/faxes/{_path_segment(fax_id)}",
             params={"include": include},
@@ -248,7 +258,7 @@ class Faxes:
         for name, value in (tags or {}).items():
             params[f"filter[tag][{name}]"] = value
 
-        document = self._client._request("GET", "/v1/faxes", params=params).json()
+        document = self._client.request("GET", "/v1/faxes", params=params).json()
         if not isinstance(document, Mapping):
             document = {}
 
@@ -275,7 +285,7 @@ class Faxes:
         `terminal`. That refusal carries no `code`; the status is the
         contract.
         """
-        response = self._client._request(
+        response = self._client.request(
             "POST",
             f"/v1/faxes/{_path_segment(fax_id)}/cancel",
             accept=_JSON,
@@ -292,7 +302,7 @@ class Faxes:
         Every call mints a fresh capability and records who asked, so the
         URL is not something to cache past `expires_at` or to pass on.
         """
-        response = self._client._request(
+        response = self._client.request(
             "GET",
             f"/v1/faxes/{_path_segment(fax_id)}/media",
             accept=_JSON,
