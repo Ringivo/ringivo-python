@@ -1,10 +1,12 @@
 """Contains all the data models used in inputs/outputs"""
 
+from .caller_name_facts import CallerNameFacts
 from .cancel_fax_result import CancelFaxResult
 from .cancel_fax_result_data import CancelFaxResultData
 from .collection_links import CollectionLinks
 from .cover_page_request_type_0 import CoverPageRequestType0
 from .cover_page_type_0 import CoverPageType0
+from .dialed_number_geography import DialedNumberGeography
 from .document_meta import DocumentMeta
 from .error import Error
 from .error_code import ErrorCode
@@ -85,7 +87,17 @@ from .integration_token_response import IntegrationTokenResponse
 from .list_faxes_filtertag import ListFaxesFiltertag
 from .list_faxes_include import ListFaxesInclude
 from .list_webhook_deliveries_include import ListWebhookDeliveriesInclude
+from .lrn_facts import LrnFacts
 from .media_link import MediaLink
+from .messaging_facts import MessagingFacts
+from .number_lookup import NumberLookup
+from .number_lookup_caller_name_component import NumberLookupCallerNameComponent
+from .number_lookup_components import NumberLookupComponents
+from .number_lookup_dip_status import NumberLookupDipStatus
+from .number_lookup_lrn_component import NumberLookupLrnComponent
+from .number_lookup_messaging_component import NumberLookupMessagingComponent
+from .number_lookup_request import NumberLookupRequest
+from .number_lookup_result import NumberLookupResult
 from .page_meta import PageMeta
 from .phone_number_collection_document import PhoneNumberCollectionDocument
 from .phone_number_resource import PhoneNumberResource
@@ -139,11 +151,13 @@ from .webhook_event_type import WebhookEventType
 from .webhook_scope_type import WebhookScopeType
 
 __all__ = (
+    "CallerNameFacts",
     "CancelFaxResult",
     "CancelFaxResultData",
     "CollectionLinks",
     "CoverPageRequestType0",
     "CoverPageType0",
+    "DialedNumberGeography",
     "DocumentMeta",
     "Error",
     "ErrorCode",
@@ -214,7 +228,17 @@ __all__ = (
     "ListFaxesFiltertag",
     "ListFaxesInclude",
     "ListWebhookDeliveriesInclude",
+    "LrnFacts",
     "MediaLink",
+    "MessagingFacts",
+    "NumberLookup",
+    "NumberLookupCallerNameComponent",
+    "NumberLookupComponents",
+    "NumberLookupDipStatus",
+    "NumberLookupLrnComponent",
+    "NumberLookupMessagingComponent",
+    "NumberLookupRequest",
+    "NumberLookupResult",
     "PageMeta",
     "PhoneNumberCollectionDocument",
     "PhoneNumberResource",
