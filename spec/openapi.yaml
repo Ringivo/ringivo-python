@@ -7,12 +7,12 @@ info:
 
     ## Authentication
 
-    Mint a token at `POST /v1/integration/token`, then send `Authorization: Bearer <token>` on
-    every call. One request does it: send your client id and secret in the body, name the
-    **tenant** you are acting for — and, if you were granted one, a **customer** inside it — and
-    ask for the `scopes` you need. The token comes back already scoped to that context. Leave
-    `scopes` out and it comes back holding none, which every resource then refuses. Nothing later
-    in the call chain picks a tenant; the token carries it for its whole life.
+    Mint a token at `POST /oauth/token`, then send `Authorization: Bearer <token>` on every call.
+    One request does it: send `grant_type: client_credentials` with your client id and secret,
+    name the **tenant** you are acting for — and, if you were granted one, a **customer** inside
+    it — and ask for the `scope` you need. The token comes back already scoped to that context.
+    Leave `scope` out and it comes back holding none, which every resource then refuses. Nothing
+    later in the call chain picks a tenant; the token carries it for its whole life.
 
     A token lasts **15 minutes** (`expires_in: 900`), and there is no refresh token. Mint another
     when it expires, and mint another when a call answers **401**. Hold each token for its full
@@ -20,10 +20,25 @@ info:
     the API. Its own description carries the rest: which scopes you end up holding, why a mint is
     refused, and how quickly a withdrawn grant stops you.
 
-    **`POST /oauth/token` is platform-internal and not for API integrators.** It serves this
-    platform's own machine principals, and this document deliberately does not describe it. A
-    token minted there carries no tenant, so every `/v1` resource refuses it; nothing in the flow
-    above uses it.
+    **`POST /v1/integration/token` is deprecated as of 2026-08-21** and still served. It mints the
+    same tokens from the same grants, and every response it sends now carries a `Deprecation`
+    header. No retirement date is set. Move to `POST /oauth/token`: the members are named below,
+    and the differences are `grant_type`, which is new and required, and `scope`, which replaces
+    the `scopes` array.
+
+    ## Two error vocabularies, and where the line runs
+
+    The line runs between the **mint** and everything else.
+
+    `POST /oauth/token` is an OAuth token endpoint and refuses like one: `application/json`
+    carrying RFC 6749's flat `{"error": "…", "error_description": "…"}`. The `/v1` resource
+    surface below refuses with JSON:API error documents (`{"errors": [ … ]}`) as it always has.
+    Read the mint's `error` as the machine vocabulary to branch on; read a resource's
+    `errors[].code`.
+
+    A parser can tell the two apart from the body alone — a JSON:API document has no top-level
+    `error` member, and an OAuth refusal has no `errors` array — so it never has to know which URL
+    it called.
 
     ## The resource surface is JSON:API
 
@@ -117,21 +132,41 @@ tags:
       deliveries of customer- and tenant-scoped endpoints require `webhooks:*`.
 
 paths:
-  /v1/integration/token:
+  /oauth/token:
     post:
       tags: [Authentication]
-      operationId: issueIntegrationToken
+      operationId: issueToken
       summary: Exchange client credentials for a tenant- or customer-scoped token
       description: |
-        The token a machine client presents to the rest of this API. Send the client id and secret
-        you were issued, name the **tenant** you are acting for, and you get back a token that
-        carries that tenant — and, when you name one, a **customer** inside it.
+        The token a machine client presents to the rest of this API. Send `grant_type:
+        client_credentials` with the client id and secret you were issued, name the **tenant** you
+        are acting for, and you get back a token that carries that tenant — and, when you name one,
+        a **customer** inside it.
 
         Which rows you reach is decided by the token, never by a header or a path you send later.
         That is why the tenant is named here and nowhere else: acting for another tenant means
         asking for another token, and one token is one context for its whole life.
 
         The token lasts **15 minutes**. There is no refresh token — mint another when it expires.
+
+        ## Moving here from `POST /v1/integration/token`
+
+        That endpoint is deprecated as of **2026-08-21** and still served, so nothing breaks while
+        you move. Both doors mint from the same grants and answer with the same token. Three things
+        differ:
+
+        - **`grant_type` is new and required.** Send the literal `client_credentials`. Without it
+          the request is not read as a credential exchange at all, and `tenant`, `customer` and
+          `scope` are not read either.
+        - **`scope` replaces `scopes`.** One space-delimited string — `"numbers:read
+          numbers:route"` — in place of the JSON array. **The array is not read here.** A body that
+          sends only `scopes` asks for nothing, and is answered with a 200 and a token that holds
+          no scopes.
+        - **Refusals are OAuth-shaped**, not JSON:API. See *What a refusal looks like* below.
+
+        Everything else is unchanged: the same credential, the same `tenant` and `customer`
+        selectors, the same grants behind them, and a response that still carries `scopes` beside
+        the new `scope` so a reader of the old member keeps working.
 
         ## Your client must already hold a grant
 
@@ -168,6 +203,16 @@ paths:
         you. This is deliberate: a different message would let a caller discover which of a
         reseller's customers a client has been enabled for.
 
+        ## Naming which grant, when your client holds several
+
+        `tenant` is how you say which one you mean. Leave it out and this endpoint will infer the
+        context **only when there is exactly one active grant to infer** — the ordinary case for a
+        client provisioned for a single tenant.
+
+        Hold more than one and an unselected request is refused with **400 `invalid_request`**
+        rather than picked between. A silent pick would spend the token on the wrong context and
+        fail later at a resource, somewhere that looks unrelated to this call.
+
         ## Your scopes are an intersection, and a dropped scope is silent
 
         The scopes on the token are
@@ -177,15 +222,19 @@ paths:
         ```
 
         **A scope outside that set is dropped, not refused.** You get a 200 carrying a token that
-        simply does not hold it. That covers a scope your grant does not carry, a scope no customer
-        credential may hold, **and a scope name this platform does not publish at all** — so a typo
-        costs you a capability rather than an error.
+        simply does not hold it. That covers a scope your grant does not carry and a scope no
+        customer credential may hold.
 
-        So **read `scopes` back off the response** and treat it as the authoritative answer. A call
-        made on the assumption that you got what you asked for fails later at the resource instead,
-        with a 403 that looks unrelated to this one.
+        So **read the scopes back off the response** and treat them as the authoritative answer. A
+        call made on the assumption that you got what you asked for fails later at the resource
+        instead, with a 403 that looks unrelated to this one. The answer arrives twice, and the two
+        always agree: `scope` is the space-joined string, `scopes` the same names as an array.
 
-        **`scopes` is optional and you almost always want it.** Leave it out and the intersection is
+        **A scope NAME this platform does not publish is the one loud case.** It is refused with
+        **400 `invalid_scope`** rather than dropped, because it is a typo rather than a permission
+        answer.
+
+        **`scope` is optional and you almost always want it.** Leave it out and the intersection is
         empty: the request succeeds and hands you a token that carries no scopes and is refused by
         every resource you spend it on.
 
@@ -200,17 +249,33 @@ paths:
         customer-scoped token and it is dropped like any other unflagged scope:
 
         ```
-        POST /v1/integration/token
-        { "client_id": "…", "client_secret": "…", "tenant": "…", "customer": "…",
-          "scopes": ["numbers:read", "numbers:assign", "numbers:route"] }
+        POST /oauth/token
+        { "grant_type": "client_credentials", "client_id": "…", "client_secret": "…",
+          "tenant": "…", "customer": "…",
+          "scope": "numbers:read numbers:assign numbers:route" }
 
         200 OK
         { "token_type": "Bearer", "expires_in": 900,
+          "scope": "numbers:read numbers:route",
           "scopes": ["numbers:read", "numbers:route"] }
         ```
 
         A tenant-wide credential is a different case: it may hold `numbers:assign`, and moving
         numbers between customers is exactly what it is for.
+
+        ## What a refusal looks like
+
+        This endpoint answers `application/json` carrying RFC 6749's flat shape — **not** a JSON:API
+        error document. Branch on `error`; show `error_description` to a human.
+
+        ```
+        { "error": "unauthorized_client",
+          "error_description": "No active integration grant for this tenant." }
+        ```
+
+        `error` is one of `invalid_client` (401), `unauthorized_client` (403), `invalid_request`
+        (400) and `invalid_scope` (400). Ignore any member you do not recognise rather than
+        refusing the body: more may be added.
 
         ## Revocation, with its real clock
 
@@ -230,6 +295,119 @@ paths:
         content:
           application/json:
             schema:
+              $ref: '#/components/schemas/OAuthTokenRequest'
+            example:
+              grant_type: client_credentials
+              client_id: 0198c4a1-1f2e-7a3b-9c40-5f6e7d8a9b01
+              client_secret: 9tK2xr4mQ7vBnZ1sD5hL0pWfC8jY3aE6
+              tenant: 0198c4a1-3d4e-7f50-a1b2-c3d4e5f6a7b8
+              scope: numbers:read numbers:route
+      responses:
+        '200':
+          description: |
+            A bearer token. `scope` and `scopes` are what it actually carries — compare them with
+            what you asked for before you spend it.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OAuthTokenResponse'
+              example:
+                access_token: eyJ0eXAiOiJKV1QiLCJhbGciOiJSUzI1NiJ9...
+                token_type: Bearer
+                expires_in: 900
+                scope: numbers:read numbers:route
+                scopes: [numbers:read, numbers:route]
+        '400':
+          description: |
+            The request itself is the problem, and `error` says which way.
+
+            `invalid_request` — your client holds more than one active grant and named none, or a
+            `tenant`/`customer` selector is not a uuid, or `customer` arrived without a `tenant`.
+
+            `invalid_scope` — you asked for a scope NAME this platform does not publish. A scope it
+            publishes but your grant does not carry is dropped silently instead, and answers 200.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OAuthErrorResponse'
+              example:
+                error: invalid_request
+                error_description: The tenant and customer selectors must be UUIDs, and customer requires a tenant.
+        '401':
+          description: The client id or the secret is wrong.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OAuthErrorResponse'
+              example:
+                error: invalid_client
+                error_description: Client authentication failed
+        '403':
+          description: |
+            Your credentials are good and no active grant matches — either for this tenant, or for
+            the customer you named. The two are not told apart, on purpose.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OAuthErrorResponse'
+              example:
+                error: unauthorized_client
+                error_description: No active integration grant for this tenant.
+        '429':
+          description: |
+            Too many attempts. This endpoint is throttled harder than the rest of the API because
+            every attempt costs a password check: **60 a minute per IP address** and **20 a minute
+            per client id**, whichever you reach first. Wait the number of seconds in `Retry-After`,
+            and hold each token for its full 15 minutes rather than minting one per request.
+
+            The throttle answers before the mint runs, so this one body is NEITHER an OAuth refusal
+            nor a JSON:API document — branch on the status, not on a member.
+          headers:
+            Retry-After:
+              description: Seconds to wait before trying again.
+              schema: { type: integer }
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ThrottledResponse'
+              example:
+                message: Too Many Attempts.
+
+  /v1/integration/token:
+    post:
+      tags: [Authentication]
+      operationId: issueIntegrationToken
+      deprecated: true
+      summary: Exchange client credentials for a token (deprecated — use POST /oauth/token)
+      description: |
+        **Deprecated on 2026-08-21. Use [`POST /oauth/token`](#tag/authentication/post/oauth/token)
+        instead.**
+
+        This endpoint still works and is still served. It mints from the same grants and hands back
+        the same tokens, and every response it sends carries a `Deprecation` header stating the
+        date. **No retirement date is set**, and none will be set without notice.
+
+        What to change when you move, in full:
+
+        - add `grant_type: "client_credentials"` to the body;
+        - send `scope` — one space-delimited string — in place of the `scopes` array;
+        - read refusals as RFC 6749's flat `{"error", "error_description"}` rather than as JSON:API
+          error documents. The statuses move with them: a malformed selector is **400
+          `invalid_request`** there, where it is 422 here.
+
+        Nothing else changes. Same credential, same `tenant` and `customer` selectors, same grants,
+        same 15-minute token, and the response still carries `scopes`.
+
+        The rules behind a mint — which grant you must hold, how `customer` selects a context rather
+        than narrowing one, how the scope intersection works and why a dropped scope is silent, and
+        how quickly a withdrawn grant stops you — are unchanged and are written out on
+        `POST /oauth/token`.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
               $ref: '#/components/schemas/IntegrationTokenRequest'
             example:
               client_id: 0198c4a1-1f2e-7a3b-9c40-5f6e7d8a9b01
@@ -241,6 +419,13 @@ paths:
           description: |
             A bearer token. `scopes` is what it actually carries — compare it with what you asked
             for before you spend it.
+          headers:
+            Deprecation:
+              description: |
+                RFC 9745. The moment this endpoint became deprecated, as `@<unix-timestamp>`. It
+                states a fact about the resource, so it is on every response including refusals.
+              schema: { type: string }
+              example: '@1787270400'
           content:
             application/json:
               schema:
@@ -280,6 +465,8 @@ paths:
             Each error's `source.pointer` names the member. A well-formed id that names nothing you
             were granted is the 403 above and not this — refusing it here would answer questions
             about another reseller's customers.
+
+            `POST /oauth/token` answers **400 `invalid_request`** for the same mistake.
           content:
             application/vnd.api+json:
               schema:
@@ -2092,8 +2279,8 @@ components:
       scheme: bearer
       bearerFormat: JWT
       description: |
-        A bearer token minted at `POST /v1/integration/token` and short-lived — `expires_in: 900`,
-        re-minted rather than refreshed.
+        A bearer token minted at `POST /oauth/token` and short-lived — `expires_in: 900`, re-minted
+        rather than refreshed.
 
         The scopes named on each operation are the FRONT DOOR — a credential's reach is decided
         separately, by which tenant or customer it was issued for. The four this platform
@@ -2229,7 +2416,106 @@ components:
             $ref: '#/components/schemas/ErrorDocument'
 
   schemas:
-    # -- The integrator token mint ---------------------------------------------------------------
+    # -- The token mint --------------------------------------------------------------------------
+    OAuthTokenRequest:
+      type: object
+      required: [grant_type, client_id, client_secret]
+      properties:
+        grant_type:
+          type: string
+          const: client_credentials
+          description: |
+            The exchange being performed, and the member that names it. Without it the request is
+            not read as a credential exchange at all, and none of the members below are read.
+        client_id:
+          type: string
+          format: uuid
+          description: The client id you were issued.
+        client_secret:
+          type: string
+          description: |
+            Its secret. It travels in the body over TLS, never in a URL. HTTP Basic is accepted
+            instead — send one or the other, never both.
+        tenant:
+          type: string
+          format: uuid
+          description: |
+            The reseller you are acting for. Your client must hold an active grant for it, or the
+            request is refused with a 403.
+
+            Omit it and the context is inferred, but only when your client holds exactly ONE active
+            grant. Hold more than one and an unselected request is refused with 400
+            `invalid_request` rather than picked between.
+        customer:
+          type: [string, 'null']
+          format: uuid
+          description: |
+            One customer inside that tenant, when a grant names one. It SELECTS a context somebody
+            already granted and narrows nothing by itself. Omit it — or send null — for the
+            tenant-wide token. It requires a `tenant` beside it.
+        scope:
+          type: string
+          description: |
+            The scopes you are asking for, as ONE space-delimited string — `"numbers:read
+            numbers:route"`. What you receive is the intersection with your grant and, on a
+            customer-scoped token, with the customer-scopeable set. Anything outside it is dropped
+            silently, so read the scopes back off the response.
+
+            The `scopes` ARRAY that `POST /v1/integration/token` reads is NOT read here. A body
+            sending only the array asks for nothing and is answered with a scopeless token.
+    OAuthTokenResponse:
+      type: object
+      required: [access_token, token_type, expires_in, scope, scopes]
+      properties:
+        access_token:
+          type: string
+          description: 'The bearer token. Send it as `Authorization: Bearer <token>`.'
+        token_type:
+          type: string
+          const: Bearer
+        expires_in:
+          type: integer
+          description: Seconds until the token expires — 900, a fresh 15 minutes.
+        scope:
+          type: string
+          description: |
+            The scopes the token actually carries, space-joined, after the intersection. This is the
+            authoritative answer and it may be shorter than what you asked for.
+        scopes:
+          type: array
+          items: { type: string }
+          description: |
+            The same names as an array, carried so a caller written against
+            `POST /v1/integration/token` keeps working. It always agrees with `scope`.
+    OAuthErrorResponse:
+      type: object
+      required: [error]
+      description: |
+        RFC 6749's flat refusal, sent as `application/json`. This is the mint's vocabulary and the
+        mint's alone — every `/v1` resource refuses with a JSON:API `ErrorDocument` instead.
+
+        Unknown members may be added; ignore the ones you do not recognise rather than refusing the
+        body.
+      properties:
+        error:
+          type: string
+          enum: [invalid_request, invalid_client, invalid_scope, unauthorized_client]
+          description: The machine vocabulary to branch on.
+        error_description:
+          type: string
+          description: One sentence for a human. Do not branch on it — the wording may change.
+      additionalProperties: true
+    ThrottledResponse:
+      type: object
+      description: |
+        What a 429 carries. The throttle answers before the mint runs, so this is neither an OAuth
+        refusal nor a JSON:API document — branch on the status.
+      properties:
+        message:
+          type: string
+      additionalProperties: true
+
+    # -- The deprecated integrator token mint ----------------------------------------------------
     IntegrationTokenRequest:
       type: object
       required: [client_id, client_secret, tenant]
