@@ -18,35 +18,49 @@ formality. It is the member that tells the endpoint which exchange this is,
 and the endpoint reads the selectors below only when it is present: a body
 without it is answered as some other kind of request entirely.
 
-Until 0.3.0 this client minted at `POST /v1/integration/token`, a second door
-onto the same grants. The platform deprecated that door on 2026-08-21 and
-still serves it, so a pinned older release of this package keeps working
-while the window is open. This is the door that stays.
+Up to 0.2.x this client minted at `POST /v1/integration/token`, a second
+door onto the same grants; 0.3.0 moved here while that one was still served.
+The platform has now DELETED it rather than deprecating it any further, so a
+release of this package pinned to 0.2.x does not work against the platform
+at all. There is one mint, and this is it.
 
 -- WHY THE SCOPES ARE ONE STRING AND NOT AN ARRAY ------------------------------
 `scope`, spelled RFC 6749's way: one string of names separated by spaces. The
-array member `scopes` that the retired mint read is NOT read here, and a body
-carrying it asks for nothing at all — the mint answers 200 with a token that
-holds no scopes, and every route then refuses it.
+array member `scopes` that the deleted mint read is NOT read here, and a body
+carrying only it asks for nothing at all — which the mint REFUSES, 400
+`invalid_scope`, rather than handing back a token that authorises nothing.
 
 The array is not sent alongside the string as a hedge. A member the endpoint
 ignores costs the next reader a lookup to discover it does nothing, and two
 spellings of one question is exactly how the two drift apart.
 
--- WHY THE SELECTORS ARE SENT ONLY WHEN SET ------------------------------------
+-- WHY `tenant` IS ALWAYS SENT AND `customer` ONLY WHEN SET --------------------
 `tenant` and `customer` NAME a grant somebody already wrote for this
-credential; neither narrows a wider grant down. An unset selector is left
-out of the body altogether rather than sent as null.
+credential; neither narrows a wider grant down.
 
-For `customer` the two spellings mean the same thing — the platform
-documents an omitted `customer` and a null one as the same tenant-wide
-request — so this is a free choice, and one way of saying nothing beats
-two.
+`tenant` is REQUIRED, so it is on every body this module builds and no
+caller can leave it off. The mint used to resolve an absent `tenant` to the
+single active grant behind the credential, and that inference is gone:
+omitting it is a 400 `invalid_request`, and so is sending it empty, which
+RFC 6749 section 3.2 reads as not sending it. The reason is worth keeping in
+mind here rather than only in a changelog — a client with one grant worked
+without naming a tenant, and the day its reseller granted it a second one
+the integration broke, on a day nobody had touched the code. An explicit
+tenant cannot rot that way.
 
-For `tenant` it is not free. The platform asks for a tenant, so a null one
-is a malformed request rather than "you choose"; leaving the member out is
-the only spelling that can ever mean "pick the grant I have". The SDK
-never invents a tenant to fill the gap.
+`customer` is the one selector that may be unset, and an unset one is left
+out of the body altogether rather than sent as null. The two spellings mean
+the same thing — the platform documents an omitted `customer` and a null one
+as the same tenant-wide request — so this is a free choice, and one way of
+saying nothing beats two.
+
+-- THE SECRET TRAVELS EXACTLY ONE WAY ------------------------------------------
+In the body, and never in an `Authorization: Basic` header beside it. The
+mint reads either spelling and REFUSES both at once — 400 `invalid_request`,
+RFC 6749 section 2.3 — because with two credentials on one request the body
+wins silently and nothing on the wire says which one was checked. So the
+mint below sends no `Authorization` header at all, which is the same rule
+read from the other side.
 
 -- WHY THIS IS AN httpx.Auth AND NOT A WRAPPER METHOD --------------------------
 `httpx.Auth` is a request/response GENERATOR: it may look at the response and
@@ -121,16 +135,20 @@ def _token_request_body(
     *,
     client_id: str,
     client_secret: str,
-    tenant: str | None,
+    tenant: str,
     customer: str | None,
     scopes: tuple[str, ...] | None,
 ) -> dict[str, object]:
-    """The JSON the mint reads, with every unset member ABSENT.
+    """The JSON the mint reads, with every unset OPTIONAL member ABSENT.
 
     Shared by the sync and async auth, which share no other machinery: the
     lifecycle around this differs down to the lock, but the body does not,
     and a body that diverged between the two clients would send one of them
     to the wrong context with nothing to show for it.
+
+    `grant_type` and `tenant` are not optional and are on every body this
+    builds: the first names the exchange, the second names the grant, and
+    the mint refuses a request missing either.
 
     `scope` is one space-delimited string, which is the only spelling this
     endpoint reads — see the module docstring for why the array is not sent
@@ -140,9 +158,8 @@ def _token_request_body(
         "grant_type": GRANT_TYPE,
         "client_id": client_id,
         "client_secret": client_secret,
+        "tenant": tenant,
     }
-    if tenant is not None:
-        body["tenant"] = tenant
     if customer is not None:
         body["customer"] = customer
     if scopes:
@@ -159,7 +176,7 @@ class ClientCredentialsAuth(httpx.Auth):
         base_url: str,
         client_id: str,
         client_secret: str,
-        tenant: str | None = None,
+        tenant: str,
         customer: str | None = None,
         scopes: Sequence[str] | None = None,
         timeout: float = 30.0,

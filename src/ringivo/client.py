@@ -14,26 +14,41 @@ by reading the installed source.
 -- WHY A CLIENT WITH NO SCOPES IS REFUSED AT CONSTRUCTION ----------------------
 The token carries exactly the scopes it was asked for, intersected with what
 the grant behind the credential allows. Ask for none and that intersection
-is EMPTY: the mint answers 200, hands back a real token, and every route
-then refuses it. So a client built without scopes has no working call in it —
-not a narrower client, an inert one.
+is EMPTY, and the mint REFUSES an empty one: 400 `invalid_scope`, because a
+token that authorises nothing is refused by every route it could be spent
+on. So a client built without scopes has no working call in it — not a
+narrower client, an inert one.
 
 That failure is cheap here and expensive anywhere else. A `ValueError` on
 the constructor line names the missing argument while the developer is
-looking at it; the alternative is a 403 from a resource that has nothing
-wrong with it, read as an access problem, hours or a deployment later. Same
-reasoning as the empty-upload refusal in faxes.py: refuse what cannot work,
-at the first moment it can be seen.
+looking at it; the alternative is a 400 about scopes on whichever line first
+happened to need a token, a deployment later. Same reasoning as the
+empty-upload refusal in faxes.py: refuse what cannot work, at the first
+moment it can be seen.
 
 A single string is refused beside the empty one, because `scopes="fax:read"`
 is the same failure wearing a type the checker accepts: a str is a
-`Sequence[str]`, so it splits into eight one-character scopes that the
-platform drops one by one, and the caller is handed the very token this
-guard exists to refuse.
+`Sequence[str]`, so it splits into eight one-character scopes and the mint
+answers a 400 `invalid_scope` about scope names the caller never typed.
 
 The SDK still names no scope of its own — WHICH scopes a credential may hold
 is the platform's to decide and the grant's to answer. This only refuses the
 questions that cannot have an answer.
+
+-- AND WHY `tenant` IS NOT OPTIONAL EITHER -------------------------------------
+`tenant` is a required keyword argument, so a caller who omits it is stopped
+by their type checker and then by Python itself, before any request is
+built. The mint used to infer the tenant from the single active grant behind
+a credential; the platform deleted that inference, and an unnamed tenant is
+now a 400 `invalid_request`.
+
+Deleted for a good reason, and this constructor inherits it: a client with
+one grant worked without naming a tenant, and the day its reseller granted
+it a second one the integration broke — in code nobody had touched, because
+of a change made on somebody else's screen. Naming the tenant costs one
+argument and removes that whole class of surprise. An empty string is
+refused here too, because the mint reads a valueless parameter as an absent
+one (RFC 6749 section 3.2) and answers the same 400.
 
 -- ONE CLIENT, ONE AUTH FLOW ---------------------------------------------------
 Every request goes through the same `httpx.Client`, so token caching, the
@@ -82,26 +97,25 @@ class Ringivo:
             names no host of its own.
         client_id: The client id issued with your credential.
         client_secret: Its secret.
-        tenant: The provider you are acting for. Pass it: today the token
-            request needs one, and your credential must already hold a
-            grant for that tenant or the platform refuses it. Leave it out
-            only where the platform picks the single grant behind your
-            credential for you.
+        tenant: The provider you are acting for. REQUIRED — there is no
+            inference to fall back on, and a mint that names no tenant is
+            refused. Your credential must already hold a grant for that
+            tenant, or the platform refuses the mint however good the
+            credential is.
         customer: One customer inside that tenant, when your grant names
             one. It SELECTS a context somebody already granted you and
             narrows nothing by itself, so leave it out for the
             tenant-wide token your grant allows.
         scopes: The scopes to ask for, as a list of names. REQUIRED, though
-            it is spelled as a keyword: a token minted with no scopes
-            carries none and is refused by every route, so an empty list —
-            or one bare string, which splits into one-character scopes — is
-            a `ValueError` here rather than a puzzle in production.
-            `fax:read` and `fax:write`
+            it is spelled as a keyword: the mint refuses a request that
+            asks for no scopes, so an empty list — or one bare string,
+            which splits into one-character scopes — is a `ValueError` here
+            rather than a puzzle in production. `fax:read` and `fax:write`
             are what this client's own calls need. What the token ends up
             carrying is the intersection with what your grant allows, and
-            a scope outside that is dropped rather than refused, so an
-            over-broad request fails later at the resource rather than
-            here.
+            a scope outside that is dropped rather than refused as long as
+            something survives, so an over-broad request fails later at the
+            resource rather than here.
         timeout: Seconds any single request may take, token requests
             included.
 
@@ -119,7 +133,7 @@ class Ringivo:
         client_id: str,
         client_secret: str,
         *,
-        tenant: str | None = None,
+        tenant: str,
         customer: str | None = None,
         scopes: Sequence[str] | None = None,
         timeout: float = 30.0,
@@ -128,26 +142,36 @@ class Ringivo:
             raise ValueError("base_url is required")
         if not client_id or not client_secret:
             raise ValueError("client_id and client_secret are required")
+        # Omitting `tenant` is a `TypeError` from Python before this line
+        # runs. An EMPTY one is not, and the mint reads a valueless
+        # parameter as an absent one, so it is refused here for the same
+        # reason (module docstring, above).
+        if not tenant:
+            raise ValueError(
+                "tenant is required: the mint refuses a request that names no tenant, and "
+                "an empty tenant counts as none. Pass the tenant your credential holds a "
+                "grant for."
+            )
         # A str IS a `Sequence[str]`, to the type checker and to `tuple()`:
         # `scopes="fax:read"` type-checks, passes the emptiness check below,
-        # and asks for eight one-character scopes the platform drops one by
-        # one. That is the inert token this whole guard exists to refuse,
-        # walking straight past it, so the shape is checked before the
-        # content.
+        # and asks for eight one-character scopes the platform does not
+        # publish — a 400 `invalid_scope` naming names the caller never
+        # typed, on whichever line first needed a token. The shape is
+        # checked before the content so it is caught here instead.
         if isinstance(scopes, str):
             raise ValueError(
                 "scopes must be a list of scope names, not one string: a str is read "
                 "one character at a time, so scopes=\"fax:read\" asks for eight scopes "
-                "that do not exist and the platform silently drops every one. Pass "
+                "that do not exist and the mint refuses every one of them. Pass "
                 'scopes=["fax:read"].'
             )
-        # Empty is not "the default" here — it is a token that carries no
-        # scopes and is refused by every route (module docstring, above).
+        # Empty is not "the default" here — it asks for a token that
+        # authorises nothing, which the mint refuses (module docstring).
         if not scopes:
             raise ValueError(
-                "scopes are required: a token minted without them carries no scopes "
-                "at all, and every API route refuses it. Pass the scopes your "
-                'integration was granted — the calls this client makes need '
+                "scopes are required: a request that asks for none authorises nothing, "
+                "so the mint refuses it rather than issuing a token. Pass the scopes "
+                'your integration was granted — the calls this client makes need '
                 'scopes=["fax:read", "fax:write"].'
             )
 

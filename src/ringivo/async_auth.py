@@ -14,10 +14,11 @@ Every "why" behind this file is written out there and is NOT repeated
 here: why an `httpx.Auth` rather than a wrapper method, why the mint is
 `POST /oauth/token` with the credential and a `client_credentials`
 `grant_type` in the body, why the scopes go as one space-delimited
-`scope` string rather than an array, why an unset selector is left out of
-that body altogether, why the token is replaced `expires_in - 60` seconds
-in, and why expiry is measured on a monotonic clock. What follows is only
-what is different.
+`scope` string rather than an array, why `tenant` is on every body while
+an unset `customer` is left out of it altogether, why the secret travels
+in the body and never also in an `Authorization` header, why the token is
+replaced `expires_in - 60` seconds in, and why expiry is measured on a
+monotonic clock. What follows is only what is different.
 
 -- THE BODY IS THE ONE THING SHARED --------------------------------------------
 `_token_request_body` is imported rather than written twice. The
@@ -60,7 +61,7 @@ class AsyncClientCredentialsAuth(httpx.Auth):
         base_url: str,
         client_id: str,
         client_secret: str,
-        tenant: str | None = None,
+        tenant: str,
         customer: str | None = None,
         scopes: Sequence[str] | None = None,
         timeout: float = 30.0,
