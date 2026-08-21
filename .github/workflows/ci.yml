@@ -15,3 +15,40 @@ jobs:
       - run: uv run ruff check .
       - run: uv run pyright
       - run: uv run pytest
+
+  # THE FLOORS THIS PACKAGE DECLARES, ACTUALLY INSTALLED. The job above pins
+  # everything to uv.lock, which records the NEWEST release that satisfied
+  # each range — so a lower bound that is too low, or a dependency imported
+  # but not declared, is invisible to it and to every test in it. Both have
+  # shipped here: `typing-extensions>=4.0` behind a `python_version < '3.11'`
+  # marker, while src/ringivo/_generated_types.py imports typing_extensions
+  # unconditionally and needs 4.10 for its `closed=True` TypedDict.
+  #
+  # Two resolutions, because they answer different questions and only the
+  # second is the user's:
+  #
+  #   `uv sync --resolution lowest-direct` lowers DEV dependencies too — what
+  #   a CONTRIBUTOR gets — and runs the whole suite, so it catches behaviour
+  #   and not just imports.
+  #
+  #   `uv pip install --resolution lowest-direct .` lowers RUNTIME
+  #   dependencies only, against the built wheel — what `pip install ringivo`
+  #   gets. The defect above was a runtime one, so this is the half that
+  #   mattered.
+  #
+  # Hermetic like its sibling: the package index and nothing else.
+  lowest-deps:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+      # A contributor's floor: every direct dependency at its lowest declared
+      # version, dev tools included, running the whole suite.
+      - run: uv sync --resolution lowest-direct
+      - run: uv run --resolution lowest-direct pytest
+      # A user's floor: the built wheel, runtime dependencies only. The script
+      # asserts it is reading site-packages and not the src/ tree beside it,
+      # so it cannot pass without the install having worked.
+      - run: uv venv /tmp/lowest
+      - run: uv pip install --python /tmp/lowest/bin/python --resolution lowest-direct .
+      - run: /tmp/lowest/bin/python scripts/check_lowest_install.py
