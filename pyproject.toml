@@ -7,12 +7,30 @@ license = "MIT"
 requires-python = ">=3.10"
 dependencies = [
     "httpx>=0.27,<0.29",
-    # `NotRequired`, which src/ringivo/_generated_types.py imports — `typing`
-    # only publishes it from 3.11, so the marker is the whole reason this is
-    # here and it drops off every newer interpreter. Declared rather than
-    # leaned on: httpx pulls anyio, which pulls typing-extensions on these
-    # same versions anyway, and a transitive dependency is not a promise.
-    "typing-extensions>=4.0; python_version < '3.11'",
+    # UNCONDITIONAL, AND NOT BECAUSE OF `NotRequired`. This line carried a
+    # `python_version < '3.11'` marker for years on the grounds that
+    # `NotRequired` moved into `typing` at 3.11 — but the marker never
+    # matched how the module imports. src/ringivo/_generated_types.py has
+    # ALWAYS written `from typing_extensions import ...` unconditionally, on
+    # every interpreter, because that is what the generator emits. So on
+    # 3.11+ the import worked only when something else in the tree happened
+    # to pull typing-extensions in (httpx → anyio does, on some versions).
+    # That is luck, not a contract, and luck runs out silently: an
+    # ImportError at import time on a supported interpreter.
+    #
+    # THE FLOOR IS 4.10 AND IT IS MEASURED, NOT INFERRED. The generated
+    # module carries `class NumberLookupRequest(TypedDict, closed=True)` —
+    # PEP 728, from the spec's `additionalProperties: false`. Loading that
+    # exact module against each release: 4.6.0 and 4.9.0 raise `TypeError:
+    # _TypedDictMeta.__new__() got an unexpected keyword argument 'closed'`,
+    # while 4.10.0 and 4.11.0 import and construct it. 4.7–4.8 were not
+    # measured and are not claimed either way; 4.10.0 is simply the lowest
+    # version verified working.
+    #
+    # Nothing in CI can catch a floor that is too low — the resolver takes
+    # the newest release and every test passes. Re-probe by hand after any
+    # regeneration that changes this module's imports.
+    "typing-extensions>=4.10",
 ]
 
 [build-system]
