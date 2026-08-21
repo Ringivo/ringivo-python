@@ -421,11 +421,7 @@ paths:
             for before you spend it.
           headers:
             Deprecation:
-              description: |
-                RFC 9745. The moment this endpoint became deprecated, as `@<unix-timestamp>`. It
-                states a fact about the resource, so it is on every response including refusals.
-              schema: { type: string }
-              example: '@1787270400'
+              $ref: '#/components/headers/Deprecation'
           content:
             application/json:
               schema:
@@ -437,6 +433,9 @@ paths:
                 scopes: [numbers:read, numbers:route]
         '401':
           description: The client id or the secret is wrong.
+          headers:
+            Deprecation:
+              $ref: '#/components/headers/Deprecation'
           content:
             application/vnd.api+json:
               schema:
@@ -450,6 +449,9 @@ paths:
           description: |
             Your credentials are good and no active grant matches — either for this tenant, or for
             the customer you named. The two are not told apart, on purpose.
+          headers:
+            Deprecation:
+              $ref: '#/components/headers/Deprecation'
           content:
             application/vnd.api+json:
               schema:
@@ -467,6 +469,9 @@ paths:
             about another reseller's customers.
 
             `POST /oauth/token` answers **400 `invalid_request`** for the same mistake.
+          headers:
+            Deprecation:
+              $ref: '#/components/headers/Deprecation'
           content:
             application/vnd.api+json:
               schema:
@@ -488,6 +493,8 @@ paths:
             Retry-After:
               description: Seconds to wait before trying again.
               schema: { type: integer }
+            Deprecation:
+              $ref: '#/components/headers/Deprecation'
           content:
             application/vnd.api+json:
               schema:
@@ -2366,6 +2373,18 @@ components:
         boundary moves under a walker and a row is served twice or skipped.
       schema: { type: string }
       example: '-createdAt'
+
+  headers:
+    Deprecation:
+      description: |
+        RFC 9745. The moment this endpoint became deprecated, as `@<unix-timestamp>`.
+
+        It states a fact about the RESOURCE, not about one request's outcome, so it is on EVERY
+        response the endpoint produces: the 200, every refusal, and the 429 that a throttle answers
+        before the mint even runs. Declared once here and referenced by each of them, so the five
+        cannot drift apart.
+      schema: { type: string }
+      example: '@1787270400'
 
   responses:
     Unauthenticated:
