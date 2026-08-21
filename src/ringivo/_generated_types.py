@@ -21,17 +21,41 @@ from __future__ import annotations
 #   filename:  openapi.yaml
 #   version:   0.74.0
 
-from typing import Any, Literal, TypeAlias, TypedDict
+from typing import Any, Literal, TypeAlias
 
-from typing_extensions import NotRequired
+from typing_extensions import NotRequired, TypedDict
+
+
+class OauthTokenRequest(TypedDict):
+    grant_type: Literal['client_credentials']
+    client_id: NotRequired[str]
+    client_secret: NotRequired[str]
+    tenant: NotRequired[str]
+    customer: NotRequired[str | None]
+    scope: NotRequired[str]
+
+
+class OauthTokenResponse(TypedDict):
+    access_token: str
+    token_type: str
+    expires_in: int
+    scope: str
+    scopes: list[str]
+
+
+class OauthError(TypedDict):
+    error: str
+    error_description: str
+    hint: NotRequired[str]
 
 
 class IntegrationTokenRequest(TypedDict):
-    client_id: str
-    client_secret: str
-    tenant: str
+    client_id: NotRequired[str]
+    client_secret: NotRequired[str]
+    tenant: NotRequired[str]
     customer: NotRequired[str | None]
     scopes: NotRequired[list[str]]
+    scope: NotRequired[str | None]
 
 
 class IntegrationTokenResponse(TypedDict):
@@ -653,6 +677,76 @@ class FaxEvent(WebhookEventEnvelope):
 
 class FaxReceivedEvent(WebhookEventEnvelope):
     data: FaxReceivedEventData
+
+
+class NumberLookupRequest(TypedDict, closed=True):
+    number: str
+
+
+NumberLookupDipStatus: TypeAlias = Literal['answered', 'no_data', 'failed']
+
+
+class DialedNumberGeography(TypedDict):
+    rateCenter: str | None
+    state: str | None
+
+
+class LrnFacts(TypedDict):
+    lrn: str
+    spid: str | None
+    ocn: str | None
+    lata: str | None
+    lec: str | None
+    lineType: str | None
+    rateCenter: str | None
+    state: str | None
+    jurisdiction: str | None
+    local: str | None
+    portedAt: str | None
+
+
+class CallerNameFacts(TypedDict):
+    name: str
+
+
+class MessagingFacts(TypedDict):
+    enabled: bool
+    provider: str | None
+    country: str | None
+    countryCode: str | None
+
+
+class NumberLookupLrnComponent(TypedDict):
+    status: NumberLookupDipStatus
+    data: LrnFacts | None
+
+
+class NumberLookupCallerNameComponent(TypedDict):
+    status: NumberLookupDipStatus
+    data: CallerNameFacts | None
+
+
+class NumberLookupMessagingComponent(TypedDict):
+    status: NumberLookupDipStatus
+    data: MessagingFacts | None
+
+
+class NumberLookupComponents(TypedDict):
+    lrn: NumberLookupLrnComponent
+    callerName: NumberLookupCallerNameComponent
+    messaging: NumberLookupMessagingComponent
+
+
+class NumberLookup(TypedDict):
+    number: str
+    lookedUpAt: str
+    charged: bool
+    dialedNumber: DialedNumberGeography
+    components: NumberLookupComponents
+
+
+class NumberLookupResult(TypedDict):
+    data: NumberLookup
 
 
 class Error(TypedDict):
