@@ -12,10 +12,12 @@ loop, which is the failure auth.py already refuses out loud.
 -- READ auth.py FIRST ----------------------------------------------------------
 Every "why" behind this file is written out there and is NOT repeated
 here: why an `httpx.Auth` rather than a wrapper method, why the mint is
-`POST /v1/integration/token` with the credential in the body, why an
-unset selector is left out of that body altogether, why the token is
-replaced `expires_in - 60` seconds in, and why expiry is measured on a
-monotonic clock. What follows is only what is different.
+`POST /oauth/token` with the credential and a `client_credentials`
+`grant_type` in the body, why the scopes go as one space-delimited
+`scope` string rather than an array, why an unset selector is left out of
+that body altogether, why the token is replaced `expires_in - 60` seconds
+in, and why expiry is measured on a monotonic clock. What follows is only
+what is different.
 
 -- THE BODY IS THE ONE THING SHARED --------------------------------------------
 `_token_request_body` is imported rather than written twice. The

@@ -5,12 +5,26 @@ readable part of the answer attached — the HTTP status and the API's own
 error objects — so branching on a failure never means parsing a message
 string. The message exists for a log line and a traceback, not for code.
 
-The API answers errors as JSON:API error documents (`{"errors": [...]}`),
-including on the endpoints whose SUCCESS bodies are plain JSON — the token
-mint among them. RFC 6749's flat `{"error": ..., "error_description": ...}`
-is folded here as well: a platform can still front the API with an
-OAuth-style gateway that answers in that shape, and both fold into
-`ApiError` so a caller has one thing to catch.
+-- TWO ERROR VOCABULARIES MEET HERE --------------------------------------------
+The boundary between them runs between the MINT and everything else.
+
+The `/v1` resource surface answers JSON:API error documents
+(`{"errors": [...]}`). The token mint — `POST /oauth/token` — answers RFC
+6749's flat `{"error": ..., "error_description": ...}` instead, because that
+is what an OAuth token endpoint owes its callers. Both fold into `ApiError`,
+so a caller still has ONE class to catch and one place to read a machine code
+off, whichever door refused them.
+
+WHICH SHAPE ARRIVED IS DECIDED BY WHAT THE BODY CARRIES, never by which URL
+was called. The two are disjoint — a JSON:API document has no top-level
+`error` member, and an OAuth refusal has no `errors` array — so one parser
+reads both without being told where it is. That matters more than the line it
+saves: the alternative threads the caller's URL down into the error layer, and
+then a surface that changes vocabulary is MIS-read rather than followed.
+
+Unknown members are ignored rather than refused, and the whole document is
+kept on `raw`, so a member either surface adds later reaches a caller without
+a new release.
 """
 
 from __future__ import annotations
@@ -42,12 +56,20 @@ class RingivoError(Exception):
 
 @dataclass(frozen=True)
 class ApiErrorDetail:
-    """One JSON:API error object, as it arrived.
+    """One refusal, as it arrived — a JSON:API error object, or an OAuth one.
 
     `code` is the stable machine vocabulary to branch on — and it is
     genuinely optional: where no published code names the case, the status
     is the contract and `meta` carries the detail (a fax that cannot be
     cancelled is the documented example).
+
+    A MINT refusal is folded into one of these too, and fills a narrower set
+    of fields: `code` is RFC 6749's `error` (`invalid_client`,
+    `unauthorized_client`, `invalid_request`, `invalid_scope`), `detail` is
+    its `error_description`, `status` is the HTTP status as a string, and
+    `raw` is the whole document. `title`, `source` and `meta` stay None —
+    that vocabulary has no member for them, and inventing one would make an
+    absent fact look like a reported one.
     """
 
     status: str | None = None
@@ -134,14 +156,22 @@ def _errors_from_response(response: httpx.Response) -> tuple[ApiErrorDetail, ...
     if isinstance(errors, list):
         return tuple(ApiErrorDetail._from_json(e) for e in errors if isinstance(e, Mapping))
 
-    # RFC 6749's flat shape, from an OAuth-style gateway in front of ours.
+    # RFC 6749's flat shape — what the token mint answers. `error` is the
+    # machine vocabulary (`invalid_client`, `unauthorized_client`,
+    # `invalid_request`, `invalid_scope`), `error_description` the sentence
+    # for a human.
+    #
+    # `title` is deliberately LEFT UNSET rather than filled with the error
+    # name: `code` already carries it, and `_message` brackets the code ahead
+    # of the text, so naming it twice rendered every mint refusal as
+    # "HTTP 403 [unauthorized_client]: unauthorized_client No active
+    # integration grant…". The name belongs in one place.
     oauth_error = document.get("error")
     if isinstance(oauth_error, str):
         description = document.get("error_description")
         return (
             ApiErrorDetail(
                 status=str(response.status_code),
-                title=oauth_error,
                 detail=description if isinstance(description, str) else None,
                 code=oauth_error,
                 raw=document,

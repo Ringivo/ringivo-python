@@ -7,11 +7,31 @@ server says it is no longer good — happens here, on the way out of every
 request.
 
 -- WHERE THE TOKEN COMES FROM --------------------------------------------------
-`POST {base_url}/v1/integration/token`, one JSON body, no `Authorization`
-header: the credential and the selectors travel in the body, and the answer
-is the bearer every other request carries. That endpoint is the mint for the
-`/v1` API, and it is the only one — a token bought anywhere else is refused
-by every route this client calls.
+`POST {base_url}/oauth/token`, one JSON body, no `Authorization` header: the
+credential and the selectors travel in the body, and the answer is the bearer
+every other request carries. That endpoint is the mint for the `/v1` API, and
+it is the only one — a token bought anywhere else is refused by every route
+this client calls.
+
+`grant_type` is `client_credentials`, and it is REQUIRED rather than a
+formality. It is the member that tells the endpoint which exchange this is,
+and the endpoint reads the selectors below only when it is present: a body
+without it is answered as some other kind of request entirely.
+
+Until 0.3.0 this client minted at `POST /v1/integration/token`, a second door
+onto the same grants. The platform deprecated that door on 2026-08-21 and
+still serves it, so a pinned older release of this package keeps working
+while the window is open. This is the door that stays.
+
+-- WHY THE SCOPES ARE ONE STRING AND NOT AN ARRAY ------------------------------
+`scope`, spelled RFC 6749's way: one string of names separated by spaces. The
+array member `scopes` that the retired mint read is NOT read here, and a body
+carrying it asks for nothing at all — the mint answers 200 with a token that
+holds no scopes, and every route then refuses it.
+
+The array is not sent alongside the string as a hedge. A member the endpoint
+ignores costs the next reader a lookup to discover it does nothing, and two
+spellings of one question is exactly how the two drift apart.
 
 -- WHY THE SELECTORS ARE SENT ONLY WHEN SET ------------------------------------
 `tenant` and `customer` NAME a grant somebody already wrote for this
@@ -90,7 +110,11 @@ EXPIRY_MARGIN_SECONDS = 60
 _monotonic = time.monotonic
 
 # The one path that issues tokens the /v1 API accepts.
-TOKEN_PATH = "/v1/integration/token"
+TOKEN_PATH = "/oauth/token"
+
+# The exchange this client performs, and the member that names it. A mint
+# without it is not read as a credential exchange at all.
+GRANT_TYPE = "client_credentials"
 
 
 def _token_request_body(
@@ -107,14 +131,22 @@ def _token_request_body(
     lifecycle around this differs down to the lock, but the body does not,
     and a body that diverged between the two clients would send one of them
     to the wrong context with nothing to show for it.
+
+    `scope` is one space-delimited string, which is the only spelling this
+    endpoint reads — see the module docstring for why the array is not sent
+    with it.
     """
-    body: dict[str, object] = {"client_id": client_id, "client_secret": client_secret}
+    body: dict[str, object] = {
+        "grant_type": GRANT_TYPE,
+        "client_id": client_id,
+        "client_secret": client_secret,
+    }
     if tenant is not None:
         body["tenant"] = tenant
     if customer is not None:
         body["customer"] = customer
     if scopes:
-        body["scopes"] = list(scopes)
+        body["scope"] = " ".join(scopes)
     return body
 
 

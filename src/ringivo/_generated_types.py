@@ -26,6 +26,34 @@ from typing import Any, Literal, TypeAlias, TypedDict
 from typing_extensions import NotRequired
 
 
+class OAuthTokenRequest(TypedDict):
+    grant_type: Literal['client_credentials']
+    client_id: str
+    client_secret: str
+    tenant: NotRequired[str]
+    customer: NotRequired[str | None]
+    scope: NotRequired[str]
+
+
+class OAuthTokenResponse(TypedDict):
+    access_token: str
+    token_type: Literal['Bearer']
+    expires_in: int
+    scope: str
+    scopes: list[str]
+
+
+class OAuthErrorResponse(TypedDict):
+    error: Literal[
+        'invalid_request', 'invalid_client', 'invalid_scope', 'unauthorized_client'
+    ]
+    error_description: NotRequired[str]
+
+
+class ThrottledResponse(TypedDict):
+    message: NotRequired[str]
+
+
 class IntegrationTokenRequest(TypedDict):
     client_id: str
     client_secret: str

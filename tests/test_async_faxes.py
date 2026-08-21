@@ -19,7 +19,7 @@ import respx
 from ringivo import ApiError, AsyncRingivo, Fax, __version__
 
 BASE_URL = "https://api.yourprovider.example"
-TOKEN_URL = f"{BASE_URL}/v1/integration/token"
+TOKEN_URL = f"{BASE_URL}/oauth/token"
 FAXES_URL = f"{BASE_URL}/v1/faxes"
 FAX_ID = "0198c4a1-2b3c-7d4e-8f50-1a2b3c4d5e6f"
 FAX_URL = f"{FAXES_URL}/{FAX_ID}"
@@ -33,13 +33,14 @@ def _token(respx_mock: respx.MockRouter) -> None:
         return_value=httpx.Response(
             200,
             json={
-                # Every member `IntegrationTokenResponse` requires, `scopes`
-                # included: a fixture is read as a specimen of the real
-                # answer, and one missing a required member teaches the next
-                # reader a response the platform never sends.
+                # Every member `OAuthTokenResponse` requires, both scope
+                # spellings included: a fixture is read as a specimen of the
+                # real answer, and one missing a required member teaches the
+                # next reader a response the platform never sends.
                 "token_type": "Bearer",
                 "access_token": "tok",
                 "expires_in": 900,
+                "scope": "fax:read fax:write",
                 "scopes": ["fax:read", "fax:write"],
             },
         )
