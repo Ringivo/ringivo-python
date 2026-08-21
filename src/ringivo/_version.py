@@ -6,4 +6,4 @@ User-Agent without importing the package root back into itself, and
 does — there is no second copy to drift.
 """
 
-__version__ = "0.2.2"
+__version__ = "0.3.0"
