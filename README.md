@@ -8,9 +8,10 @@ happened.
 pip install ringivo
 ```
 
-Python 3.10 or newer. The only runtime dependency is `httpx` — plus
-`typing-extensions` on Python 3.10, where `typing` does not yet carry
-`NotRequired`.
+Python 3.10 or newer. Two runtime dependencies: `httpx`, and
+`typing-extensions` (4.10 or newer) on every supported interpreter — the
+generated types use `TypedDict(closed=True)`, which no version of the
+standard library's `typing` carries.
 
 **There are two clients: `Ringivo` and `AsyncRingivo`.** They take the same
 arguments and have the same methods; the async one awaits them. Pick the one

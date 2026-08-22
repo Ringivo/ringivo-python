@@ -17,10 +17,11 @@
 # WHAT THIS WRITES is ONE file of TYPES — `src/ringivo/_generated_types.py`,
 # one `TypedDict` per schema in the OpenAPI description. There is no
 # generated runtime here and no generated client: a `TypedDict` is a plain
-# `dict` once the interpreter has it, so the file adds no behaviour, no
-# import cost and no dependency of its own beyond `typing_extensions` on
-# Python 3.10. The hand-written layer in src/ringivo/*.py is the whole
-# client. Nothing generated crosses the public boundary — see models.py.
+# `dict` once the interpreter has it, so the file adds no behaviour and no
+# import cost. It does add ONE dependency, on every interpreter:
+# `typing_extensions`, 4.10 or newer. The hand-written layer in
+# src/ringivo/*.py is the whole client. Nothing generated crosses the public
+# boundary — see models.py.
 #
 # The file IS committed, and pyright checks it like any other source file.
 # Committed so a spec-sync diff stays reviewable in a PR; checked because a
@@ -76,10 +77,18 @@ Regenerate with scripts/generate.sh, which overwrites this file whole.
 EOF
 )
 
-# `--target-python-version 3.10` is this package's own floor, and it decides
-# where `NotRequired` is imported from: `typing` only has it from 3.11, so
-# at 3.10 the generator writes `typing_extensions` and pyproject.toml
-# declares that dependency for those interpreters.
+# `--target-python-version 3.10` is this package's own floor. It used to be
+# described here as deciding where `NotRequired` comes from — `typing` only
+# has it from 3.11 — but that stopped being the operative reason: the
+# generator writes `from typing_extensions import ...` for EVERY member it
+# needs, on every target, and the spec's `additionalProperties: false` now
+# makes it emit `TypedDict(closed=True)`, which no stdlib `typing` carries at
+# any version. So pyproject.toml declares typing-extensions unconditionally,
+# floored at 4.10 — the lowest release that accepts `closed=`. If a
+# regeneration changes what this file imports, re-probe that floor by hand.
+# The `lowest-deps` job in .github/workflows/ci.yml installs whatever floor
+# is declared and fails when it is too low, but it cannot tell you what the
+# right one is — only a probe against each release can.
 #
 # `--disable-timestamp` is what makes a re-run reproducible. With the
 # timestamp left on, every run rewrites line 3 and the file is permanently

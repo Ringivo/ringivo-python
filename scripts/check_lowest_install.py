@@ -10,13 +10,21 @@ resolutions answer different questions and only one of them is the user's:
                                             against the built wheel, so it is
                                             what `pip install ringivo` gets.
 
-The defect this guards was a runtime one — src/ringivo/_generated_types.py
-imports `typing_extensions` unconditionally and defines a `closed=True`
-TypedDict (PEP 728) that releases below 4.10 reject with `TypeError:
-_TypedDictMeta.__new__() got an unexpected keyword argument 'closed'`, while
-pyproject.toml declared `>=4.0` behind a `python_version < '3.11'` marker.
-Every gate stayed green through all of it, because a resolver takes the
-NEWEST release and the test suite never installs the oldest.
+WHAT IT CATCHES: a runtime floor that is too low. src/ringivo/_generated_types.py
+defines a `closed=True` TypedDict (PEP 728) that every release below 4.10
+rejects with `TypeError: _TypedDictMeta.__new__() got an unexpected keyword
+argument 'closed'`, and pyproject.toml once declared `>=4.0`. Every gate
+stayed green through that, because a resolver takes the NEWEST release and
+the test suite never installs the oldest. Lower the floor by one release and
+this script exits 1 on the import below — probed, not assumed.
+
+WHAT IT DOES NOT CATCH: a dependency declared behind the wrong environment
+marker. The same release had that defect too — `python_version < '3.11'` on a
+package the module imports unconditionally — and reverting it leaves this
+script GREEN, because under the marker typing-extensions stops being a DIRECT
+dependency and `--resolution lowest-direct` no longer lowers it; it arrives
+transitively via httpx -> anyio at the newest release. Do not read a pass here
+as proof the dependency table is right.
 
 Nothing here can be a unit test: it is a fact about resolution and packaging,
 observable only from a separate environment built at the floor.
