@@ -8,9 +8,10 @@ happened.
 pip install ringivo
 ```
 
-Python 3.10 or newer. The only runtime dependency is `httpx` — plus
-`typing-extensions` on Python 3.10, where `typing` does not yet carry
-`NotRequired`.
+Python 3.10 or newer. Two runtime dependencies: `httpx`, and
+`typing-extensions` (4.10 or newer) on every supported interpreter — the
+generated types use `TypedDict(closed=True)`, which no version of the
+standard library's `typing` carries.
 
 **There are two clients: `Ringivo` and `AsyncRingivo`.** They take the same
 arguments and have the same methods; the async one awaits them. Pick the one
@@ -44,17 +45,22 @@ mints a new one a minute before that one expires, and mints another if the
 platform ever refuses one — you never handle the token.
 
 **Ask for the scopes you need.** The client refuses to construct without
-`scopes=`, and raises `ValueError` naming the fix: a token minted without
-them carries no scopes at all, so every route would refuse it — a 403 you
-would otherwise meet in production rather than on the line that caused it.
+`scopes=`, and raises `ValueError` naming the fix: a request that asks for
+no scopes authorises nothing, so the platform refuses it — a 400 you would
+otherwise meet on your first call rather than on the line that caused it.
 Ask for more than your credential was granted and the extra is dropped
-rather than refused, so a call can still fail later at the resource. The
-scopes this client's calls need are `fax:read` and `fax:write`.
+rather than refused, as long as one scope survives, so a call can still fail
+later at the resource. The scopes this client's calls need are `fax:read`
+and `fax:write`.
+
+**`tenant=` is required**, and it is a required argument rather than a
+checked one: leave it out and Python refuses the constructor by name. There
+is no inference behind it — a mint that names no tenant is refused.
 
 Pass `customer=` as well when your credential was issued for one customer
 inside that tenant. Both selectors NAME a grant your provider already wrote
 for your credential; they never widen one, and a selector no grant covers is
-refused with a 403 however good your credentials are.
+refused with a 400 however good your credentials are.
 
 ## Send a fax
 
@@ -261,7 +267,7 @@ are deliberately not wrapped.
 
 | | |
 |---|---|
-| `Ringivo(base_url, client_id, client_secret, *, tenant=None, customer=None, scopes=None, timeout=30.0)` | The client. A context manager, or call `close()`. `scopes` is spelled as a keyword but required — an empty one raises. |
+| `Ringivo(base_url, client_id, client_secret, *, tenant, customer=None, scopes=None, timeout=30.0)` | The client. A context manager, or call `close()`. `tenant` is required. `scopes` is spelled as a keyword but required too — an empty one raises. |
 | `AsyncRingivo(…same arguments…)` | The asyncio twin. An async context manager, or await `aclose()`. Every method below is awaited. |
 | `client.faxes.send(*, fax_account, to, file=…\|urls=…, …)` | Send one fax. Returns the accepted `Fax`. |
 | `client.faxes.get(fax_id, *, include=None)` | One fax, complete. |

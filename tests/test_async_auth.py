@@ -6,12 +6,14 @@ count the sync suite proves has to be proved a second time here: an async
 twin that quietly re-minted a token on every request, or that dropped a
 selector from the body, would pass the sync suite untouched.
 
-That includes the MINT'S NEW SHAPE and its error vocabulary: the body
-carries a `client_credentials` grant type and a space-delimited `scope`,
-and `POST /oauth/token` refuses in RFC 6749's flat `{"error", …}` while
-every `/v1` resource keeps answering JSON:API. `_token_request_body` is
-shared, but nothing else on this path is, so the assertions are made a
-second time here rather than inherited.
+That includes the MINT'S SHAPE and its error vocabulary: the body carries a
+`client_credentials` grant type, a `tenant` and a space-delimited `scope` —
+all three required — and `POST /oauth/token` refuses in RFC 6749's flat
+`{"error", …}` while every `/v1` resource keeps answering JSON:API.
+`_token_request_body` is shared, but nothing else on this path is, so the
+assertions are made a second time here rather than inherited. The
+constructor guards especially: `AsyncRingivo` could lose either of them on
+its own and the sync suite would stay green.
 
 The last test is the one that is NOT a mirror but an INVERSION. The sync
 suite proves the sync auth refuses an `httpx.AsyncClient`; this one proves
@@ -22,6 +24,7 @@ unauthenticated send is available in that direction too.
 from __future__ import annotations
 
 import asyncio
+import inspect
 import itertools
 import json
 from collections.abc import Sequence
@@ -47,11 +50,12 @@ def _token_response(
     expires_in: int | None = 900,
     scopes: Sequence[str] = ("fax:read", "fax:write"),
 ) -> httpx.Response:
-    """The mint's documented 200 — see `OAuthTokenResponse` in the spec.
+    """The mint's documented 200 — see `OauthTokenResponse` in the spec.
 
     Both scope members, because the endpoint sends both: `scope` is RFC
-    6749's space-joined effective set and `scopes` is the array the retired
-    mint returned, kept for continuity. They always carry the same names.
+    6749's space-joined effective set and `scopes` is the same names as an
+    array. Only `scopes` is required of the response, but a token with no
+    scopes is refused rather than issued, so an integrator sees both.
     """
     body: dict[str, object] = {
         "token_type": "Bearer",
@@ -75,16 +79,27 @@ def _fax_document() -> dict[str, object]:
     return {"data": {"type": "faxes", "id": FAX_ID, "attributes": {"status": "delivered"}}}
 
 
-def _oauth_error(status: int, error: str, description: str | None = None) -> httpx.Response:
-    """A refusal in the mint's vocabulary — RFC 6749's flat shape."""
+def _oauth_error(
+    status: int, error: str, description: str | None = None, hint: str | None = None
+) -> httpx.Response:
+    """A refusal in the mint's vocabulary — RFC 6749's flat shape.
+
+    `hint` is optional because the platform sends it on some refusals and
+    not others — it is the only member that tells the two `invalid_scope`
+    causes apart.
+    """
     body: dict[str, object] = {"error": error}
     if description is not None:
         body["error_description"] = description
+    if hint is not None:
+        body["hint"] = hint
     return httpx.Response(status, json=body)
 
 
-#: Every client here names scopes, because a client with none is refused at
-#: construction — see `test_a_client_that_asks_for_no_scopes_is_refused`.
+#: Every client here names a tenant and scopes, because a client missing
+#: either is refused at construction — see the two tests that prove it,
+#: `test_a_client_that_names_no_tenant_is_refused_at_construction` and
+#: `test_a_client_that_asks_for_no_scopes_is_refused_at_construction`.
 SCOPES = ["fax:read", "fax:write"]
 
 
@@ -147,6 +162,12 @@ async def test_the_mint_request_carries_no_authorization_header() -> None:
     proof of this does not carry over: a bearer added here would be a
     token sent to buy a token, and nothing in the sync client would say so.
 
+    The assertion is on `Authorization` and not on `Bearer` because the
+    platform now refuses two credentials on one request — a body
+    `client_secret` beside an `Authorization: Basic` header is a 400
+    `invalid_request` (RFC 6749 section 2.3). This client sends its secret
+    exactly one way, and the line below is what says so.
+
     Probed by adding `headers={"Authorization": "Bearer probe"}` to the
     mint's `post()` in async_auth.py: this test fails on the line below,
     naming the header that appeared.
@@ -168,11 +189,13 @@ async def test_the_mint_request_carries_no_authorization_header() -> None:
 
 @pytest.mark.anyio
 @respx.mock
-async def test_the_selectors_are_sent_only_when_the_caller_names_them() -> None:
-    # An unset selector is ABSENT from the body rather than sent as null.
-    # For `customer` the platform reads both spellings the same way, so one
-    # of them is enough; for `tenant` absence is the ONLY spelling that can
-    # mean "pick the grant I have", since a null tenant is malformed.
+async def test_the_tenant_is_always_sent_and_the_customer_only_when_named() -> None:
+    # THE INVERSION of what this asserted through 0.3.x, and the twin of the
+    # sync suite's. `customer` may be absent, and an absent one is left out
+    # rather than sent as null — the platform reads both spellings the same
+    # way. `tenant` may NOT: the mint used to infer it from the single
+    # active grant behind the credential, and with that inference deleted an
+    # unnamed tenant is a 400 `invalid_request`.
     token = respx.post(TOKEN_URL).mock(return_value=_token_response())
     respx.get(FAX_URL).mock(return_value=httpx.Response(200, json=_fax_document()))
 
@@ -189,17 +212,21 @@ async def test_the_selectors_are_sent_only_when_the_caller_names_them() -> None:
     assert _sent(token)["customer"] == CUSTOMER
 
     async with AsyncRingivo(
-        base_url=BASE_URL, client_id="cid", client_secret="csecret", scopes=SCOPES
+        base_url=BASE_URL,
+        client_id="cid",
+        client_secret="csecret",
+        tenant=TENANT,
+        scopes=SCOPES,
     ) as client:
         await client.faxes.get(FAX_ID)
 
-    named_nothing = _sent(token)
-    assert "customer" not in named_nothing, "an unnamed customer was sent anyway"
-    assert "tenant" not in named_nothing, "an unnamed tenant was sent anyway"
-    assert named_nothing == {
+    tenant_wide = _sent(token)
+    assert "customer" not in tenant_wide, "an unnamed customer was sent anyway"
+    assert tenant_wide == {
         "grant_type": "client_credentials",
         "client_id": "cid",
         "client_secret": "csecret",
+        "tenant": TENANT,
         "scope": "fax:read fax:write",
     }
 
@@ -207,10 +234,10 @@ async def test_the_selectors_are_sent_only_when_the_caller_names_them() -> None:
 @pytest.mark.anyio
 @respx.mock
 async def test_scopes_are_sent_as_one_space_delimited_string_and_not_as_an_array() -> None:
-    # The mint does not read the `scopes` array the retired endpoint took.
-    # A body carrying only the array asks for NOTHING and is not refused
-    # for it: the token comes back holding no scopes and every resource
-    # then refuses it, a 403 several calls from here.
+    # The mint does not read the `scopes` array the deleted endpoint took.
+    # A body carrying only the array asks for NOTHING, and asking for
+    # nothing is refused at the mint — 400 `invalid_scope` — rather than
+    # answered with a token that authorises nothing.
     token = respx.post(TOKEN_URL).mock(return_value=_token_response())
     respx.get(FAX_URL).mock(return_value=httpx.Response(200, json=_fax_document()))
 
@@ -225,7 +252,7 @@ async def test_scopes_are_sent_as_one_space_delimited_string_and_not_as_an_array
 
     sent = _sent(token)
     assert sent["scope"] == "fax:read fax:write", "the order the caller asked in, space-joined"
-    assert "scopes" not in sent, "the retired mint's array member, which this endpoint ignores"
+    assert "scopes" not in sent, "the deleted mint's array member, which this endpoint ignores"
 
 
 @pytest.mark.anyio
@@ -406,15 +433,19 @@ async def test_a_refused_credential_is_the_401_and_it_carries_the_oauth_code() -
 
 @pytest.mark.anyio
 @respx.mock
-async def test_a_selector_no_grant_covers_is_the_403_and_it_reaches_the_caller_whole() -> None:
+async def test_a_selector_no_grant_covers_is_a_400_and_it_reaches_the_caller_whole() -> None:
     # Good credentials, no grant. The same BYTES answer a tenant nobody
     # granted this client and a customer nobody granted it — deliberately,
     # so a caller cannot map a reseller's customers by asking. Pinned
     # verbatim rather than by substring: a more specific message from the
     # platform would be a regression, and a substring match sails past it.
+    #
+    # A 400 rather than the 403 it was through 0.3.x: RFC 6749 section 5.2
+    # gives the token endpoint one status for every refusal but a bad
+    # credential, which is why `code` is the assertion worth copying.
     token = respx.post(TOKEN_URL).mock(
         return_value=_oauth_error(
-            403, "unauthorized_client", "No active integration grant for this tenant."
+            400, "unauthorized_client", "No active integration grant for this tenant."
         )
     )
     fax = respx.get(FAX_URL).mock(return_value=httpx.Response(200, json=_fax_document()))
@@ -423,7 +454,7 @@ async def test_a_selector_no_grant_covers_is_the_403_and_it_reaches_the_caller_w
         with pytest.raises(ApiError) as caught:
             await client.faxes.get(FAX_ID)
 
-    assert caught.value.status_code == 403
+    assert caught.value.status_code == 400
     assert caught.value.code == "unauthorized_client"
     assert caught.value.errors[0].detail == "No active integration grant for this tenant."
     assert token.call_count == 1, "the client tried again at an endpoint that had said no"
@@ -436,25 +467,42 @@ async def test_a_selector_no_grant_covers_is_the_403_and_it_reaches_the_caller_w
         (
             400,
             "invalid_request",
-            "This client holds more than one active integration grant. Name the tenant you are "
-            "acting for, and the customer inside it if the grant names one.",
-        ),
-        (
-            400,
-            "invalid_request",
             "The tenant and customer selectors must be UUIDs, and customer requires a tenant.",
         ),
+        # No tenant at all — unreachable through this package's constructor,
+        # which is the point of it, but the first refusal a caller who
+        # writes the mint by hand meets.
+        (400, "invalid_request", "The tenant parameter is required."),
+        # Two secrets on one request (RFC 6749 section 2.3). This client
+        # sends exactly one, which is asserted directly in
+        # test_the_mint_request_carries_no_authorization_header.
+        (400, "invalid_request", "Only one authentication method may be used per request."),
         (400, "invalid_scope", "The requested scope is invalid, unknown, or malformed"),
+        # The empty intersection: every scope asked for was dropped and
+        # nothing is left, so a token is refused rather than issued.
+        (
+            400,
+            "invalid_scope",
+            "None of the requested scopes are on this grant. Ask for at least one scope the "
+            "grant carries.",
+        ),
     ],
-    ids=["ambiguous-grant", "malformed-selector", "unknown-scope-name"],
+    ids=[
+        "malformed-selector",
+        "missing-tenant",
+        "two-secrets",
+        "unknown-scope-name",
+        "empty-scope-intersection",
+    ],
 )
 @pytest.mark.anyio
 @respx.mock
 async def test_the_mints_other_refusals_arrive_typed_and_carry_their_code(
     status: int, error: str, description: str
 ) -> None:
-    # `code` is what a caller branches on, and the status alone cannot tell
-    # these apart — two of the three share it.
+    # `code` is what a caller branches on, and the status cannot tell these
+    # apart at all — RFC 6749 section 5.2 gives the token endpoint one
+    # status for every refusal but a bad credential, so all five are 400.
     token = respx.post(TOKEN_URL).mock(return_value=_oauth_error(status, error, description))
     fax = respx.get(FAX_URL).mock(return_value=httpx.Response(200, json=_fax_document()))
 
@@ -471,14 +519,65 @@ async def test_the_mints_other_refusals_arrive_typed_and_carry_their_code(
 
 @pytest.mark.anyio
 @respx.mock
+async def test_the_two_invalid_scope_causes_are_told_apart_by_the_hint_this_client_keeps() -> None:
+    # One `code`, two causes: an unpublished scope NAME (a typo, which
+    # carries a `hint` naming the offender) and an intersection that came
+    # out EMPTY (a permission answer, which carries none). `ApiErrorDetail`
+    # has no field for `hint`, so the whole document is kept on `raw` — and
+    # the ABSENCE is the half that matters, since a parser that defaulted a
+    # missing `hint` would make the two causes indistinguishable again.
+    respx.post(TOKEN_URL).mock(
+        return_value=_oauth_error(
+            400,
+            "invalid_scope",
+            "The requested scope is invalid, unknown, or malformed",
+            hint="fax:reed",
+        )
+    )
+
+    async with _client() as client:
+        with pytest.raises(ApiError) as typo:
+            await client.faxes.get(FAX_ID)
+
+    assert typo.value.code == "invalid_scope"
+    assert typo.value.errors[0].raw["hint"] == "fax:reed"
+
+    respx.post(TOKEN_URL).mock(
+        return_value=_oauth_error(
+            400,
+            "invalid_scope",
+            "None of the requested scopes are on this grant. Ask for at least one scope the "
+            "grant carries.",
+        )
+    )
+
+    async with _client() as client:
+        with pytest.raises(ApiError) as nothing_survived:
+            await client.faxes.get(FAX_ID)
+
+    assert nothing_survived.value.code == "invalid_scope"
+    assert "hint" not in nothing_survived.value.errors[0].raw, (
+        "a hint was invented for the refusal that does not carry one, which is the only "
+        "thing telling these two causes apart"
+    )
+
+
+@pytest.mark.anyio
+@respx.mock
 async def test_a_throttled_mint_reaches_the_caller_rather_than_being_retried() -> None:
     # 60 a minute per IP and 20 a minute per client id, whichever is
     # reached first. A client that answered a 429 with another mint would
     # spend the rest of the budget proving it. The throttle answers before
-    # the mint runs, so the body is NEITHER vocabulary — it must still
-    # raise, still carry the status, and still show the caller the body.
+    # the mint runs, so the body is NEITHER vocabulary and is not even
+    # JSON — it is the framework's own rate-limit page, as HTML, whatever
+    # the request asked to accept. The client must still raise, still carry
+    # the status, and still put the body in front of the caller.
     token = respx.post(TOKEN_URL).mock(
-        return_value=httpx.Response(429, json={"message": "Too Many Attempts."})
+        return_value=httpx.Response(
+            429,
+            html="<!DOCTYPE html><title>Too Many Attempts.</title>",
+            headers={"Retry-After": "42"},
+        )
     )
     fax = respx.get(FAX_URL).mock(return_value=httpx.Response(200, json=_fax_document()))
 
@@ -488,7 +587,8 @@ async def test_a_throttled_mint_reaches_the_caller_rather_than_being_retried() -
 
     assert caught.value.status_code == 429
     assert caught.value.code is None, "no OAuth code was sent, so none may be invented"
-    assert "Too Many Attempts." in str(caught.value)
+    assert caught.value.errors == (), "an HTML page was read as a refusal document"
+    assert "Too Many Attempts." in str(caught.value), "the body never reached the caller"
     assert token.call_count == 1, "a throttled client asked again"
     assert fax.call_count == 0
 
@@ -599,18 +699,112 @@ async def test_the_base_url_is_taken_whole_and_normalised() -> None:
     # No hostname is compiled in here either — the caller's base URL is the
     # only one there is. A trailing slash is the one thing normalised.
     async with AsyncRingivo(
-        base_url=f"{BASE_URL}/", client_id="c", client_secret="s", scopes=SCOPES
+        base_url=f"{BASE_URL}/", client_id="c", client_secret="s", tenant=TENANT, scopes=SCOPES
     ) as client:
         assert client.base_url == BASE_URL
 
     with pytest.raises(ValueError):
-        AsyncRingivo(base_url="", client_id="c", client_secret="s", scopes=SCOPES)
+        AsyncRingivo(base_url="", client_id="c", client_secret="s", tenant=TENANT, scopes=SCOPES)
+
+
+@pytest.mark.anyio
+@respx.mock
+async def test_a_client_that_names_no_tenant_is_refused_before_anything_is_built() -> None:
+    """The twin of the sync refusal, and the same inversion.
+
+    Through 0.3.x a client built with no tenant was legal here too, and the
+    mint resolved the absence to the single active grant behind the
+    credential. That inference is deleted — it broke integrations on the day
+    a reseller granted a second tenant, in code nobody had touched — so the
+    omission is unrepresentable rather than discouraged.
+
+    Two guards, two different mistakes: omitting the argument is a
+    `TypeError` from Python and from a type checker, while an EMPTY string
+    type-checks perfectly and is refused with a `ValueError` instead,
+    because the mint reads a valueless parameter as an absent one.
+
+    The signature is asserted SEPARATELY from the behaviour, for the reason
+    the sync twin sets out in full: with a default restored the omitted
+    construction still raises, because the emptiness guard catches `None`
+    too — so a red test would not have meant the argument was still
+    required, and only the signature check means that.
+
+    Written a second time rather than inherited: `AsyncRingivo` could lose
+    either guard on its own and the sync suite would stay green.
+
+    Probed both ways: restoring `tenant: str | None = None` fails the
+    signature assertion by name, and deleting the `if not tenant` block
+    fails the empty-string assertion.
+    """
+    token = respx.post(TOKEN_URL).mock(return_value=_token_response())
+    respx.get(FAX_URL).mock(return_value=httpx.Response(200, json=_fax_document()))
+
+    signature = inspect.signature(AsyncRingivo)
+    assert signature.parameters["tenant"].default is inspect.Parameter.empty, (
+        "tenant has a default again, so a caller can omit it and their type checker agrees"
+    )
+
+    omitted: BaseException | None = None
+    try:
+        built = AsyncRingivo(  # type: ignore[call-arg] - the missing argument is the point
+            base_url=BASE_URL,
+            client_id="cid",
+            client_secret="csecret",
+            scopes=SCOPES,
+        )
+    except (TypeError, ValueError) as caught:
+        omitted = caught
+    else:
+        await built.aclose()
+
+    empty: BaseException | None = None
+    try:
+        built = AsyncRingivo(
+            base_url=BASE_URL,
+            client_id="cid",
+            client_secret="csecret",
+            tenant="",
+            scopes=SCOPES,
+        )
+    except ValueError as caught:
+        empty = caught
+    else:
+        await built.aclose()
+
+    # Nothing may reach the network to discover either.
+    assert token.call_count == 0, "a refused client still reached the mint"
+    assert omitted is not None, "a client with no tenant was built"
+    assert isinstance(omitted, TypeError), (
+        f"omitting the tenant was refused as {type(omitted).__name__}, which means the "
+        "signature stopped requiring it and only the runtime guard is left"
+    )
+    assert "tenant" in str(omitted), omitted
+    assert empty is not None, "a client with an empty tenant was built"
+    assert "tenant is required" in str(empty), empty
+
+    # THE CONTROL: one variable changed — a tenant is named — and the same
+    # construction works and puts that tenant on the wire.
+    async with AsyncRingivo(
+        base_url=BASE_URL,
+        client_id="cid",
+        client_secret="csecret",
+        tenant=TENANT,
+        scopes=SCOPES,
+    ) as client:
+        await client.faxes.get(FAX_ID)
+
+    assert token.call_count == 1
+    assert _sent(token)["tenant"] == TENANT
 
 
 @pytest.mark.anyio
 @respx.mock
 async def test_a_client_that_asks_for_no_scopes_is_refused_at_construction() -> None:
     """The twin of the sync refusal: a scopeless client is not built.
+
+    Ask for nothing and the intersection is empty, and the mint refuses an
+    empty one — 400 `invalid_scope` — rather than issuing a token that
+    authorises nothing.
 
     Written a second time rather than inherited, because the constructors
     are twins: `AsyncRingivo` could lose this guard on its own and the sync
@@ -677,11 +871,10 @@ async def test_one_bare_string_of_scopes_is_refused_rather_than_split_into_chara
     A `str` IS a `Sequence[str]`, so `scopes="fax:read"` type-checks and is
     not empty. It becomes eight one-character scopes, which this client
     space-joins into `"f a x : r e a d"` — eight names the platform does
-    not publish, in place of the one it does. `POST /oauth/token` refuses
-    an unknown scope NAME with `invalid_scope`, so the cost is now a
-    puzzling 400 about names the caller never typed rather than the silent
-    scopeless token the retired mint handed back. Refused at the
-    constructor either way.
+    not publish, in place of the one it does. The mint refuses an unknown
+    scope NAME with `invalid_scope`, so the cost is a puzzling 400 about
+    names the caller never typed, on whichever line first needed a token.
+    Refused at the constructor instead.
 
     `AsyncRingivo` could lose this check on its own and the sync suite
     would stay green.

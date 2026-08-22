@@ -24,6 +24,7 @@ FAXES_URL = f"{BASE_URL}/v1/faxes"
 FAX_ID = "0198c4a1-2b3c-7d4e-8f50-1a2b3c4d5e6f"
 FAX_URL = f"{FAXES_URL}/{FAX_ID}"
 ACCOUNT_ID = "0198c4a1-3c4d-7e5f-9061-2b3c4d5e6f70"
+TENANT = "0198c4a1-3d4e-7f50-a1b2-c3d4e5f6a7b8"
 
 
 @pytest.fixture(autouse=True)
@@ -33,10 +34,14 @@ def _token(respx_mock: respx.MockRouter) -> None:
         return_value=httpx.Response(
             200,
             json={
-                # Every member `OAuthTokenResponse` requires, both scope
+                # Every member `OauthTokenResponse` requires, both scope
                 # spellings included: a fixture is read as a specimen of the
                 # real answer, and one missing a required member teaches the
-                # next reader a response the platform never sends.
+                # next reader a response the platform never sends. `scope`
+                # is optional in the schema — it is left out when a token
+                # carries none — but an integrator's empty scope set is
+                # refused at the mint, so every token that reaches a caller
+                # of this package carries both.
                 "token_type": "Bearer",
                 "access_token": "tok",
                 "expires_in": 900,
@@ -49,13 +54,14 @@ def _token(respx_mock: respx.MockRouter) -> None:
 
 @pytest.fixture
 def client() -> AsyncRingivo:
-    # Scopes are named because the constructor requires them — a client that
-    # asks for none would be refused before it could send anything (the rule
-    # itself is tested in tests/test_async_auth.py).
+    # The tenant and the scopes are named because the constructor requires
+    # both — a client missing either would be refused before it could send
+    # anything (the rules themselves are tested in tests/test_async_auth.py).
     return AsyncRingivo(
         base_url=BASE_URL,
         client_id="cid",
         client_secret="csecret",
+        tenant=TENANT,
         scopes=["fax:read", "fax:write"],
     )
 
@@ -197,7 +203,7 @@ async def test_send_reports_whether_the_server_replayed_an_earlier_send(
     respx_mock.post(FAXES_URL).mock(return_value=httpx.Response(202, json=_accepted()))
 
     async with AsyncRingivo(
-        base_url=BASE_URL, client_id="c", client_secret="s", scopes=["fax:write"]
+        base_url=BASE_URL, client_id="c", client_secret="s", tenant=TENANT, scopes=["fax:write"]
     ) as fresh_client:
         fresh = await fresh_client.faxes.send(fax_account=ACCOUNT_ID, to="+1302", file=b"a")
 

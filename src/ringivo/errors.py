@@ -65,11 +65,19 @@ class ApiErrorDetail:
 
     A MINT refusal is folded into one of these too, and fills a narrower set
     of fields: `code` is RFC 6749's `error` (`invalid_client`,
-    `unauthorized_client`, `invalid_request`, `invalid_scope`), `detail` is
-    its `error_description`, `status` is the HTTP status as a string, and
-    `raw` is the whole document. `title`, `source` and `meta` stay None —
-    that vocabulary has no member for them, and inventing one would make an
-    absent fact look like a reported one.
+    `unauthorized_client`, `invalid_request`, `invalid_scope`,
+    `unsupported_grant_type`), `detail` is its `error_description`, `status`
+    is the HTTP status as a string, and `raw` is the whole document.
+    `title`, `source` and `meta` stay None — that vocabulary has no member
+    for them, and inventing one would make an absent fact look like a
+    reported one.
+
+    READ `code`, NOT THE STATUS, on a mint refusal. RFC 6749 section 5.2
+    gives the token endpoint one status for every error but a bad
+    credential, so all but `invalid_client` arrive as 400 and the status
+    separates none of them. `raw` matters for the same reason: the mint
+    sends a `hint` on some refusals and not others, and it is the only
+    thing telling the two `invalid_scope` causes apart.
     """
 
     status: str | None = None
@@ -158,13 +166,13 @@ def _errors_from_response(response: httpx.Response) -> tuple[ApiErrorDetail, ...
 
     # RFC 6749's flat shape — what the token mint answers. `error` is the
     # machine vocabulary (`invalid_client`, `unauthorized_client`,
-    # `invalid_request`, `invalid_scope`), `error_description` the sentence
-    # for a human.
+    # `invalid_request`, `invalid_scope`, `unsupported_grant_type`),
+    # `error_description` the sentence for a human.
     #
     # `title` is deliberately LEFT UNSET rather than filled with the error
     # name: `code` already carries it, and `_message` brackets the code ahead
     # of the text, so naming it twice rendered every mint refusal as
-    # "HTTP 403 [unauthorized_client]: unauthorized_client No active
+    # "HTTP 400 [unauthorized_client]: unauthorized_client No active
     # integration grant…". The name belongs in one place.
     oauth_error = document.get("error")
     if isinstance(oauth_error, str):

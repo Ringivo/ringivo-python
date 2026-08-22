@@ -15,3 +15,53 @@ jobs:
       - run: uv run ruff check .
       - run: uv run pyright
       - run: uv run pytest
+
+  # THE FLOORS THIS PACKAGE DECLARES, ACTUALLY INSTALLED. The job above pins
+  # everything to uv.lock, which records the NEWEST release that satisfied
+  # each range, so a lower bound that is too low is invisible to it and to
+  # every test in it. That shipped here: `typing-extensions>=4.0` while
+  # src/ringivo/_generated_types.py needs 4.10 for its `closed=True`
+  # TypedDict.
+  #
+  # WHAT THIS JOB DOES NOT GUARD, measured rather than assumed. The same
+  # release carried a second defect — the dependency was declared behind a
+  # `python_version < '3.11'` marker while the module imports it
+  # unconditionally — and THIS JOB WOULD NOT HAVE CAUGHT IT. Reverting the
+  # marker and re-running these five steps leaves them green: under the
+  # marker typing-extensions is not a DIRECT dependency on 3.12, so
+  # `--resolution lowest-direct` never lowers it, and it arrives
+  # transitively through httpx -> anyio at the newest release. A
+  # mis-declared marker is caught only when nothing else in the graph
+  # supplies the package, and anyio always does.
+  #
+  # So: this job guards the FLOOR. It does not guard the MARKER. Do not read
+  # a green run here as proof that the dependency table is right.
+  #
+  # Two resolutions, because they answer different questions and only the
+  # second is the user's:
+  #
+  #   `uv sync --resolution lowest-direct` lowers DEV dependencies too — what
+  #   a CONTRIBUTOR gets — and runs the whole suite, so it catches behaviour
+  #   and not just imports.
+  #
+  #   `uv pip install --resolution lowest-direct .` lowers RUNTIME
+  #   dependencies only, against the built wheel — what `pip install ringivo`
+  #   gets. The defect above was a runtime one, so this is the half that
+  #   mattered.
+  #
+  # Hermetic like its sibling: the package index and nothing else.
+  lowest-deps:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+      # A contributor's floor: every direct dependency at its lowest declared
+      # version, dev tools included, running the whole suite.
+      - run: uv sync --resolution lowest-direct
+      - run: uv run --resolution lowest-direct pytest
+      # A user's floor: the built wheel, runtime dependencies only. The script
+      # asserts it is reading site-packages and not the src/ tree beside it,
+      # so it cannot pass without the install having worked.
+      - run: uv venv /tmp/lowest
+      - run: uv pip install --python /tmp/lowest/bin/python --resolution lowest-direct .
+      - run: /tmp/lowest/bin/python scripts/check_lowest_install.py
