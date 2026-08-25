@@ -166,7 +166,7 @@ WebhookEventType: TypeAlias = Literal[
 ]
 
 
-WebhookDeliveryStatus: TypeAlias = Literal['pending', 'delivered', 'dead']
+WebhookDeliveryStatus: TypeAlias = Literal['pending', 'dead']
 
 
 Tags: TypeAlias = dict[str, Any] | None
