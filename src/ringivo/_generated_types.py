@@ -733,6 +733,94 @@ class NumberLookupResult(TypedDict):
     data: NumberLookup
 
 
+ProvisioningState: TypeAlias = Literal['pending', 'provisioning', 'active', 'failed']
+
+
+ZtpVendor: TypeAlias = Literal['yealink']
+
+
+class ZtpDeviceAttributes(TypedDict):
+    mac: NotRequired[str]
+    vendor: NotRequired[ZtpVendor]
+    label: NotRequired[str | None]
+    state: NotRequired[ProvisioningState]
+    stateDetail: NotRequired[str | None]
+    stateChangedAt: NotRequired[str | None]
+    registeredAt: NotRequired[str | None]
+    lastConnectedAt: NotRequired[str | None]
+    lastIp: NotRequired[str | None]
+    observedAt: NotRequired[str | None]
+    createdAt: NotRequired[str | None]
+    updatedAt: NotRequired[str | None]
+
+
+class ZtpDeviceRelationships(TypedDict):
+    customer: NotRequired[RelationshipToOne]
+
+
+class ZtpDeviceResource(TypedDict):
+    type: Literal['ztp-devices']
+    id: str
+    attributes: NotRequired[ZtpDeviceAttributes]
+    relationships: NotRequired[ZtpDeviceRelationships]
+    links: NotRequired[ResourceLinks]
+    meta: NotRequired[ResourceMeta]
+
+
+class ZtpDeviceDocumentResponse(TypedDict):
+    data: ZtpDeviceResource
+    links: NotRequired[ResourceLinks]
+    meta: NotRequired[DocumentMeta]
+
+
+class ZtpDeviceCollectionDocument(TypedDict):
+    data: list[ZtpDeviceResource]
+    links: NotRequired[CollectionLinks]
+    meta: NotRequired[DocumentMeta]
+
+
+class Attributes4(TypedDict):
+    mac: str
+    label: NotRequired[str | None]
+
+
+class Customer1(TypedDict):
+    data: ResourceIdentifier | None
+
+
+class Relationships5(TypedDict):
+    customer: NotRequired[Customer1]
+
+
+class Data8(TypedDict):
+    type: Literal['ztp-devices']
+    attributes: Attributes4
+    relationships: NotRequired[Relationships5]
+
+
+class ZtpDeviceCreateRequest(TypedDict):
+    data: Data8
+
+
+class Attributes5(TypedDict):
+    label: NotRequired[str | None]
+
+
+class Relationships6(TypedDict):
+    customer: NotRequired[Customer1]
+
+
+class Data9(TypedDict):
+    type: Literal['ztp-devices']
+    id: str
+    attributes: NotRequired[Attributes5]
+    relationships: NotRequired[Relationships6]
+
+
+class ZtpDeviceUpdateRequest(TypedDict):
+    data: Data9
+
+
 class Error(TypedDict):
     status: str
     title: str
