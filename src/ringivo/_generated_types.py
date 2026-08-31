@@ -821,9 +821,254 @@ class ZtpDeviceUpdateRequest(TypedDict):
     data: Data9
 
 
+PortOrderStatus: TypeAlias = Literal[
+    'draft',
+    'awaiting_signature',
+    'awaiting_review',
+    'submitted',
+    'foc_assigned',
+    'completed',
+    'failed',
+]
+
+
+PortNumberFailureCause: TypeAlias = Literal['withdrawn', 'carrier_refused'] | None
+
+
+PortDocumentKind: TypeAlias = Literal['loa', 'bill']
+
+
+class PortOrderNumberState(TypedDict):
+    e164: NotRequired[str | None]
+    status: NotRequired[PortOrderStatus]
+    cause: NotRequired[PortNumberFailureCause]
+    focDate: NotRequired[str | None]
+    stopped: NotRequired[bool]
+    stoppedSince: NotRequired[str | None]
+
+
+class PortOrderDocumentSlot(TypedDict):
+    sha256: NotRequired[str]
+    uploadedAt: NotRequired[str | None]
+
+
+class PortOrderDocuments(TypedDict):
+    loa: NotRequired[PortOrderDocumentSlot | None]
+    bill: NotRequired[PortOrderDocumentSlot | None]
+
+
+class PortOrderUnsignedLoa(TypedDict):
+    sha256: NotRequired[str]
+    generatedAt: NotRequired[str | None]
+
+
+class PortOrderRequestLinkState(TypedDict):
+    active: NotRequired[bool]
+
+
+class PortOrderTasks(TypedDict):
+    bill: NotRequired[Literal['missing', 'received']]
+    signature: NotRequired[Literal['not_ready', 'ready', 'signed']]
+
+
+class PortOrderBillExtraction(TypedDict):
+    status: NotRequired[Literal['pending', 'done', 'failed', 'skipped']]
+    fields: NotRequired[list[str]]
+    extractedAt: NotRequired[str | None]
+
+
+class PortOrderAttributes(TypedDict):
+    label: NotRequired[str]
+    country: NotRequired[str]
+    status: NotRequired[PortOrderStatus]
+    endUserName: NotRequired[str | None]
+    endUserAddress: NotRequired[str | None]
+    loaSigner: NotRequired[str | None]
+    loaDate: NotRequired[str | None]
+    currentProvider: NotRequired[str | None]
+    accountNumber: NotRequired[str | None]
+    monthlyMou: NotRequired[int]
+    accountPin: NotRequired[None]
+    accountPinAttestedNone: NotRequired[bool]
+    billingPhone: NotRequired[str | None]
+    portType: NotRequired[Literal['full', 'partial'] | None]
+    newBillingNumber: NotRequired[str | None]
+    serviceStreetNumber: NotRequired[str | None]
+    serviceStreetName: NotRequired[str | None]
+    serviceCity: NotRequired[str | None]
+    serviceState: NotRequired[str | None]
+    serviceZip: NotRequired[str | None]
+    requestedFocDate: NotRequired[str | None]
+    contactName: NotRequired[str | None]
+    contactTitle: NotRequired[str | None]
+    contactEmail: NotRequired[str | None]
+    contactPhone: NotRequired[str | None]
+    numbersNotTransferring: NotRequired[str | None]
+    numbers: NotRequired[list[str]]
+    correctionsRequired: NotRequired[bool]
+    correctionsNote: NotRequired[str | None]
+    numberStates: NotRequired[list[PortOrderNumberState]]
+    documents: NotRequired[PortOrderDocuments]
+    unsignedLoa: NotRequired[PortOrderUnsignedLoa | None]
+    requestLink: NotRequired[PortOrderRequestLinkState]
+    tasks: NotRequired[PortOrderTasks]
+    detailsConfirmedAt: NotRequired[str | None]
+    signatureRequestedAt: NotRequired[str | None]
+    billExtraction: NotRequired[PortOrderBillExtraction | None]
+    createdAt: NotRequired[str | None]
+    updatedAt: NotRequired[str | None]
+
+
+class PortOrderResource(TypedDict):
+    type: Literal['port-orders']
+    id: str
+    attributes: NotRequired[PortOrderAttributes]
+    links: NotRequired[ResourceLinks]
+    meta: NotRequired[ResourceMeta]
+
+
+class PortOrderDocumentResponse(TypedDict):
+    data: PortOrderResource
+    links: NotRequired[ResourceLinks]
+    meta: NotRequired[DocumentMeta]
+
+
+class PortOrderCollectionDocument(TypedDict):
+    data: list[PortOrderResource]
+    links: NotRequired[CollectionLinks]
+    meta: NotRequired[DocumentMeta]
+
+
+class Attributes6(TypedDict):
+    label: str
+    country: NotRequired[str]
+
+
+class Data10(TypedDict):
+    type: Literal['port-orders']
+    attributes: Attributes6
+
+
+class PortOrderCreateRequest(TypedDict):
+    data: Data10
+
+
+class PortOrderNumberInput1(TypedDict):
+    e164: str
+    numberType: NotRequired[Literal['landline', 'wireless', 'voip'] | None]
+
+
+PortOrderNumberInput: TypeAlias = str | PortOrderNumberInput1
+
+
+class Attributes7(TypedDict):
+    label: NotRequired[str | None]
+    endUserName: NotRequired[str | None]
+    endUserAddress: NotRequired[str | None]
+    loaSigner: NotRequired[str | None]
+    loaDate: NotRequired[str | None]
+    currentProvider: NotRequired[str | None]
+    accountNumber: NotRequired[str | None]
+    monthlyMou: NotRequired[int | None]
+    accountPin: NotRequired[str | None]
+    accountPinAttestedNone: NotRequired[bool]
+    billingPhone: NotRequired[str | None]
+    portType: NotRequired[Literal['full', 'partial'] | None]
+    newBillingNumber: NotRequired[str | None]
+    serviceStreetNumber: NotRequired[str | None]
+    serviceStreetName: NotRequired[str | None]
+    serviceCity: NotRequired[str | None]
+    serviceState: NotRequired[str | None]
+    serviceZip: NotRequired[str | None]
+    requestedFocDate: NotRequired[str | None]
+    contactName: NotRequired[str | None]
+    contactTitle: NotRequired[str | None]
+    contactEmail: NotRequired[str | None]
+    contactPhone: NotRequired[str | None]
+    numbersNotTransferring: NotRequired[str | None]
+    numbers: NotRequired[list[PortOrderNumberInput] | None]
+
+
+class Data11(TypedDict):
+    type: Literal['port-orders']
+    id: str
+    attributes: NotRequired[Attributes7]
+
+
+class PortOrderUpdateRequest(TypedDict):
+    data: Data11
+
+
+class PortOrderDocumentUploadRequest(TypedDict):
+    kind: PortDocumentKind
+    file: bytes
+
+
+class Data12(TypedDict):
+    id: NotRequired[str]
+    status: NotRequired[PortOrderStatus]
+    numbers: NotRequired[list[str]]
+
+
+class PortOrderSubmitted(TypedDict):
+    data: Data12
+
+
+class Data13(TypedDict):
+    id: NotRequired[str]
+    kind: NotRequired[PortDocumentKind]
+    sha256: NotRequired[str | None]
+
+
+class PortOrderDocumentStored(TypedDict):
+    data: Data13
+
+
+class Data14(TypedDict):
+    id: NotRequired[str]
+    sha256: NotRequired[str | None]
+
+
+class PortOrderLoaGenerated(TypedDict):
+    data: Data14
+
+
+class Data15(TypedDict):
+    id: NotRequired[str]
+    url: NotRequired[str]
+
+
+class PortOrderRequestLinkIssued(TypedDict):
+    data: Data15
+
+
+class Data16(TypedDict):
+    id: NotRequired[str]
+    revoked: NotRequired[bool]
+
+
+class PortOrderRequestLinkRevoked(TypedDict):
+    data: Data16
+
+
+class PortOrderRequestLinkSendRequest(TypedDict):
+    to: str
+    kind: NotRequired[Literal['bill', 'signature']]
+    note: NotRequired[str | None]
+
+
+class Data17(TypedDict):
+    id: NotRequired[str]
+    sent_to: NotRequired[str]
+
+
+class PortOrderRequestLinkSent(TypedDict):
+    data: Data17
+
+
 class Error(TypedDict):
     status: str
-    title: str
+    title: NotRequired[str]
     detail: NotRequired[str]
     code: NotRequired[ErrorCode]
     source: NotRequired[ErrorSource]
