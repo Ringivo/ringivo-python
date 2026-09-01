@@ -838,6 +838,29 @@ PortNumberFailureCause: TypeAlias = Literal['withdrawn', 'carrier_refused'] | No
 PortDocumentKind: TypeAlias = Literal['loa', 'bill']
 
 
+PortType: TypeAlias = Literal['full', 'partial'] | None
+
+
+PortNumberType: TypeAlias = Literal['landline', 'wireless', 'voip'] | None
+
+
+PortOrderTaskBillState: TypeAlias = Literal['missing', 'received']
+
+
+PortOrderTaskDateState: TypeAlias = Literal['missing', 'chosen']
+
+
+PortOrderTaskSignatureState: TypeAlias = Literal['not_ready', 'ready', 'signed']
+
+
+PortOrderBillExtractionStatus: TypeAlias = Literal[
+    'pending', 'done', 'failed', 'skipped'
+]
+
+
+PortOrderRequestLinkMailKind: TypeAlias = Literal['bill', 'signature']
+
+
 class PortOrderNumberState(TypedDict):
     e164: NotRequired[str | None]
     status: NotRequired[PortOrderStatus]
@@ -867,12 +890,13 @@ class PortOrderRequestLinkState(TypedDict):
 
 
 class PortOrderTasks(TypedDict):
-    bill: NotRequired[Literal['missing', 'received']]
-    signature: NotRequired[Literal['not_ready', 'ready', 'signed']]
+    bill: NotRequired[PortOrderTaskBillState]
+    date: NotRequired[PortOrderTaskDateState]
+    signature: NotRequired[PortOrderTaskSignatureState]
 
 
 class PortOrderBillExtraction(TypedDict):
-    status: NotRequired[Literal['pending', 'done', 'failed', 'skipped']]
+    status: NotRequired[PortOrderBillExtractionStatus]
     fields: NotRequired[list[str]]
     extractedAt: NotRequired[str | None]
 
@@ -891,7 +915,7 @@ class PortOrderAttributes(TypedDict):
     accountPin: NotRequired[None]
     accountPinAttestedNone: NotRequired[bool]
     billingPhone: NotRequired[str | None]
-    portType: NotRequired[Literal['full', 'partial'] | None]
+    portType: NotRequired[PortType]
     newBillingNumber: NotRequired[str | None]
     serviceStreetNumber: NotRequired[str | None]
     serviceStreetName: NotRequired[str | None]
@@ -955,7 +979,7 @@ class PortOrderCreateRequest(TypedDict):
 
 class PortOrderNumberInput1(TypedDict):
     e164: str
-    numberType: NotRequired[Literal['landline', 'wireless', 'voip'] | None]
+    numberType: NotRequired[PortNumberType]
 
 
 PortOrderNumberInput: TypeAlias = str | PortOrderNumberInput1
@@ -973,7 +997,7 @@ class Attributes7(TypedDict):
     accountPin: NotRequired[str | None]
     accountPinAttestedNone: NotRequired[bool]
     billingPhone: NotRequired[str | None]
-    portType: NotRequired[Literal['full', 'partial'] | None]
+    portType: NotRequired[PortType]
     newBillingNumber: NotRequired[str | None]
     serviceStreetNumber: NotRequired[str | None]
     serviceStreetName: NotRequired[str | None]
@@ -1053,7 +1077,7 @@ class PortOrderRequestLinkRevoked(TypedDict):
 
 class PortOrderRequestLinkSendRequest(TypedDict):
     to: str
-    kind: NotRequired[Literal['bill', 'signature']]
+    kind: NotRequired[PortOrderRequestLinkMailKind]
     note: NotRequired[str | None]
 
 
