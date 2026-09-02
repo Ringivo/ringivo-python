@@ -483,33 +483,17 @@ class FaxAccountUserCreateRequest(TypedDict):
     data: Data5
 
 
-class Attributes1(TypedDict):
-    e164: NotRequired[str | None]
-    status: NotRequired[Literal['pending', 'active', 'failed', 'releasing'] | None]
-    country: NotRequired[str | None]
-    activatedAt: NotRequired[str | None]
-    createdAt: NotRequired[str | None]
-
-
 class Relationships3(TypedDict):
     customer: NotRequired[RelationshipToOne]
     routingTarget: NotRequired[RelationshipToOne]
     pbxNumber: NotRequired[RelationshipToOne]
 
 
-class PhoneNumberResource(TypedDict):
-    type: Literal['phone-numbers']
-    id: str
-    attributes: NotRequired[Attributes1]
-    relationships: NotRequired[Relationships3]
-    links: NotRequired[ResourceLinks]
-    meta: NotRequired[ResourceMeta]
-
-
-class PhoneNumberCollectionDocument(TypedDict):
-    data: list[PhoneNumberResource]
-    links: NotRequired[CollectionLinks]
-    meta: NotRequired[DocumentMeta]
+class PhoneNumberMessaging(TypedDict):
+    enabled: bool
+    mmsEnabled: bool | None
+    messageClass: Literal['A2P', 'P2P'] | None
+    enabledAt: str | None
 
 
 class WebhookEndpointAttributes(TypedDict):
@@ -739,6 +723,76 @@ ProvisioningState: TypeAlias = Literal['pending', 'provisioning', 'active', 'fai
 ZtpVendor: TypeAlias = Literal['yealink']
 
 
+MessagingEnablementStatus: TypeAlias = Literal[
+    'scheduled', 'submitted', 'completed', 'failed'
+]
+
+
+MessagingEnablementFailureCause: TypeAlias = Literal[
+    'provider_rejected', 'withdrawn', 'submission_error', 'poll_gave_up'
+]
+
+
+class MessagingEnablementAttributes(TypedDict):
+    e164: NotRequired[str]
+    status: NotRequired[MessagingEnablementStatus]
+    stage: NotRequired[int]
+    stageWord: NotRequired[str]
+    detail: NotRequired[str | None]
+    failedCause: NotRequired[MessagingEnablementFailureCause | None]
+    scheduledFor: NotRequired[str | None]
+    submittedAt: NotRequired[str | None]
+    completedAt: NotRequired[str | None]
+    failedAt: NotRequired[str | None]
+    retryAllowedAt: NotRequired[str | None]
+    createdAt: NotRequired[str | None]
+
+
+class MessagingEnablementRelationships(TypedDict):
+    phoneNumber: NotRequired[RelationshipToOne]
+    portOrder: NotRequired[RelationshipToOne]
+
+
+class MessagingEnablementResource(TypedDict):
+    type: Literal['messaging-enablements']
+    id: str
+    attributes: NotRequired[MessagingEnablementAttributes]
+    relationships: NotRequired[MessagingEnablementRelationships]
+    links: NotRequired[ResourceLinks]
+    meta: NotRequired[ResourceMeta]
+
+
+class MessagingEnablementDocumentResponse(TypedDict):
+    data: MessagingEnablementResource
+    included: NotRequired[list[dict[str, Any]]]
+    links: NotRequired[ResourceLinks]
+    meta: NotRequired[DocumentMeta]
+
+
+class MessagingEnablementCollectionDocument(TypedDict):
+    data: list[MessagingEnablementResource]
+    included: NotRequired[list[dict[str, Any]]]
+    links: NotRequired[CollectionLinks]
+    meta: NotRequired[DocumentMeta]
+
+
+class PhoneNumber(TypedDict):
+    data: ResourceIdentifier
+
+
+class Relationships5(TypedDict):
+    phoneNumber: PhoneNumber
+
+
+class Data8(TypedDict):
+    type: Literal['messaging-enablements']
+    relationships: Relationships5
+
+
+class MessagingEnablementCreateRequest(TypedDict):
+    data: Data8
+
+
 class ZtpDeviceAttributes(TypedDict):
     mac: NotRequired[str]
     vendor: NotRequired[ZtpVendor]
@@ -788,37 +842,37 @@ class Customer1(TypedDict):
     data: ResourceIdentifier | None
 
 
-class Relationships5(TypedDict):
-    customer: NotRequired[Customer1]
-
-
-class Data8(TypedDict):
-    type: Literal['ztp-devices']
-    attributes: Attributes4
-    relationships: NotRequired[Relationships5]
-
-
-class ZtpDeviceCreateRequest(TypedDict):
-    data: Data8
-
-
-class Attributes5(TypedDict):
-    label: NotRequired[str | None]
-
-
 class Relationships6(TypedDict):
     customer: NotRequired[Customer1]
 
 
 class Data9(TypedDict):
     type: Literal['ztp-devices']
-    id: str
-    attributes: NotRequired[Attributes5]
+    attributes: Attributes4
     relationships: NotRequired[Relationships6]
 
 
-class ZtpDeviceUpdateRequest(TypedDict):
+class ZtpDeviceCreateRequest(TypedDict):
     data: Data9
+
+
+class Attributes5(TypedDict):
+    label: NotRequired[str | None]
+
+
+class Relationships7(TypedDict):
+    customer: NotRequired[Customer1]
+
+
+class Data10(TypedDict):
+    type: Literal['ztp-devices']
+    id: str
+    attributes: NotRequired[Attributes5]
+    relationships: NotRequired[Relationships7]
+
+
+class ZtpDeviceUpdateRequest(TypedDict):
+    data: Data10
 
 
 PortOrderStatus: TypeAlias = Literal[
@@ -968,13 +1022,13 @@ class Attributes6(TypedDict):
     country: NotRequired[str]
 
 
-class Data10(TypedDict):
+class Data11(TypedDict):
     type: Literal['port-orders']
     attributes: Attributes6
 
 
 class PortOrderCreateRequest(TypedDict):
-    data: Data10
+    data: Data11
 
 
 class PortOrderNumberInput1(TypedDict):
@@ -1013,14 +1067,14 @@ class Attributes7(TypedDict):
     numbers: NotRequired[list[PortOrderNumberInput] | None]
 
 
-class Data11(TypedDict):
+class Data12(TypedDict):
     type: Literal['port-orders']
     id: str
     attributes: NotRequired[Attributes7]
 
 
 class PortOrderUpdateRequest(TypedDict):
-    data: Data11
+    data: Data12
 
 
 class PortOrderDocumentUploadRequest(TypedDict):
@@ -1028,51 +1082,51 @@ class PortOrderDocumentUploadRequest(TypedDict):
     file: bytes
 
 
-class Data12(TypedDict):
+class Data13(TypedDict):
     id: NotRequired[str]
     status: NotRequired[PortOrderStatus]
     numbers: NotRequired[list[str]]
 
 
 class PortOrderSubmitted(TypedDict):
-    data: Data12
+    data: Data13
 
 
-class Data13(TypedDict):
+class Data14(TypedDict):
     id: NotRequired[str]
     kind: NotRequired[PortDocumentKind]
     sha256: NotRequired[str | None]
 
 
 class PortOrderDocumentStored(TypedDict):
-    data: Data13
-
-
-class Data14(TypedDict):
-    id: NotRequired[str]
-    sha256: NotRequired[str | None]
-
-
-class PortOrderLoaGenerated(TypedDict):
     data: Data14
 
 
 class Data15(TypedDict):
     id: NotRequired[str]
-    url: NotRequired[str]
+    sha256: NotRequired[str | None]
 
 
-class PortOrderRequestLinkIssued(TypedDict):
+class PortOrderLoaGenerated(TypedDict):
     data: Data15
 
 
 class Data16(TypedDict):
     id: NotRequired[str]
+    url: NotRequired[str]
+
+
+class PortOrderRequestLinkIssued(TypedDict):
+    data: Data16
+
+
+class Data17(TypedDict):
+    id: NotRequired[str]
     revoked: NotRequired[bool]
 
 
 class PortOrderRequestLinkRevoked(TypedDict):
-    data: Data16
+    data: Data17
 
 
 class PortOrderRequestLinkSendRequest(TypedDict):
@@ -1081,13 +1135,13 @@ class PortOrderRequestLinkSendRequest(TypedDict):
     note: NotRequired[str | None]
 
 
-class Data17(TypedDict):
+class Data18(TypedDict):
     id: NotRequired[str]
     sent_to: NotRequired[str]
 
 
 class PortOrderRequestLinkSent(TypedDict):
-    data: Data17
+    data: Data18
 
 
 class Error(TypedDict):
@@ -1101,3 +1155,27 @@ class Error(TypedDict):
 
 class ErrorDocument(TypedDict):
     errors: list[Error]
+
+
+class Attributes1(TypedDict):
+    e164: NotRequired[str | None]
+    status: NotRequired[Literal['pending', 'active', 'failed', 'releasing'] | None]
+    country: NotRequired[str | None]
+    activatedAt: NotRequired[str | None]
+    createdAt: NotRequired[str | None]
+    messaging: NotRequired[PhoneNumberMessaging]
+
+
+class PhoneNumberResource(TypedDict):
+    type: Literal['phone-numbers']
+    id: str
+    attributes: NotRequired[Attributes1]
+    relationships: NotRequired[Relationships3]
+    links: NotRequired[ResourceLinks]
+    meta: NotRequired[ResourceMeta]
+
+
+class PhoneNumberCollectionDocument(TypedDict):
+    data: list[PhoneNumberResource]
+    links: NotRequired[CollectionLinks]
+    meta: NotRequired[DocumentMeta]
