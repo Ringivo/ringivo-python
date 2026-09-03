@@ -164,6 +164,8 @@ WebhookEventType: TypeAlias = Literal[
     'fax.failed',
     'fax.cancelled',
     'message.received',
+    'port_order.bill_extraction_settled',
+    'port_order.status_changed',
 ]
 
 
