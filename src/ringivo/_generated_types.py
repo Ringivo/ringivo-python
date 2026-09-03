@@ -1128,6 +1128,8 @@ class PortOrderUpdateRequest(TypedDict):
 class PortOrderDocumentUploadRequest(TypedDict):
     kind: PortDocumentKind
     file: bytes
+    signed_on: NotRequired[str]
+    signer: NotRequired[str]
 
 
 class Data13(TypedDict):
