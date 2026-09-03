@@ -1192,6 +1192,82 @@ class PortOrderRequestLinkSent(TypedDict):
     data: Data18
 
 
+TenantStatus: TypeAlias = Literal[
+    'pending_email',
+    'pending_kyc',
+    'kyc_in_progress',
+    'kyc_in_review',
+    'active',
+    'kyc_declined',
+    'suspended',
+]
+
+
+class WhiteLabelDomain(TypedDict):
+    registrableDomain: NotRequired[str]
+    consoleHost: NotRequired[str]
+    apiHost: NotRequired[str]
+    status: NotRequired[
+        Literal[
+            'pending_dns', 'provisioning', 'verifying', 'active', 'failed', 'disabled'
+        ]
+    ]
+    isPrimary: NotRequired[bool]
+
+
+class SendingIdentity(TypedDict):
+    address: NotRequired[str]
+    status: NotRequired[
+        Literal['pending', 'dns_pending', 'verifying', 'active', 'failed', 'disabled']
+    ]
+
+
+class TenantAttributes(TypedDict):
+    brandName: NotRequired[str | None]
+    legalName: NotRequired[str | None]
+    status: NotRequired[TenantStatus]
+    createdAt: NotRequired[str | None]
+    onboardingRequirements: NotRequired[list[str]]
+    brandColorPrimary: NotRequired[str | None]
+    brandColorAccent: NotRequired[str | None]
+    supportEmail: NotRequired[str | None]
+    supportPhone: NotRequired[str | None]
+    includedDomain: NotRequired[str | None]
+    whiteLabelDomain: NotRequired[WhiteLabelDomain | None]
+    sendingIdentity: NotRequired[SendingIdentity | None]
+
+
+class TenantResource(TypedDict):
+    type: Literal['tenants']
+    id: str
+    attributes: NotRequired[TenantAttributes]
+    links: NotRequired[ResourceLinks]
+    meta: NotRequired[ResourceMeta]
+
+
+class TenantDocumentResponse(TypedDict):
+    data: TenantResource
+    links: NotRequired[ResourceLinks]
+    meta: NotRequired[DocumentMeta]
+
+
+class TenantWritableAttributes(TypedDict):
+    brandColorPrimary: NotRequired[str | None]
+    brandColorAccent: NotRequired[str | None]
+    supportEmail: NotRequired[str | None]
+    supportPhone: NotRequired[str | None]
+
+
+class Data19(TypedDict):
+    type: Literal['tenants']
+    id: str
+    attributes: TenantWritableAttributes
+
+
+class TenantUpdateRequest(TypedDict):
+    data: Data19
+
+
 class Error(TypedDict):
     status: str
     title: NotRequired[str]
