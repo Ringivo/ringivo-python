@@ -163,6 +163,7 @@ WebhookEventType: TypeAlias = Literal[
     'fax.partial',
     'fax.failed',
     'fax.cancelled',
+    'message.received',
 ]
 
 
@@ -751,6 +752,51 @@ class MessagingEnablementAttributes(TypedDict):
 class MessagingEnablementRelationships(TypedDict):
     phoneNumber: NotRequired[RelationshipToOne]
     portOrder: NotRequired[RelationshipToOne]
+
+
+InboundMessageKind: TypeAlias = Literal['sms', 'mms']
+
+
+class InboundMessageMediaPart(TypedDict):
+    content_type: NotRequired[str]
+    filename: NotRequired[str | None]
+    encoding: NotRequired[str]
+    bytes: NotRequired[int]
+
+
+InboundMessageAttributes = TypedDict(
+    'InboundMessageAttributes',
+    {
+        'kind': NotRequired[InboundMessageKind],
+        'from': NotRequired[str],
+        'to': NotRequired[str],
+        'body': NotRequired[str | None],
+        'media': NotRequired[list[InboundMessageMediaPart]],
+        'receivedAt': NotRequired[str],
+        'createdAt': NotRequired[str],
+        'updatedAt': NotRequired[str],
+    },
+)
+
+
+class InboundMessageResource(TypedDict):
+    type: Literal['inbound-messages']
+    id: str
+    attributes: NotRequired[InboundMessageAttributes]
+    links: NotRequired[ResourceLinks]
+    meta: NotRequired[ResourceMeta]
+
+
+class InboundMessageDocumentResponse(TypedDict):
+    data: InboundMessageResource
+    links: NotRequired[ResourceLinks]
+    meta: NotRequired[DocumentMeta]
+
+
+class InboundMessageCollectionDocument(TypedDict):
+    data: list[InboundMessageResource]
+    links: NotRequired[CollectionLinks]
+    meta: NotRequired[DocumentMeta]
 
 
 class MessagingEnablementResource(TypedDict):
