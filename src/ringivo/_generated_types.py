@@ -499,6 +499,10 @@ class PhoneNumberMessaging(TypedDict):
     enabledAt: str | None
 
 
+class PhoneNumberVoice(TypedDict):
+    enabled: bool
+
+
 class WebhookEndpointAttributes(TypedDict):
     scopeType: NotRequired[WebhookScopeType]
     scopeId: NotRequired[str | None]
@@ -727,7 +731,7 @@ ZtpVendor: TypeAlias = Literal['yealink']
 
 
 MessagingEnablementStatus: TypeAlias = Literal[
-    'scheduled', 'submitted', 'completed', 'failed'
+    'awaiting_signature', 'scheduled', 'submitted', 'completed', 'failed'
 ]
 
 
@@ -841,6 +845,74 @@ class MessagingEnablementCreateRequest(TypedDict):
     data: Data8
 
 
+HostedMessagingOrderStatus: TypeAlias = Literal[
+    'claimed', 'awaiting_signature', 'submitted'
+]
+
+
+HostedMessagingMechanism: TypeAlias = Literal['claimed', 'enabled']
+
+
+class HostedMessagingOrderAttributes(TypedDict):
+    e164: NotRequired[str]
+    status: NotRequired[HostedMessagingOrderStatus]
+    mechanism: NotRequired[HostedMessagingMechanism]
+    createdAt: NotRequired[str | None]
+
+
+class HostedMessagingOrderRelationships(TypedDict):
+    phoneNumber: NotRequired[RelationshipToOne]
+    messagingEnablement: NotRequired[RelationshipToOne]
+    customer: NotRequired[RelationshipToOne]
+
+
+class HostedMessagingOrderResource(TypedDict):
+    type: Literal['hosted-messaging-orders']
+    id: str
+    attributes: NotRequired[HostedMessagingOrderAttributes]
+    relationships: NotRequired[HostedMessagingOrderRelationships]
+    links: NotRequired[ResourceLinks]
+    meta: NotRequired[ResourceMeta]
+
+
+class HostedMessagingOrderDocumentResponse(TypedDict):
+    data: HostedMessagingOrderResource
+    included: NotRequired[list[dict[str, Any]]]
+    links: NotRequired[ResourceLinks]
+    meta: NotRequired[DocumentMeta]
+
+
+class HostedMessagingOrderCollectionDocument(TypedDict):
+    data: list[HostedMessagingOrderResource]
+    included: NotRequired[list[dict[str, Any]]]
+    links: NotRequired[CollectionLinks]
+    meta: NotRequired[DocumentMeta]
+
+
+class EndUser(TypedDict):
+    name: str
+    email: str
+
+
+class Attributes4(TypedDict):
+    e164: str
+    endUser: EndUser
+
+
+class Relationships6(TypedDict):
+    customer: NotRequired[Customer]
+
+
+class Data9(TypedDict):
+    type: Literal['hosted-messaging-orders']
+    attributes: Attributes4
+    relationships: NotRequired[Relationships6]
+
+
+class HostedMessagingOrderCreateRequest(TypedDict):
+    data: Data9
+
+
 class ZtpDeviceAttributes(TypedDict):
     mac: NotRequired[str]
     vendor: NotRequired[ZtpVendor]
@@ -881,46 +953,46 @@ class ZtpDeviceCollectionDocument(TypedDict):
     meta: NotRequired[DocumentMeta]
 
 
-class Attributes4(TypedDict):
+class Attributes5(TypedDict):
     mac: str
     label: NotRequired[str | None]
 
 
-class Customer1(TypedDict):
+class Customer2(TypedDict):
     data: ResourceIdentifier | None
 
 
-class Relationships6(TypedDict):
-    customer: NotRequired[Customer1]
-
-
-class Data9(TypedDict):
-    type: Literal['ztp-devices']
-    attributes: Attributes4
-    relationships: NotRequired[Relationships6]
-
-
-class ZtpDeviceCreateRequest(TypedDict):
-    data: Data9
-
-
-class Attributes5(TypedDict):
-    label: NotRequired[str | None]
-
-
 class Relationships7(TypedDict):
-    customer: NotRequired[Customer1]
+    customer: NotRequired[Customer2]
 
 
 class Data10(TypedDict):
     type: Literal['ztp-devices']
-    id: str
-    attributes: NotRequired[Attributes5]
+    attributes: Attributes5
     relationships: NotRequired[Relationships7]
 
 
-class ZtpDeviceUpdateRequest(TypedDict):
+class ZtpDeviceCreateRequest(TypedDict):
     data: Data10
+
+
+class Attributes6(TypedDict):
+    label: NotRequired[str | None]
+
+
+class Relationships8(TypedDict):
+    customer: NotRequired[Customer2]
+
+
+class Data11(TypedDict):
+    type: Literal['ztp-devices']
+    id: str
+    attributes: NotRequired[Attributes6]
+    relationships: NotRequired[Relationships8]
+
+
+class ZtpDeviceUpdateRequest(TypedDict):
+    data: Data11
 
 
 PortOrderStatus: TypeAlias = Literal[
@@ -1065,18 +1137,18 @@ class PortOrderCollectionDocument(TypedDict):
     meta: NotRequired[DocumentMeta]
 
 
-class Attributes6(TypedDict):
+class Attributes7(TypedDict):
     label: str
     country: NotRequired[str]
 
 
-class Data11(TypedDict):
+class Data12(TypedDict):
     type: Literal['port-orders']
-    attributes: Attributes6
+    attributes: Attributes7
 
 
 class PortOrderCreateRequest(TypedDict):
-    data: Data11
+    data: Data12
 
 
 class PortOrderNumberInput1(TypedDict):
@@ -1087,7 +1159,7 @@ class PortOrderNumberInput1(TypedDict):
 PortOrderNumberInput: TypeAlias = str | PortOrderNumberInput1
 
 
-class Attributes7(TypedDict):
+class Attributes8(TypedDict):
     label: NotRequired[str | None]
     endUserName: NotRequired[str | None]
     endUserAddress: NotRequired[str | None]
@@ -1115,14 +1187,14 @@ class Attributes7(TypedDict):
     numbers: NotRequired[list[PortOrderNumberInput] | None]
 
 
-class Data12(TypedDict):
+class Data13(TypedDict):
     type: Literal['port-orders']
     id: str
-    attributes: NotRequired[Attributes7]
+    attributes: NotRequired[Attributes8]
 
 
 class PortOrderUpdateRequest(TypedDict):
-    data: Data12
+    data: Data13
 
 
 class PortOrderDocumentUploadRequest(TypedDict):
@@ -1132,51 +1204,51 @@ class PortOrderDocumentUploadRequest(TypedDict):
     signer: NotRequired[str]
 
 
-class Data13(TypedDict):
+class Data14(TypedDict):
     id: NotRequired[str]
     status: NotRequired[PortOrderStatus]
     numbers: NotRequired[list[str]]
 
 
 class PortOrderSubmitted(TypedDict):
-    data: Data13
+    data: Data14
 
 
-class Data14(TypedDict):
+class Data15(TypedDict):
     id: NotRequired[str]
     kind: NotRequired[PortDocumentKind]
     sha256: NotRequired[str | None]
 
 
 class PortOrderDocumentStored(TypedDict):
-    data: Data14
-
-
-class Data15(TypedDict):
-    id: NotRequired[str]
-    sha256: NotRequired[str | None]
-
-
-class PortOrderLoaGenerated(TypedDict):
     data: Data15
 
 
 class Data16(TypedDict):
     id: NotRequired[str]
-    url: NotRequired[str]
+    sha256: NotRequired[str | None]
 
 
-class PortOrderRequestLinkIssued(TypedDict):
+class PortOrderLoaGenerated(TypedDict):
     data: Data16
 
 
 class Data17(TypedDict):
     id: NotRequired[str]
+    url: NotRequired[str]
+
+
+class PortOrderRequestLinkIssued(TypedDict):
+    data: Data17
+
+
+class Data18(TypedDict):
+    id: NotRequired[str]
     revoked: NotRequired[bool]
 
 
 class PortOrderRequestLinkRevoked(TypedDict):
-    data: Data17
+    data: Data18
 
 
 class PortOrderRequestLinkSendRequest(TypedDict):
@@ -1185,13 +1257,13 @@ class PortOrderRequestLinkSendRequest(TypedDict):
     note: NotRequired[str | None]
 
 
-class Data18(TypedDict):
+class Data19(TypedDict):
     id: NotRequired[str]
     sent_to: NotRequired[str]
 
 
 class PortOrderRequestLinkSent(TypedDict):
-    data: Data18
+    data: Data19
 
 
 TenantStatus: TypeAlias = Literal[
@@ -1260,14 +1332,14 @@ class TenantWritableAttributes(TypedDict):
     supportPhone: NotRequired[str | None]
 
 
-class Data19(TypedDict):
+class Data20(TypedDict):
     type: Literal['tenants']
     id: str
     attributes: TenantWritableAttributes
 
 
 class TenantUpdateRequest(TypedDict):
-    data: Data19
+    data: Data20
 
 
 class Error(TypedDict):
@@ -1290,6 +1362,7 @@ class Attributes1(TypedDict):
     activatedAt: NotRequired[str | None]
     createdAt: NotRequired[str | None]
     messaging: NotRequired[PhoneNumberMessaging]
+    voice: NotRequired[PhoneNumberVoice]
 
 
 class PhoneNumberResource(TypedDict):
