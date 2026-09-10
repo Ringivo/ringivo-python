@@ -105,6 +105,8 @@ ErrorCode: TypeAlias = Literal[
     'too_many_pages',
     'unsupported_media_type',
     'fax_account_suspended',
+    'fax_account_has_routed_numbers',
+    'number_is_default_caller_id',
     'rate_limited',
     'not_found',
     'forbidden',
@@ -360,9 +362,8 @@ class FaxAccountAttributes(TypedDict):
     name: NotRequired[str]
     headerText: NotRequired[str | None]
     defaultFromE164: NotRequired[str | None]
-    retentionDays: NotRequired[int]
-    complianceRetention: NotRequired[bool]
-    maxAttempts: NotRequired[int]
+    retentionDays: NotRequired[int | None]
+    retentionPages: NotRequired[int | None]
     status: NotRequired[FaxAccountStatus]
     createdAt: NotRequired[str | None]
     updatedAt: NotRequired[str | None]
@@ -398,9 +399,17 @@ class FaxAccountWritableAttributes(TypedDict):
     name: NotRequired[str]
     headerText: NotRequired[str | None]
     defaultFromE164: NotRequired[str | None]
-    retentionDays: NotRequired[int]
-    complianceRetention: NotRequired[bool]
-    maxAttempts: NotRequired[int]
+    retentionDays: NotRequired[int | None]
+    retentionPages: NotRequired[int | None]
+    status: NotRequired[FaxAccountStatus]
+
+
+class FaxAccountCreateAttributes(TypedDict):
+    name: str
+    headerText: NotRequired[str | None]
+    defaultFromE164: NotRequired[str | None]
+    retentionDays: NotRequired[int | None]
+    retentionPages: NotRequired[int | None]
     status: NotRequired[FaxAccountStatus]
 
 
@@ -414,7 +423,7 @@ class Relationships(TypedDict):
 
 class Data3(TypedDict):
     type: Literal['fax-accounts']
-    attributes: FaxAccountWritableAttributes
+    attributes: FaxAccountCreateAttributes
     relationships: Relationships
 
 
