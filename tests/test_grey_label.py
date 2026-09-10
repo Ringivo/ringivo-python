@@ -80,6 +80,7 @@ def test_no_packaged_file_names_a_platform_brand_or_a_provider_host() -> None:
         "__init__.py",
         "_generated_types.py",
         "async_client.py",
+        "async_fax_accounts.py",
         "async_faxes.py",
         "client.py",
         "fax_accounts.py",
