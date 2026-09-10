@@ -35,7 +35,7 @@ today's policy into an installed package.
 from __future__ import annotations
 
 from collections.abc import Mapping
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Final
 
 from .errors import RingivoError
 from .faxes import _data_object, _next_cursor, _next_link, _path_segment
@@ -44,7 +44,7 @@ from .models import FaxAccount, FaxAccountNumber, FaxAccountPage
 if TYPE_CHECKING:  # pragma: no cover - import cycle broken for the type only
     from .client import Ringivo
 
-__all__ = ["FaxAccounts"]
+__all__ = ["NOT_GIVEN", "FaxAccounts", "NotGiven"]
 
 #: What this whole resource surface sends and accepts.
 _JSONAPI = "application/vnd.api+json"
@@ -58,6 +58,33 @@ _MAX_PAGE_SIZE = 100
 
 #: What `_path_segment` calls this resource in its refusal.
 _NOUN = "fax account"
+
+
+class NotGiven:
+    """The type of `NOT_GIVEN`. Write it in an annotation; never build one.
+
+    It exists because a write on this surface has THREE states per field and
+    Python's default argument gives you two. `default_from_e164=None` means
+    "clear the default caller ID" and `retention_days=None` means "keep the
+    pages for ever" — both are values the API is sent as `null` — so "the
+    caller said nothing about this field" needs a value that is not None.
+
+    It is falsey, like `None`, so a caller writing `if header_text:` gets
+    the reading they expect. Nothing in this package branches on its
+    truthiness: the check is always `isinstance(value, NotGiven)`, because
+    an empty string is falsey too and is a perfectly good header line to
+    ask for.
+    """
+
+    def __bool__(self) -> bool:
+        return False
+
+    def __repr__(self) -> str:
+        return "NOT_GIVEN"
+
+
+#: The one instance. Compare with `isinstance`, never with `==`.
+NOT_GIVEN: Final[NotGiven] = NotGiven()
 
 
 class FaxAccounts:
@@ -167,6 +194,169 @@ class FaxAccounts:
                 )
             seen.add(cursor)
 
+    def create(
+        self,
+        *,
+        customer: str,
+        name: str,
+        header_text: str | None | NotGiven = NOT_GIVEN,
+        default_from_e164: str | None | NotGiven = NOT_GIVEN,
+        retention_days: int | None | NotGiven = NOT_GIVEN,
+        retention_pages: int | None | NotGiven = NOT_GIVEN,
+    ) -> FaxAccount:
+        """Open a fax account for one of your customers.
+
+        Args:
+            customer: The customer this account is FOR. Required, and fixed
+                for the account's life — every fax it holds carries the
+                customer it was sent or received for, so `update()` cannot
+                move it. A customer id that is not yours answers 404 on the
+                relationship pointer, the same as one that names nothing.
+            name: What a person calls this account.
+            header_text: The line printed across the top of every page, up
+                to 64 characters — the fax protocol's own column, not a
+                product choice. Pass None or an empty string for NO header
+                line at all: the renderer skips the overlay, page count
+                included.
+            default_from_e164: The caller ID a send falls back to when it
+                names none. It may be set before the number is routed —
+                whether this account holds it is asked at the send, not
+                here.
+            retention_days: Delete this account's fax pages once they are
+                older than this many days. **None turns the rule off** —
+                the pages are kept for ever.
+            retention_pages: Keep only this many of the newest pages.
+                **None turns the rule off** — there is no page limit.
+
+        Leave an argument out and the platform's own default applies: one
+        year of retention and no page limit, at the time of writing. This
+        client deliberately sends nothing for an argument nobody named, so
+        that policy stays the platform's rather than being frozen into an
+        installed package.
+
+        Numbers are not attached here: point a DID at the account through
+        the routing API.
+
+        Needs `fax-accounts:write`.
+        """
+        attributes: dict[str, Any] = {"name": name}
+        attributes.update(
+            _given(
+                {
+                    "headerText": header_text,
+                    "defaultFromE164": default_from_e164,
+                    "retentionDays": retention_days,
+                    "retentionPages": retention_pages,
+                }
+            )
+        )
+
+        document = {
+            "data": {
+                "type": _TYPE,
+                "attributes": attributes,
+                "relationships": {
+                    "customer": {"data": {"type": "customers", "id": customer}},
+                },
+            }
+        }
+
+        response = self._client.request(
+            "POST",
+            "/v1/fax-accounts",
+            accept=_JSONAPI,
+            headers={"Content-Type": _JSONAPI},
+            json=document,
+        )
+        return FaxAccount._from_resource(_data_object(response.json()))
+
+    def update(
+        self,
+        fax_account_id: str,
+        *,
+        name: str | NotGiven = NOT_GIVEN,
+        header_text: str | None | NotGiven = NOT_GIVEN,
+        default_from_e164: str | None | NotGiven = NOT_GIVEN,
+        retention_days: int | None | NotGiven = NOT_GIVEN,
+        retention_pages: int | None | NotGiven = NOT_GIVEN,
+        status: str | NotGiven = NOT_GIVEN,
+    ) -> FaxAccount:
+        """Change a fax account's settings, or suspend it.
+
+        A SPARSE PATCH: only the arguments you pass are sent, so changing a
+        status leaves the retention rules exactly as they were. `None` is a
+        value rather than an omission — it clears a nullable field, which
+        for the two retention arguments means turning that prune rule OFF.
+
+        Args:
+            status: `active`, or `suspended` to stop this account SENDING
+                while it goes on receiving. Suspending deletes nothing.
+
+        Every other argument means what it means on `create()`.
+
+        An account cannot be moved to another customer, and there is no
+        argument here that would try.
+
+        Raises:
+            ValueError: No field was named. An empty PATCH spends a round
+                trip and an audit entry to change nothing, and it is far
+                more often a form that came back empty than an intention.
+
+        Needs `fax-accounts:write`.
+        """
+        attributes = _given(
+            {
+                "name": name,
+                "headerText": header_text,
+                "defaultFromE164": default_from_e164,
+                "retentionDays": retention_days,
+                "retentionPages": retention_pages,
+                "status": status,
+            }
+        )
+        if not attributes:
+            raise ValueError(
+                "update() needs at least one field to change: name=, header_text=, "
+                "default_from_e164=, retention_days=, retention_pages= or status=. "
+                "Pass None to clear a nullable field — that counts as a change."
+            )
+
+        document = {"data": {"type": _TYPE, "id": fax_account_id, "attributes": attributes}}
+
+        response = self._client.request(
+            "PATCH",
+            f"/v1/fax-accounts/{_path_segment(fax_account_id, noun=_NOUN)}",
+            accept=_JSONAPI,
+            headers={"Content-Type": _JSONAPI},
+            json=document,
+        )
+        return FaxAccount._from_resource(_data_object(response.json()))
+
+    def delete(self, fax_account_id: str) -> None:
+        """Delete a fax account. The pages go; the records stay.
+
+        This DESTROYS the stored pages of every fax on the account and
+        cannot be undone — download anything you want to keep first. The
+        account then leaves your listings and the people granted it lose
+        access. The fax records themselves survive, because they are the
+        billing and audit evidence, and nothing bills after this.
+
+        It is REFUSED while any number still routes to the account: that is
+        an `ApiError` whose `status_code` is 409 and whose `code` is
+        `fax_account_has_routed_numbers`. Move or release the numbers
+        through the routing API, then delete. Branch on `code` rather than
+        on the status — a fax that cannot be cancelled is a 409 too, and it
+        carries no code at all.
+
+        Returns None: the API answers 204 with no body.
+
+        Needs `fax-accounts:write`.
+        """
+        self._client.request(
+            "DELETE",
+            f"/v1/fax-accounts/{_path_segment(fax_account_id, noun=_NOUN)}",
+        )
+
 
 def _page(document: Any) -> FaxAccountPage:
     """One `GET /v1/fax-accounts` body, as the page this package hands back."""
@@ -198,3 +388,17 @@ def _numbers(document: Any) -> tuple[FaxAccountNumber, ...]:
         for item in (data if isinstance(data, list) else [])
         if isinstance(item, Mapping)
     )
+
+
+def _given(attributes: Mapping[str, Any]) -> dict[str, Any]:
+    """Every attribute the caller actually named — `None` included.
+
+    `NOT_GIVEN` is dropped and `None` is KEPT, because the two mean
+    different things on the wire: an absent member leaves the server's value
+    exactly as it was, while `null` clears a nullable field. Collapsing them
+    would make `retention_days=None` — "keep these pages for ever" —
+    indistinguishable from not mentioning retention at all.
+    """
+    return {
+        name: value for name, value in attributes.items() if not isinstance(value, NotGiven)
+    }

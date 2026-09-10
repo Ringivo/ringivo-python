@@ -48,7 +48,7 @@ from .errors import (
     RingivoError,
     SignatureVerificationError,
 )
-from .fax_accounts import FaxAccounts
+from .fax_accounts import NOT_GIVEN, FaxAccounts, NotGiven
 from .faxes import Faxes
 from .models import Fax, FaxAccount, FaxAccountNumber, FaxAccountPage, FaxDocument, FaxPage, MediaLink
 
@@ -67,6 +67,8 @@ __all__ = [
     "FaxPage",
     "Faxes",
     "MediaLink",
+    "NOT_GIVEN",
+    "NotGiven",
     "Ringivo",
     "RingivoError",
     "SignatureVerificationError",

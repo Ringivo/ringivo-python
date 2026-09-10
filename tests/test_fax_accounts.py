@@ -17,6 +17,7 @@ otherwise stamp `application/json` on a `json=` body, and this API answers
 
 from __future__ import annotations
 
+import json as jsonlib
 from datetime import datetime, timezone
 
 import httpx
@@ -336,3 +337,221 @@ def test_numbers_refuses_a_repeated_cursor_rather_than_walking_for_ever(
 
     with client, pytest.raises(RingivoError, match="served the cursor 'stuck' twice"):
         client.fax_accounts.numbers(ACCOUNT_ID)
+
+
+# -- create ----------------------------------------------------------------
+
+
+def test_create_posts_a_jsonapi_document_naming_the_customer(
+    respx_mock: respx.MockRouter, client: Ringivo
+) -> None:
+    route = respx_mock.post(ACCOUNTS_URL).mock(
+        return_value=httpx.Response(201, json={"data": _account_resource()})
+    )
+
+    with client:
+        account = client.fax_accounts.create(
+            customer=CUSTOMER_ID,
+            name="Front desk",
+            header_text="ACME VETERINARY",
+            retention_days=365,
+        )
+
+    request = route.calls.last.request
+    body = jsonlib.loads(request.content)
+
+    # The content type is the assertion that matters: httpx stamps
+    # `application/json` on a `json=` body, and this surface answers 415 to
+    # that. The explicit header wins because httpx only fills in what the
+    # caller left unset.
+    assert request.headers["content-type"] == JSONAPI
+    assert request.headers["accept"] == JSONAPI
+    assert body["data"]["type"] == "fax-accounts"
+    assert body["data"]["attributes"]["name"] == "Front desk"
+    assert body["data"]["attributes"]["headerText"] == "ACME VETERINARY"
+    assert body["data"]["attributes"]["retentionDays"] == 365
+    assert body["data"]["relationships"]["customer"]["data"] == {
+        "type": "customers",
+        "id": CUSTOMER_ID,
+    }
+    assert account.id == ACCOUNT_ID
+
+
+def test_create_leaves_out_an_attribute_nobody_named(
+    respx_mock: respx.MockRouter, client: Ringivo
+) -> None:
+    # ABSENT, not null. An attribute this client does not send is one the
+    # platform fills in with its own default — a year of retention and no
+    # page limit today. A client that sent `null` would be turning both
+    # rules OFF while looking like it asked for nothing.
+    route = respx_mock.post(ACCOUNTS_URL).mock(
+        return_value=httpx.Response(201, json={"data": _account_resource()})
+    )
+
+    with client:
+        client.fax_accounts.create(customer=CUSTOMER_ID, name="Front desk")
+
+    attributes = jsonlib.loads(route.calls.last.request.content)["data"]["attributes"]
+
+    assert attributes == {"name": "Front desk"}
+    assert "retentionDays" not in attributes
+    assert "retentionPages" not in attributes
+    assert "headerText" not in attributes
+
+
+def test_create_sends_null_for_a_rule_the_caller_turned_off(
+    respx_mock: respx.MockRouter, client: Ringivo
+) -> None:
+    # The other half of the same contract, and the reason the sentinel
+    # exists: `None` is a VALUE here — "keep the pages for ever" — and it
+    # must reach the wire as `null` rather than being dropped with the
+    # arguments nobody passed.
+    route = respx_mock.post(ACCOUNTS_URL).mock(
+        return_value=httpx.Response(201, json={"data": _account_resource(retentionDays=None)})
+    )
+
+    with client:
+        client.fax_accounts.create(customer=CUSTOMER_ID, name="Front desk", retention_days=None)
+
+    attributes = jsonlib.loads(route.calls.last.request.content)["data"]["attributes"]
+
+    assert attributes["retentionDays"] is None
+    assert "retentionPages" not in attributes
+
+
+def test_a_customer_that_is_not_yours_answers_on_the_relationship_pointer(
+    respx_mock: respx.MockRouter, client: Ringivo
+) -> None:
+    respx_mock.post(ACCOUNTS_URL).mock(
+        return_value=httpx.Response(
+            404,
+            json={
+                "errors": [
+                    {
+                        "status": "404",
+                        "title": "Not Found",
+                        "detail": "The related resource does not exist.",
+                        "source": {"pointer": "/data/relationships/customer"},
+                    }
+                ]
+            },
+        )
+    )
+
+    with client, pytest.raises(ApiError) as caught:
+        client.fax_accounts.create(customer=CUSTOMER_ID, name="Front desk")
+
+    assert caught.value.status_code == 404
+    assert caught.value.errors[0].source == {"pointer": "/data/relationships/customer"}
+
+
+# -- update ----------------------------------------------------------------
+
+
+def test_update_sends_only_what_was_named(
+    respx_mock: respx.MockRouter, client: Ringivo
+) -> None:
+    route = respx_mock.patch(ACCOUNT_URL).mock(
+        return_value=httpx.Response(200, json={"data": _account_resource(status="suspended")})
+    )
+
+    with client:
+        account = client.fax_accounts.update(ACCOUNT_ID, status="suspended")
+
+    request = route.calls.last.request
+    body = jsonlib.loads(request.content)
+
+    assert request.headers["content-type"] == JSONAPI
+    assert body["data"]["type"] == "fax-accounts"
+    # The id travels in the document as well as in the path — a JSON:API
+    # PATCH names the resource it is changing, and the raw id goes here
+    # while the ESCAPED one goes in the URL.
+    assert body["data"]["id"] == ACCOUNT_ID
+    assert body["data"]["attributes"] == {"status": "suspended"}
+    assert account.status == "suspended"
+
+
+def test_update_sends_null_to_clear_a_nullable_field(
+    respx_mock: respx.MockRouter, client: Ringivo
+) -> None:
+    route = respx_mock.patch(ACCOUNT_URL).mock(
+        return_value=httpx.Response(200, json={"data": _account_resource(defaultFromE164=None)})
+    )
+
+    with client:
+        account = client.fax_accounts.update(ACCOUNT_ID, default_from_e164=None)
+
+    attributes = jsonlib.loads(route.calls.last.request.content)["data"]["attributes"]
+
+    assert attributes == {"defaultFromE164": None}
+    assert account.default_from_e164 is None
+
+
+def test_update_refuses_a_change_that_changes_nothing(
+    respx_mock: respx.MockRouter, client: Ringivo
+) -> None:
+    # A PATCH with an empty attributes object is a request the server would
+    # accept and act on in no way, spending a round trip and an audit entry
+    # to do nothing. It is far more likely a caller building the call from a
+    # form that came back empty, so it is refused here, before anything is
+    # sent.
+    route = respx_mock.patch(ACCOUNT_URL).mock(return_value=httpx.Response(200, json={"data": {}}))
+
+    with client, pytest.raises(ValueError, match="at least one field to change"):
+        client.fax_accounts.update(ACCOUNT_ID)
+
+    assert route.call_count == 0
+    assert respx_mock.calls.call_count == 0, "an empty update reached the wire"
+
+
+# -- delete ----------------------------------------------------------------
+
+
+def test_delete_answers_nothing_and_returns_none(
+    respx_mock: respx.MockRouter, client: Ringivo
+) -> None:
+    route = respx_mock.delete(ACCOUNT_URL).mock(return_value=httpx.Response(204))
+
+    with client:
+        answer = client.fax_accounts.delete(ACCOUNT_ID)
+
+    assert answer is None
+    assert route.calls.last.request.method == "DELETE"
+
+
+def test_delete_is_refused_while_a_number_still_routes_to_the_account(
+    respx_mock: respx.MockRouter, client: Ringivo
+) -> None:
+    # The published refusal, and the whole reason a caller branches on
+    # `code` rather than on 409: a fax that cannot be cancelled is ALSO a
+    # 409, and it carries no code at all.
+    respx_mock.delete(ACCOUNT_URL).mock(
+        return_value=httpx.Response(
+            409,
+            json={
+                "errors": [
+                    {
+                        "status": "409",
+                        "code": "fax_account_has_routed_numbers",
+                        "title": "Conflict",
+                        "detail": "Numbers still route to this fax account.",
+                    }
+                ]
+            },
+        )
+    )
+
+    with client, pytest.raises(ApiError) as caught:
+        client.fax_accounts.delete(ACCOUNT_ID)
+
+    assert caught.value.status_code == 409
+    assert caught.value.code == "fax_account_has_routed_numbers"
+
+
+def test_the_sentinel_is_never_a_value_a_caller_can_confuse_with_none() -> None:
+    from ringivo import NOT_GIVEN, NotGiven
+
+    assert isinstance(NOT_GIVEN, NotGiven)
+    assert NOT_GIVEN is not None
+    assert bool(NOT_GIVEN) is False
+    assert repr(NOT_GIVEN) == "NOT_GIVEN"
