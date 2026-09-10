@@ -370,7 +370,7 @@ def _upload(document: Path | bytes, index: int) -> tuple[str, bytes, str]:
     return (name, content, guessed or "application/octet-stream")
 
 
-def _path_segment(value: str) -> str:
+def _path_segment(value: str, *, noun: str = "fax") -> str:
     """One path segment, escaped so an id cannot steer the request.
 
     `safe=""` — nothing is left unescaped, `/` least of all. An id is
@@ -379,9 +379,15 @@ def _path_segment(value: str) -> str:
     `/v1/fax-accounts/secret`: a different endpoint, read with this client's
     token, that nobody asked for. Ids are UUIDs in practice, so this escapes
     nothing on the happy path and costs nothing.
+
+    `noun` names the id in the refusal and nothing else. It exists because
+    this function is the one escaping rule for every resource this package
+    reaches, and a second copy of a security control is a second thing to
+    get wrong — but "a fax id is required" is the wrong sentence to hand
+    somebody who passed an empty fax-account id.
     """
     if not value:
-        raise ValueError("a fax id is required")
+        raise ValueError(f"a {noun} id is required")
     return quote(value, safe="")
 
 

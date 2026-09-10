@@ -2,7 +2,7 @@
 
 `Ringivo` owns three things: the base URL (there is no default — see below),
 one `httpx.Client` with the auth flow attached, and the resource namespaces
-hung off it (`client.faxes`).
+hung off it (`client.faxes`, `client.fax_accounts`).
 
 -- NO HOSTNAME IS COMPILED IN --------------------------------------------------
 `base_url` is required and has no default. This package is grey-label: the
@@ -76,6 +76,7 @@ import httpx
 from ._version import __version__
 from .auth import USER_AGENT, ClientCredentialsAuth
 from .errors import raise_for_response
+from .fax_accounts import FaxAccounts
 from .faxes import Faxes
 
 __all__ = ["Ringivo"]
@@ -110,8 +111,10 @@ class Ringivo:
             it is spelled as a keyword: the mint refuses a request that
             asks for no scopes, so an empty list — or one bare string,
             which splits into one-character scopes — is a `ValueError` here
-            rather than a puzzle in production. `fax:read` and `fax:write`
-            are what this client's own calls need. What the token ends up
+            rather than a puzzle in production. `fax:read` and
+            `fax:write` are what the fax calls need; opening, changing or
+            deleting a fax account needs `fax-accounts:write` as well,
+            which is a reseller-tier scope. What the token ends up
             carrying is the intersection with what your grant allows, and
             a scope outside that is dropped rather than refused as long as
             something survives, so an over-broad request fails later at the
@@ -198,6 +201,7 @@ class Ringivo:
         )
 
         self.faxes = Faxes(self)
+        self.fax_accounts = FaxAccounts(self)
 
     @property
     def base_url(self) -> str:
