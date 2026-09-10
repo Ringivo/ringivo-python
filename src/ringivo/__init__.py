@@ -23,6 +23,10 @@ arguments, the same methods, awaited, and `async with` in place of `with`:
     async with AsyncRingivo(...) as client:
         fax = await client.faxes.get(fax_id)
 
+Fax accounts are `client.fax_accounts` — list them, read one, open one for
+a customer, change its settings, delete it, and read the numbers routed to
+it. Reads need `fax:read`; every write needs `fax-accounts:write`.
+
 The base URL has no default and no hostname is compiled into this package:
 your provider gives you theirs. `scopes` has no default either, and an
 empty one is refused: a token minted without scopes carries none, and every
@@ -35,6 +39,7 @@ and no network — it is pure computation, so both clients share the one.
 from . import webhooks
 from ._version import __version__
 from .async_client import AsyncRingivo
+from .async_fax_accounts import AsyncFaxAccounts
 from .async_faxes import AsyncFaxes
 from .client import Ringivo
 from .errors import (
@@ -44,20 +49,28 @@ from .errors import (
     RingivoError,
     SignatureVerificationError,
 )
+from .fax_accounts import NOT_GIVEN, FaxAccounts, NotGiven
 from .faxes import Faxes
-from .models import Fax, FaxDocument, FaxPage, MediaLink
+from .models import Fax, FaxAccount, FaxAccountNumber, FaxAccountPage, FaxDocument, FaxPage, MediaLink
 
 __all__ = [
     "ApiError",
     "ApiErrorDetail",
+    "AsyncFaxAccounts",
     "AsyncFaxes",
     "AsyncRingivo",
     "AuthenticationError",
     "Fax",
+    "FaxAccount",
+    "FaxAccountNumber",
+    "FaxAccountPage",
+    "FaxAccounts",
     "FaxDocument",
     "FaxPage",
     "Faxes",
     "MediaLink",
+    "NOT_GIVEN",
+    "NotGiven",
     "Ringivo",
     "RingivoError",
     "SignatureVerificationError",

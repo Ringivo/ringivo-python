@@ -52,6 +52,7 @@ import httpx
 
 from ._version import __version__
 from .async_auth import AsyncClientCredentialsAuth
+from .async_fax_accounts import AsyncFaxAccounts
 from .async_faxes import AsyncFaxes
 from .auth import USER_AGENT
 from .client import JSONAPI_MEDIA_TYPE, _clean_params
@@ -85,8 +86,10 @@ class AsyncRingivo:
             it is spelled as a keyword: the mint refuses a request that
             asks for no scopes, so an empty list — or one bare string,
             which splits into one-character scopes — is a `ValueError` here
-            rather than a puzzle in production. `fax:read` and `fax:write`
-            are what this client's own calls need. What the token ends up
+            rather than a puzzle in production. `fax:read` and
+            `fax:write` are what the fax calls need; opening, changing or
+            deleting a fax account needs `fax-accounts:write` as well,
+            which is a reseller-tier scope. What the token ends up
             carrying is the intersection with what your grant allows, and
             a scope outside that is dropped rather than refused as long as
             something survives, so an over-broad request fails later at the
@@ -170,6 +173,7 @@ class AsyncRingivo:
         )
 
         self.faxes = AsyncFaxes(self)
+        self.fax_accounts = AsyncFaxAccounts(self)
 
     @property
     def base_url(self) -> str:

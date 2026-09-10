@@ -1,8 +1,8 @@
 # ringivo
 
 The Python client for the Ringivo fax API: send a fax, read one, list them,
-cancel one, fetch its pages, and verify the webhooks that tell you what
-happened.
+cancel one, fetch its pages, manage your customers' fax accounts, and verify
+the webhooks that tell you what happened.
 
 ```
 pip install ringivo
@@ -51,7 +51,26 @@ otherwise meet on your first call rather than on the line that caused it.
 Ask for more than your credential was granted and the extra is dropped
 rather than refused, as long as one scope survives, so a call can still fail
 later at the resource. The scopes this client's calls need are `fax:read`
-and `fax:write`.
+and `fax:write` for faxes, and `fax-accounts:write` for opening, changing or
+deleting a fax account — a reseller-tier scope, so a credential issued for
+one customer cannot hold it however it is asked for.
+
+A client that provisions accounts and then reads them asks for both:
+
+```python
+with Ringivo(
+    base_url="https://api.yourprovider.example",
+    client_id="0198c4a1-1f2e-7a3b-9c40-5f6e7d8a9b01",
+    client_secret="9tK2xr4mQ7vBnZ1sD5hL0pWfC8jY3aE6",
+    tenant="0198c4a1-3d4e-7f50-a1b2-c3d4e5f6a7b8",
+    scopes=["fax:read", "fax-accounts:write"],
+) as provisioning:
+    account = provisioning.fax_accounts.create(
+        customer="0198c4a1-4d5e-7f60-a172-3c4d5e6f7081",
+        name="Front desk",
+    )
+    print(account.id, account.retention_days)
+```
 
 **`tenant=` is required**, and it is a required argument rather than a
 checked one: leave it out and Python refuses the constructor by name. There
@@ -160,6 +179,95 @@ server's own cursor — until it comes back `None`:
 `after=` walks forward; `before=` walks backward from a cursor instead —
 how you poll for rows that arrived since your last read.
 
+## Fax accounts
+
+A fax account is a customer's container: the numbers routed to it, the faxes
+sent and received on it, and the settings that govern both. Opening,
+changing and deleting one is `client.fax_accounts`.
+
+```python
+    account = client.fax_accounts.create(
+        customer="0198c4a1-4d5e-7f60-a172-3c4d5e6f7081",
+        name="Front desk",
+        header_text="ACME VETERINARY",
+        retention_days=365,
+    )
+
+    page = client.fax_accounts.list(customer="0198c4a1-4d5e-7f60-a172-3c4d5e6f7081")
+    for account in page:
+        print(account.id, account.name, account.status)
+
+    for number in client.fax_accounts.numbers(account.id):
+        print(number.e164, number.status)
+
+    client.fax_accounts.update(account.id, status="suspended")   # receive only
+    client.fax_accounts.delete(account.id)
+```
+
+**An account belongs to one customer for its whole life.** Every fax it
+holds carries the customer it was sent or received for, so there is no way
+to move it and no argument that would try.
+
+**Numbers are attached through the routing API, not here.** A number points
+at one destination, and that rule belongs to the number:
+`POST /v1/phone-numbers/{id}/routing` with `target_type: fax`, through
+`client.request()`. `numbers()` reads back what is pointed at this account —
+all of them, walking the pages for you, because a half-list of a fax
+account's numbers looks exactly like a full one.
+
+### Retention: two rules, either of them off
+
+Retention here DELETES; it never holds anything back.
+
+| Setting | What it does | Off |
+|---|---|---|
+| `retention_days` | Delete a fax's pages once they are older than this many days. | `None` — kept for ever |
+| `retention_pages` | Keep only this many of the newest pages on the account. | `None` — no page limit |
+
+A new account gets your provider's defaults — a year, and no page limit, at
+the time of writing — because this client sends nothing for an argument you
+did not name.
+
+```python
+    client.fax_accounts.update(account.id, retention_days=90, retention_pages=5000)
+    client.fax_accounts.update(account.id, retention_days=None)     # keep for ever
+```
+
+Deleting a FAX is never blocked by retention: `DELETE /v1/faxes/{id}`
+removes its pages now.
+
+### Changing one setting changes one setting
+
+`update()` is a sparse PATCH: it sends only the arguments you pass, so
+suspending an account leaves its retention rules exactly as they were.
+`None` is a value rather than an omission — it clears a nullable field.
+
+```python
+    client.fax_accounts.update(account.id, default_from_e164=None)   # clears it
+    client.fax_accounts.update(account.id)                           # ValueError
+```
+
+### Deleting an account
+
+`delete()` DESTROYS the stored pages of every fax on the account and cannot
+be undone — download anything worth keeping first. The account then leaves
+your listings and the people granted it lose access; the fax records
+themselves survive as the billing and audit evidence, and nothing bills
+after the delete.
+
+It is refused while any number still routes to the account:
+
+```python
+    try:
+        client.fax_accounts.delete(account.id)
+    except ApiError as refusal:
+        if refusal.code == "fax_account_has_routed_numbers":
+            print("move or release its numbers first")
+```
+
+Branch on `code`, not on the 409: a fax that cannot be cancelled is a 409
+too, and it carries no code at all.
+
 ## The async client
 
 `AsyncRingivo` is the same client for programs already running on asyncio.
@@ -265,21 +373,32 @@ are deliberately not wrapped.
 
 ## What is in the box
 
-| | |
-|---|---|
-| `Ringivo(base_url, client_id, client_secret, *, tenant, customer=None, scopes=None, timeout=30.0)` | The client. A context manager, or call `close()`. `tenant` is required. `scopes` is spelled as a keyword but required too — an empty one raises. |
-| `AsyncRingivo(…same arguments…)` | The asyncio twin. An async context manager, or await `aclose()`. Every method below is awaited. |
-| `client.faxes.send(*, fax_account, to, file=…\|urls=…, …)` | Send one fax. Returns the accepted `Fax`. |
-| `client.faxes.get(fax_id, *, include=None)` | One fax, complete. |
-| `client.faxes.list(*, filters…, after=None, before=None, page_size=None)` | A `FaxPage`: iterable, with `next_cursor`. Default page size 25, ceiling 100. |
-| `client.faxes.cancel(fax_id)` | Withdraw a fax before it is answered. |
-| `client.faxes.media(fax_id, *, format="pdf")` | The document's `bytes`. |
-| `client.faxes.media_link(fax_id, *, format="pdf")` | The URL and its expiry, as a `MediaLink`. |
-| `webhooks.verify(payload, header, secret, *, tolerance=300)` | Raises unless the body is genuine and fresh. |
+| | Scope | |
+|---|---|---|
+| `Ringivo(base_url, client_id, client_secret, *, tenant, customer=None, scopes=None, timeout=30.0)` | — | The client. A context manager, or call `close()`. `tenant` is required. `scopes` is spelled as a keyword but required too — an empty one raises. |
+| `AsyncRingivo(…same arguments…)` | — | The asyncio twin. An async context manager, or await `aclose()`. Every method below is awaited. |
+| `client.faxes.send(*, fax_account, to, file=…\|urls=…, …)` | `fax:write` | Send one fax. Returns the accepted `Fax`. |
+| `client.faxes.get(fax_id, *, include=None)` | `fax:read` | One fax, complete. |
+| `client.faxes.list(*, filters…, after=None, before=None, page_size=None)` | `fax:read` | A `FaxPage`: iterable, with `next_cursor`. Default page size 25, ceiling 100. |
+| `client.faxes.cancel(fax_id)` | `fax:write` | Withdraw a fax before it is answered. |
+| `client.faxes.media(fax_id, *, format="pdf")` | `fax:read` | The document's `bytes`. |
+| `client.faxes.media_link(fax_id, *, format="pdf")` | `fax:read` | The URL and its expiry, as a `MediaLink`. |
+| `client.fax_accounts.list(*, customer=None, status=None, after=None, before=None, page_size=None)` | `fax:read` | A `FaxAccountPage`: iterable, with `next_cursor`. |
+| `client.fax_accounts.get(fax_account_id)` | `fax:read` | One `FaxAccount`. |
+| `client.fax_accounts.numbers(fax_account_id)` | `fax:read` | Every `FaxAccountNumber` routed to it, all pages walked. |
+| `client.fax_accounts.create(*, customer, name, header_text=…, default_from_e164=…, retention_days=…, retention_pages=…)` | `fax-accounts:write` | Open an account for a customer. |
+| `client.fax_accounts.update(fax_account_id, *, name=…, header_text=…, default_from_e164=…, retention_days=…, retention_pages=…, status=…)` | `fax-accounts:write` | A sparse PATCH: only what you pass. |
+| `client.fax_accounts.delete(fax_account_id)` | `fax-accounts:write` | Delete the account and its pages. 409 while numbers route to it. |
+| `webhooks.verify(payload, header, secret, *, tolerance=300)` | — | Raises unless the body is genuine and fresh. |
 
-`Fax`, `FaxDocument`, `FaxPage` and `MediaLink` are frozen dataclasses, and
-each keeps the JSON it was built from in `.raw` — so a field the API adds
-after this release reaches you without a new SDK.
+`Fax`, `FaxAccount`, `FaxAccountNumber`, `FaxAccountPage`, `FaxDocument`,
+`FaxPage` and `MediaLink` are frozen dataclasses, and each keeps the JSON it
+was built from in `.raw` — so a field the API adds after this release
+reaches you without a new SDK.
+
+`NOT_GIVEN` is the sentinel `fax_accounts.create()` and `update()` default
+every optional argument to. You never need to pass it; it exists so that
+`None` can mean "clear this field" rather than "I said nothing".
 
 ### Reaching an endpoint this client does not wrap
 

@@ -24,7 +24,15 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any
 
-__all__ = ["Fax", "FaxDocument", "FaxPage", "MediaLink"]
+__all__ = [
+    "Fax",
+    "FaxAccount",
+    "FaxAccountNumber",
+    "FaxAccountPage",
+    "FaxDocument",
+    "FaxPage",
+    "MediaLink",
+]
 
 
 def _parse_datetime(value: Any) -> datetime | None:
@@ -65,6 +73,22 @@ def _boolean(source: Mapping[str, Any], key: str) -> bool | None:
 def _mapping(source: Mapping[str, Any], key: str) -> Mapping[str, Any] | None:
     value = source.get(key)
     return value if isinstance(value, Mapping) else None
+
+
+def _relationship_id(resource: Mapping[str, Any], name: str) -> str | None:
+    """The id inside a to-one relationship's linkage, or None.
+
+    THE LINKAGE IS OPTIONAL IN THE DOCUMENT, so None here does not mean the
+    resource has no such relation. JSON:API lets a server answer a
+    relationship with `links` alone and no `data` member at all, and this
+    API's own schema marks the member `NotRequired`. So a None reads
+    "the server did not send the linkage on this response", never "there is
+    no customer" — and `raw` still carries whatever did arrive.
+    """
+    relationships = _mapping(resource, "relationships")
+    relation = _mapping(relationships, name) if relationships else None
+    data = _mapping(relation, "data") if relation else None
+    return _text(data, "id") if data else None
 
 
 @dataclass(frozen=True)
@@ -245,4 +269,119 @@ class MediaLink:
             byte_size=_integer(payload, "byte_size"),
             sha256=_text(payload, "sha256"),
             raw=payload,
+        )
+
+
+@dataclass(frozen=True)
+class FaxAccount:
+    """One fax account: a customer's container for numbers, faxes and settings.
+
+    `retention_days` and `retention_pages` are the two prune rules, and
+    **None means the rule is OFF** — pages are kept for ever, or without a
+    count limit. The API writes `null` for that, so None is the honest
+    reading of it; it is also what you get if a server stops sending the
+    member at all, and `raw` is where the two can be told apart.
+
+    `customer_id` is the customer this account belongs to, when the server
+    sends the relationship linkage. It is None when the server answers the
+    relationship with links alone, which is legal and says nothing about the
+    account (see `_relationship_id`).
+
+    An account is never moved between customers: every fax it holds carries
+    the customer it was sent or received for, so `update()` cannot change it
+    and naming a different one is refused.
+    """
+
+    id: str
+    name: str | None = None
+    header_text: str | None = None
+    default_from_e164: str | None = None
+    retention_days: int | None = None
+    retention_pages: int | None = None
+    status: str | None = None
+    customer_id: str | None = None
+    created_at: datetime | None = None
+    updated_at: datetime | None = None
+    raw: Mapping[str, Any] = field(default_factory=dict, repr=False)
+
+    @classmethod
+    def _from_resource(cls, resource: Mapping[str, Any]) -> FaxAccount:
+        """Build from a JSON:API resource object — every fax-account call."""
+        attributes = _mapping(resource, "attributes") or {}
+
+        return cls(
+            id=_text(resource, "id") or "",
+            name=_text(attributes, "name"),
+            header_text=_text(attributes, "headerText"),
+            default_from_e164=_text(attributes, "defaultFromE164"),
+            retention_days=_integer(attributes, "retentionDays"),
+            retention_pages=_integer(attributes, "retentionPages"),
+            status=_text(attributes, "status"),
+            customer_id=_relationship_id(resource, "customer"),
+            created_at=_parse_datetime(attributes.get("createdAt")),
+            updated_at=_parse_datetime(attributes.get("updatedAt")),
+            raw=resource,
+        )
+
+
+@dataclass(frozen=True)
+class FaxAccountPage:
+    """One page of `fax_accounts.list()`, newest first.
+
+    The same shape as `FaxPage`, and for the same reasons: `next_cursor` is
+    the server's own cursor read out of `meta.page.nextCursor`, never one
+    this client built, and it is None on the last page. `next_url` mirrors
+    `links.next`, which is absent rather than null at the end.
+    """
+
+    accounts: tuple[FaxAccount, ...] = ()
+    next_url: str | None = None
+    next_cursor: str | None = None
+    raw: Mapping[str, Any] = field(default_factory=dict, repr=False)
+
+    def __iter__(self) -> Iterator[FaxAccount]:
+        return iter(self.accounts)
+
+    def __len__(self) -> int:
+        return len(self.accounts)
+
+    def __getitem__(self, index: int) -> FaxAccount:
+        return self.accounts[index]
+
+
+@dataclass(frozen=True)
+class FaxAccountNumber:
+    """One number routed to a fax account.
+
+    It is a `phone-numbers` resource — the routing API's own object, read
+    here through the account it points at. This model carries the members a
+    fax integration needs and leaves the rest in `raw`, which is where a
+    number's messaging and voice blocks stay.
+
+    Attaching a number is NOT this SDK's act and not this account's: a number
+    points at one destination, and that rule belongs to the number
+    (`POST /v1/phone-numbers/{id}/routing`, reachable through
+    `client.request()`).
+    """
+
+    id: str
+    e164: str | None = None
+    status: str | None = None
+    country: str | None = None
+    activated_at: datetime | None = None
+    created_at: datetime | None = None
+    raw: Mapping[str, Any] = field(default_factory=dict, repr=False)
+
+    @classmethod
+    def _from_resource(cls, resource: Mapping[str, Any]) -> FaxAccountNumber:
+        attributes = _mapping(resource, "attributes") or {}
+
+        return cls(
+            id=_text(resource, "id") or "",
+            e164=_text(attributes, "e164"),
+            status=_text(attributes, "status"),
+            country=_text(attributes, "country"),
+            activated_at=_parse_datetime(attributes.get("activatedAt")),
+            created_at=_parse_datetime(attributes.get("createdAt")),
+            raw=resource,
         )
