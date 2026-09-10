@@ -48,6 +48,35 @@ class _Read:
     source: str  # which classmethod this read came from — for the failure message
 
 
+def _phone_number_attributes() -> type:
+    """The generated TypedDict for a phone-number's attributes block.
+
+    FOUND BY ITS CONTENTS, NOT BY ITS NAME. The block is inline in the
+    OpenAPI document, so datamodel-code-generator names it positionally —
+    `Attributes1` at the time of writing — and that number moves whenever an
+    inline schema is added ahead of it in the document. Naming it here would
+    make this test fail on a renumbering that changed nothing, or worse,
+    silently read a DIFFERENT block that had taken the name.
+
+    The search reports its own denominator: zero matches and two matches are
+    both broken, and neither may look like a pass.
+    """
+    wanted = {"e164", "status", "country", "activatedAt", "createdAt"}
+    found = [
+        value
+        for value in vars(generated).values()
+        if isinstance(value, type) and wanted <= set(getattr(value, "__annotations__", {}))
+    ]
+    assert len(found) == 1, (
+        f"{len(found)} generated types carry {sorted(wanted)} "
+        f"({[t.__name__ for t in found]}) — the lookup is broken, not the spec"
+    )
+    return found[0]
+
+
+PhoneNumberAttributes = _phone_number_attributes()
+
+
 # Every field a `_from_*` classmethod in models.py reads off a JSON shape,
 # paired with the exact generated TypedDict and key that shape names it —
 # read straight off the classmethod bodies, not guessed from the dataclass
@@ -119,6 +148,104 @@ _READS: tuple[_Read, ...] = (
     _Read(MediaLinkModel, "expires_at", generated.MediaLink, "expires_at", "MediaLink._from_json"),
     _Read(MediaLinkModel, "byte_size", generated.MediaLink, "byte_size", "MediaLink._from_json"),
     _Read(MediaLinkModel, "sha256", generated.MediaLink, "sha256", "MediaLink._from_json"),
+    # -- FaxAccount._from_resource reads a FaxAccountResource (id) + its ----
+    # FaxAccountAttributes, plus the customer LINKAGE off its relationships.
+    _Read(models.FaxAccount, "id", generated.FaxAccountResource, "id", "FaxAccount._from_resource"),
+    _Read(models.FaxAccount, "name", generated.FaxAccountAttributes, "name", "FaxAccount._from_resource"),
+    _Read(
+        models.FaxAccount,
+        "header_text",
+        generated.FaxAccountAttributes,
+        "headerText",
+        "FaxAccount._from_resource",
+    ),
+    _Read(
+        models.FaxAccount,
+        "default_from_e164",
+        generated.FaxAccountAttributes,
+        "defaultFromE164",
+        "FaxAccount._from_resource",
+    ),
+    _Read(
+        models.FaxAccount,
+        "retention_days",
+        generated.FaxAccountAttributes,
+        "retentionDays",
+        "FaxAccount._from_resource",
+    ),
+    _Read(
+        models.FaxAccount,
+        "retention_pages",
+        generated.FaxAccountAttributes,
+        "retentionPages",
+        "FaxAccount._from_resource",
+    ),
+    _Read(
+        models.FaxAccount, "status", generated.FaxAccountAttributes, "status", "FaxAccount._from_resource"
+    ),
+    # The one read that starts on the RELATIONSHIPS block rather than the
+    # attributes: `customer_id` walks customer -> data -> id, and the member
+    # it reads off a shape the generator names is `customer`.
+    _Read(
+        models.FaxAccount,
+        "customer_id",
+        generated.FaxAccountRelationships,
+        "customer",
+        "FaxAccount._from_resource",
+    ),
+    _Read(
+        models.FaxAccount,
+        "created_at",
+        generated.FaxAccountAttributes,
+        "createdAt",
+        "FaxAccount._from_resource",
+    ),
+    _Read(
+        models.FaxAccount,
+        "updated_at",
+        generated.FaxAccountAttributes,
+        "updatedAt",
+        "FaxAccount._from_resource",
+    ),
+    # -- FaxAccountNumber._from_resource reads a PhoneNumberResource -------
+    _Read(
+        models.FaxAccountNumber,
+        "id",
+        generated.PhoneNumberResource,
+        "id",
+        "FaxAccountNumber._from_resource",
+    ),
+    _Read(
+        models.FaxAccountNumber, "e164", PhoneNumberAttributes, "e164", "FaxAccountNumber._from_resource"
+    ),
+    _Read(
+        models.FaxAccountNumber,
+        "status",
+        PhoneNumberAttributes,
+        "status",
+        "FaxAccountNumber._from_resource",
+    ),
+    _Read(
+        models.FaxAccountNumber,
+        "country",
+        PhoneNumberAttributes,
+        "country",
+        "FaxAccountNumber._from_resource",
+    ),
+    _Read(
+        models.FaxAccountNumber,
+        "activated_at",
+        PhoneNumberAttributes,
+        "activatedAt",
+        "FaxAccountNumber._from_resource",
+    ),
+    _Read(
+        models.FaxAccountNumber,
+        "created_at",
+        PhoneNumberAttributes,
+        "createdAt",
+        "FaxAccountNumber._from_resource",
+    ),
 )
 
 # Fields a model carries that no `_from_*` classmethod reads off a generated
@@ -132,14 +259,23 @@ _EXCLUDED: dict[tuple[type, str], str] = {
         "read off the Idempotent-Replay response HEADER in faxes.py, never off the JSON body"
     ),
     (MediaLinkModel, "raw"): "holds the whole source mapping this object was built from",
+    (models.FaxAccount, "raw"): "holds the whole source mapping this object was built from",
+    (models.FaxAccountNumber, "raw"): "holds the whole source mapping this object was built from",
 }
 
-# `FaxPage` is deliberately not covered: unlike the three above, it has no
-# `_from_*` classmethod of its own — `faxes.py::list()` builds it directly,
-# reading `meta.page.nextCursor` and `links.next` with its own module-level
-# helpers, not a method models.py owns. This test's scope is "what models.py
-# reads"; a drift lock for `faxes.py`'s own reads would be a second test.
-_MODELS: tuple[type, ...] = (models.FaxDocument, models.Fax, MediaLinkModel)
+# `FaxPage` and `FaxAccountPage` are deliberately not covered: unlike the
+# models above, neither has a `_from_*` classmethod of its own — `faxes.py`
+# and `fax_accounts.py` build them directly, reading `meta.page.nextCursor`
+# and `links.next` with their own module-level helpers, not a method
+# models.py owns. This test's scope is "what models.py reads"; a drift lock
+# for those modules' own reads would be a second test.
+_MODELS: tuple[type, ...] = (
+    models.FaxDocument,
+    models.Fax,
+    MediaLinkModel,
+    models.FaxAccount,
+    models.FaxAccountNumber,
+)
 
 
 def _generated_keys(typed_dict: type) -> set[str]:
@@ -164,7 +300,7 @@ def test_every_field_a_model_reads_is_covered_by_the_read_table() -> None:
     them, in both directions, or this whole test proves nothing about that
     model.
     """
-    assert len(_MODELS) == 3, f"only {[m.__name__ for m in _MODELS]} was searched — the sweep is broken"
+    assert len(_MODELS) == 5, f"only {[m.__name__ for m in _MODELS]} was searched — the sweep is broken"
 
     mismatches: dict[str, str] = {}
     for model in _MODELS:
@@ -184,7 +320,7 @@ def test_every_field_a_model_reads_is_covered_by_the_read_table() -> None:
 
 
 def test_every_field_a_model_reads_exists_in_the_generated_types() -> None:
-    assert len(_READS) >= 30, f"only {len(_READS)} reads were checked — the sweep is broken"
+    assert len(_READS) >= 50, f"only {len(_READS)} reads were checked — the sweep is broken"
 
     failures: list[str] = []
     for read in _READS:
