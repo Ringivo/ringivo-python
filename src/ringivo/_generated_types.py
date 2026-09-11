@@ -111,6 +111,7 @@ ErrorCode: TypeAlias = Literal[
     'not_found',
     'forbidden',
     'internal_error',
+    'sip_trunk_refused',
 ]
 
 
@@ -1349,6 +1350,297 @@ class Data20(TypedDict):
 
 class TenantUpdateRequest(TypedDict):
     data: Data20
+
+
+SipTrunkMode: TypeAlias = Literal['static', 'register']
+
+
+SipTrunkRegistrationMode: TypeAlias = Literal['replace', 'additive']
+
+
+SipTrunkLocalization: TypeAlias = Literal['US', 'CA', 'MX', 'GB']
+
+
+SipTrunkAniFormat: TypeAlias = Literal[
+    'plus_e164', 'e164', 'national', 'plus_e164_national', 'e164_national'
+]
+
+
+SipTrunkDnisFormat: TypeAlias = Literal['plus_e164', 'e164', 'national', 'sip_username']
+
+
+SipTrunkDialPolicy: TypeAlias = Literal['us_canada', 'nanp', 'permit_all']
+
+
+SipTrunkMediaMode: TypeAlias = Literal['anchored', 'direct']
+
+
+SipTrunkTransport: TypeAlias = Literal['udp', 'tcp', 'tls']
+
+
+class SipTrunkRegistration(TypedDict):
+    state: NotRequired[Literal['registered', 'not_registered']]
+    contacts: NotRequired[int]
+    expires_at: NotRequired[str | None]
+
+
+class SipTrunkAttributes(TypedDict):
+    name: NotRequired[str]
+    domainLabel: NotRequired[str]
+    primaryRegion: NotRequired[Literal['use1', 'usw1']]
+    enabled: NotRequired[bool]
+    mode: NotRequired[SipTrunkMode]
+    username: NotRequired[str | None]
+    password: NotRequired[str | None]
+    registrationMode: NotRequired[SipTrunkRegistrationMode]
+    registrationExpires: NotRequired[int]
+    localization: NotRequired[SipTrunkLocalization]
+    aniFormat: NotRequired[SipTrunkAniFormat]
+    dnisFormat: NotRequired[SipTrunkDnisFormat]
+    dialPolicy: NotRequired[SipTrunkDialPolicy]
+    mediaMode: NotRequired[SipTrunkMediaMode]
+    codecs: NotRequired[list[Literal['PCMU', 'PCMA', 'G722']]]
+    registration: NotRequired[SipTrunkRegistration | None]
+    createdAt: NotRequired[str | None]
+    updatedAt: NotRequired[str | None]
+
+
+class SipTrunkRelationships(TypedDict):
+    customer: NotRequired[RelationshipToOne]
+    callerIdOverride: NotRequired[RelationshipToOne]
+    emergencyCallerId: NotRequired[RelationshipToOne]
+    sipTrunkIps: NotRequired[RelationshipToMany]
+    sipTrunkTargets: NotRequired[RelationshipToMany]
+
+
+class SipTrunkResource(TypedDict):
+    type: Literal['sip-trunks']
+    id: str
+    attributes: NotRequired[SipTrunkAttributes]
+    relationships: NotRequired[SipTrunkRelationships]
+    links: NotRequired[ResourceLinks]
+    meta: NotRequired[ResourceMeta]
+
+
+class SipTrunkDocumentResponse(TypedDict):
+    data: SipTrunkResource
+    links: NotRequired[ResourceLinks]
+    meta: NotRequired[DocumentMeta]
+
+
+class SipTrunkCollectionDocument(TypedDict):
+    data: list[SipTrunkResource]
+    links: NotRequired[CollectionLinks]
+    meta: NotRequired[DocumentMeta]
+
+
+class SipTrunkWritableAttributes(TypedDict):
+    name: NotRequired[str]
+    domainLabel: NotRequired[str]
+    primaryRegion: NotRequired[Literal['use1', 'usw1']]
+    enabled: NotRequired[bool]
+    mode: NotRequired[SipTrunkMode]
+    username: NotRequired[str | None]
+    password: NotRequired[str | None]
+    registrationMode: NotRequired[SipTrunkRegistrationMode]
+    registrationExpires: NotRequired[int]
+    localization: NotRequired[SipTrunkLocalization]
+    aniFormat: NotRequired[SipTrunkAniFormat]
+    dnisFormat: NotRequired[SipTrunkDnisFormat]
+    dialPolicy: NotRequired[SipTrunkDialPolicy]
+    mediaMode: NotRequired[SipTrunkMediaMode]
+    codecs: NotRequired[list[Literal['PCMU', 'PCMA', 'G722']]]
+
+
+class SipTrunkCreateAttributes(TypedDict):
+    name: str
+    domainLabel: str
+    primaryRegion: Literal['use1', 'usw1']
+    enabled: NotRequired[bool]
+    mode: SipTrunkMode
+    username: NotRequired[str | None]
+    password: NotRequired[str | None]
+    registrationMode: NotRequired[SipTrunkRegistrationMode]
+    registrationExpires: NotRequired[int]
+    localization: NotRequired[SipTrunkLocalization]
+    aniFormat: NotRequired[SipTrunkAniFormat]
+    dnisFormat: NotRequired[SipTrunkDnisFormat]
+    dialPolicy: NotRequired[SipTrunkDialPolicy]
+    mediaMode: NotRequired[SipTrunkMediaMode]
+    codecs: NotRequired[list[Literal['PCMU', 'PCMA', 'G722']]]
+
+
+class Customer4(TypedDict):
+    data: ResourceIdentifier
+
+
+class Relationships9(TypedDict):
+    customer: Customer4
+
+
+class Data21(TypedDict):
+    type: Literal['sip-trunks']
+    attributes: SipTrunkCreateAttributes
+    relationships: Relationships9
+
+
+class SipTrunkCreateRequest(TypedDict):
+    data: Data21
+
+
+class Data22(TypedDict):
+    type: Literal['sip-trunks']
+    id: str
+    attributes: SipTrunkWritableAttributes
+
+
+class SipTrunkUpdateRequest(TypedDict):
+    data: Data22
+
+
+class SipTrunkIpAttributes(TypedDict):
+    cidr: NotRequired[str]
+    description: NotRequired[str | None]
+    createdAt: NotRequired[str | None]
+    updatedAt: NotRequired[str | None]
+
+
+class SipTrunkIpRelationships(TypedDict):
+    sipTrunk: NotRequired[RelationshipToOne]
+
+
+class SipTrunkIpResource(TypedDict):
+    type: Literal['sip-trunk-ips']
+    id: str
+    attributes: NotRequired[SipTrunkIpAttributes]
+    relationships: NotRequired[SipTrunkIpRelationships]
+    links: NotRequired[ResourceLinks]
+    meta: NotRequired[ResourceMeta]
+
+
+class SipTrunkIpDocumentResponse(TypedDict):
+    data: SipTrunkIpResource
+    links: NotRequired[ResourceLinks]
+    meta: NotRequired[DocumentMeta]
+
+
+class SipTrunkIpCollectionDocument(TypedDict):
+    data: list[SipTrunkIpResource]
+    links: NotRequired[CollectionLinks]
+    meta: NotRequired[DocumentMeta]
+
+
+class SipTrunkIpWritableAttributes(TypedDict):
+    cidr: NotRequired[str]
+    description: NotRequired[str | None]
+
+
+class SipTrunkIpCreateAttributes(TypedDict):
+    cidr: str
+    description: NotRequired[str | None]
+
+
+class SipTrunk(TypedDict):
+    data: ResourceIdentifier
+
+
+class Relationships10(TypedDict):
+    sipTrunk: SipTrunk
+
+
+class Data23(TypedDict):
+    type: Literal['sip-trunk-ips']
+    attributes: SipTrunkIpCreateAttributes
+    relationships: Relationships10
+
+
+class SipTrunkIpCreateRequest(TypedDict):
+    data: Data23
+
+
+class Data24(TypedDict):
+    type: Literal['sip-trunk-ips']
+    id: str
+    attributes: SipTrunkIpWritableAttributes
+
+
+class SipTrunkIpUpdateRequest(TypedDict):
+    data: Data24
+
+
+class SipTrunkTargetAttributes(TypedDict):
+    host: NotRequired[str]
+    port: NotRequired[int | None]
+    transport: NotRequired[SipTrunkTransport]
+    preference: NotRequired[int]
+    enabled: NotRequired[bool]
+    createdAt: NotRequired[str | None]
+    updatedAt: NotRequired[str | None]
+
+
+class SipTrunkTargetRelationships(TypedDict):
+    sipTrunk: NotRequired[RelationshipToOne]
+
+
+class SipTrunkTargetResource(TypedDict):
+    type: Literal['sip-trunk-targets']
+    id: str
+    attributes: NotRequired[SipTrunkTargetAttributes]
+    relationships: NotRequired[SipTrunkTargetRelationships]
+    links: NotRequired[ResourceLinks]
+    meta: NotRequired[ResourceMeta]
+
+
+class SipTrunkTargetDocumentResponse(TypedDict):
+    data: SipTrunkTargetResource
+    links: NotRequired[ResourceLinks]
+    meta: NotRequired[DocumentMeta]
+
+
+class SipTrunkTargetCollectionDocument(TypedDict):
+    data: list[SipTrunkTargetResource]
+    links: NotRequired[CollectionLinks]
+    meta: NotRequired[DocumentMeta]
+
+
+class SipTrunkTargetWritableAttributes(TypedDict):
+    host: NotRequired[str]
+    port: NotRequired[int | None]
+    transport: NotRequired[SipTrunkTransport]
+    preference: NotRequired[int]
+    enabled: NotRequired[bool]
+
+
+class SipTrunkTargetCreateAttributes(TypedDict):
+    host: str
+    port: NotRequired[int | None]
+    transport: SipTrunkTransport
+    preference: int
+    enabled: bool
+
+
+class Relationships11(TypedDict):
+    sipTrunk: SipTrunk
+
+
+class Data25(TypedDict):
+    type: Literal['sip-trunk-targets']
+    attributes: SipTrunkTargetCreateAttributes
+    relationships: Relationships11
+
+
+class SipTrunkTargetCreateRequest(TypedDict):
+    data: Data25
+
+
+class Data26(TypedDict):
+    type: Literal['sip-trunk-targets']
+    id: str
+    attributes: SipTrunkTargetWritableAttributes
+
+
+class SipTrunkTargetUpdateRequest(TypedDict):
+    data: Data26
 
 
 class Error(TypedDict):
