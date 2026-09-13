@@ -513,6 +513,16 @@ class PhoneNumberVoice(TypedDict):
     enabled: bool
 
 
+class PhoneNumberAssignRequest(TypedDict):
+    customer_id: str
+
+
+class PhoneNumberRouteRequest(TypedDict):
+    target_type: NotRequired[Literal['pbx', 'fax', 'sip_trunk']]
+    fax_account: NotRequired[str]
+    sip_trunk: NotRequired[str]
+
+
 class WebhookEndpointAttributes(TypedDict):
     scopeType: NotRequired[WebhookScopeType]
     scopeId: NotRequired[str | None]
@@ -563,9 +573,11 @@ class WebhookEndpointCreateRequest(TypedDict):
 
 
 class Attributes3(TypedDict):
-    url: str
+    url: NotRequired[str]
     events: NotRequired[list[WebhookEventType] | None]
     active: NotRequired[bool]
+    scopeType: NotRequired[WebhookScopeType]
+    scopeId: NotRequired[str]
 
 
 class Data7(TypedDict):
