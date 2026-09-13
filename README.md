@@ -1,8 +1,8 @@
 # ringivo
 
 The Python client for the Ringivo fax API: send a fax, read one, list them,
-cancel one, fetch its pages, manage your customers' fax accounts, and verify
-the webhooks that tell you what happened.
+cancel one, fetch its pages, manage your customers' fax accounts, register
+the webhooks that tell you what happened, and verify what arrives.
 
 ```
 pip install ringivo
@@ -53,7 +53,9 @@ rather than refused, as long as one scope survives, so a call can still fail
 later at the resource. The scopes this client's calls need are `fax:read`
 and `fax:write` for faxes, and `fax-accounts:write` for opening, changing or
 deleting a fax account — a reseller-tier scope, so a credential issued for
-one customer cannot hold it however it is asked for.
+one customer cannot hold it however it is asked for. The webhook calls need
+`webhooks:read` and `webhooks:write`, except on an endpoint scoped to one fax
+account: a `fax:*` token already reaches those.
 
 A client that provisions accounts and then reads them asks for both:
 
@@ -268,6 +270,121 @@ It is refused while any number still routes to the account:
 Branch on `code`, not on the 409: a fax that cannot be cancelled is a 409
 too, and it carries no code at all.
 
+## Webhook endpoints
+
+An endpoint is where the platform calls you, and what it calls you about.
+Registering one is `client.webhook_endpoints`; checking what arrives is
+`webhooks.verify()`, further down this page.
+
+```python
+    endpoint = client.webhook_endpoints.create(
+        url="https://hooks.acme-vet.example/faxes",
+        scope_type="fax_account",
+        scope_id=account.id,
+        events=["fax.received", "fax.delivered"],
+    )
+
+    # whsec_… — the only time this is readable. Put it where your
+    # receiver can find it; no call reads it back.
+    secret = endpoint.secret
+```
+
+**The signing secret is in that answer and nowhere else, ever.** Store it
+before you do anything else. Every later read of the endpoint publishes
+`secret=None`, and that is the platform saying it keeps no readable copy, not
+this client failing to find one. Lose it and your only way back is
+`rotate_secret()`.
+
+`scope_type` is `tenant`, `customer` or `fax_account`, and `scope_id` names
+the one you mean. The three are a containment order, so a reseller-wide
+endpoint and a per-account one both hear about the same fax. Neither
+`scope_type` nor `scope_id` can be changed afterwards: the delivery record is
+the evidence of what that scope was told, so a different scope is a new
+endpoint.
+
+`events` is the list you want, and **`None` or `[]` both mean every event in
+scope**. An event name the platform does not publish is a 422 — a typo would
+otherwise subscribe you to silence.
+
+Registering needs `webhooks:write`, or `fax:write` for a `fax_account`-scoped
+endpoint only. Naming a customer or tenant scope with a `fax:*` token is a
+422. Reading needs `webhooks:read`, and a `fax:read` token lists
+fax-account-scoped endpoints alone — the wider ones are absent from its page
+rather than refused, so an empty result under a `fax:*` token says nothing
+about whether a wider endpoint exists.
+
+### Adding an event to an endpoint you already have
+
+`update()` is a sparse PATCH, like `fax_accounts.update()`: it sends only the
+arguments you pass. So the fix for "we registered for `fax.received` and the
+outbound events never arrived" is one call, and it leaves the URL and the
+switch exactly as they were:
+
+```python
+    client.webhook_endpoints.update(
+        endpoint.id,
+        events=["fax.received", "fax.sending", "fax.delivered", "fax.failed"],
+    )
+```
+
+The list is REPLACED, not merged — send every event you want, not just the
+new ones. `events=None` (or `[]`) asks for every event in scope instead.
+
+Switching an endpoint off keeps it and its events, and stops the fan-out:
+
+```python
+    client.webhook_endpoints.update(endpoint.id, active=False)   # deaf, not gone
+    client.webhook_endpoints.delete(endpoint.id)                 # gone
+```
+
+`delete()` stops the fan-out at once and **keeps the delivery record** — "why
+did our integration stop hearing about faxes?" is answered by the deliveries
+of the endpoint somebody removed. Both need `webhooks:write`, or `fax:write`
+on a fax-account-scoped endpoint.
+
+### Rotating the secret
+
+```python
+    rotated = client.webhook_endpoints.rotate_secret(endpoint.id)
+
+    print(rotated.secret)                        # the new one, once
+    print(rotated.secret_previous_expires_at)    # when the old one stops
+```
+
+A rotation does not replace the secret at once. It mints a new one and starts
+a 24-hour clock: the PREVIOUS secret goes on signing until
+`secret_previous_expires_at`, and during that window a delivery's header
+carries two `v1` signatures, newest first. `webhooks.verify()` tries every one
+of them, so a rotation costs you no deliveries as long as your own copy is
+rolled before the deadline. Needs `webhooks:write`, or `fax:write` on a
+fax-account-scoped endpoint.
+
+### What we could not deliver
+
+`client.webhook_deliveries` is evidence of failure, not a delivery history. A
+delivery that reaches your endpoint leaves NO ROW: a row appears when an
+attempt fails, moves along the retry ladder, and is removed the moment a
+later attempt succeeds.
+
+```python
+    for delivery in client.webhook_deliveries.list(status="dead"):
+        print(delivery.event_id, delivery.event_type, delivery.status_code)
+```
+
+So `status="dead"` is the query this collection exists for — what an outage
+cost you, and the only place that list exists. `pending` is everything still
+on the ladder. **There is no `delivered`**: the API answers 400 to it rather
+than handing back an empty page. An empty page for either real status is the
+good news.
+
+Filter by `endpoint=` and `event_type=` too, and read one row with
+`client.webhook_deliveries.get(delivery_id)`. The body that was POSTed is
+never published here — only `payload_sha256`, the digest of the exact bytes
+that were signed, so an integrator who kept what they received can prove it is
+what was sent. Reading needs `webhooks:read`; a delivery borrows its
+endpoint's reach, so a `fax:read` token sees the deliveries of
+fax-account-scoped endpoints alone.
+
 ## The async client
 
 `AsyncRingivo` is the same client for programs already running on asyncio.
@@ -389,26 +506,36 @@ are deliberately not wrapped.
 | `client.fax_accounts.create(*, customer, name, header_text=…, default_from_e164=…, retention_days=…, retention_pages=…)` | `fax-accounts:write` | Open an account for a customer. |
 | `client.fax_accounts.update(fax_account_id, *, name=…, header_text=…, default_from_e164=…, retention_days=…, retention_pages=…, status=…)` | `fax-accounts:write` | A sparse PATCH: only what you pass. |
 | `client.fax_accounts.delete(fax_account_id)` | `fax-accounts:write` | Delete the account and its pages. 409 while numbers route to it. |
+| `client.webhook_endpoints.list(*, scope_type=None, scope_id=None, active=None, after=None, before=None, page_size=None)` | `webhooks:read` | A `WebhookEndpointPage`: iterable, with `next_cursor`. A `fax:read` token sees fax-account-scoped rows only. |
+| `client.webhook_endpoints.get(webhook_endpoint_id)` | `webhooks:read` | One `WebhookEndpoint`. `secret` is always None here. |
+| `client.webhook_endpoints.create(*, url, scope_type, scope_id, events=…, active=…)` | `webhooks:write` | Register an endpoint. The only answer that carries the signing secret — store it. `fax:write` for a `fax_account` scope. |
+| `client.webhook_endpoints.update(webhook_endpoint_id, *, url=…, events=…, active=…)` | `webhooks:write` | A sparse PATCH: only what you pass. The scope cannot change. |
+| `client.webhook_endpoints.delete(webhook_endpoint_id)` | `webhooks:write` | Remove it. The fan-out stops; the deliveries stay. |
+| `client.webhook_endpoints.rotate_secret(webhook_endpoint_id)` | `webhooks:write` | Mint a new secret and start the 24-hour grace window. |
+| `client.webhook_deliveries.list(*, endpoint=None, event_type=None, status=None, after=None, before=None, page_size=None)` | `webhooks:read` | A `WebhookDeliveryPage` of what is still owed or was given up on. `status="dead"` is the one to ask after an outage. |
+| `client.webhook_deliveries.get(webhook_delivery_id)` | `webhooks:read` | One `WebhookDelivery`. |
 | `webhooks.verify(payload, header, secret, *, tolerance=300)` | — | Raises unless the body is genuine and fresh. |
 
 `Fax`, `FaxAccount`, `FaxAccountNumber`, `FaxAccountPage`, `FaxDocument`,
-`FaxPage` and `MediaLink` are frozen dataclasses, and each keeps the JSON it
-was built from in `.raw` — so a field the API adds after this release
-reaches you without a new SDK.
+`FaxPage`, `MediaLink`, `WebhookDelivery`, `WebhookDeliveryPage`,
+`WebhookEndpoint` and `WebhookEndpointPage` are frozen dataclasses, and each
+keeps the JSON it was built from in `.raw` — so a field the API adds after
+this release reaches you without a new SDK.
 
-`NOT_GIVEN` is the sentinel `fax_accounts.create()` and `update()` default
-every optional argument to. You never need to pass it; it exists so that
-`None` can mean "clear this field" rather than "I said nothing".
+`NOT_GIVEN` is the sentinel the `create()` and `update()` calls on
+`fax_accounts` and `webhook_endpoints` default every optional argument to.
+You never need to pass it; it exists so that `None` can mean "clear this
+field", or "every event in scope", rather than "I said nothing".
 
 ### Reaching an endpoint this client does not wrap
 
-The table above is the fax surface. For anything else the API offers, use
-`client.request()` — the same escape hatch in both clients, awaited on the
-async one:
+The table above is the fax and webhook surfaces. For anything else the API
+offers, use `client.request()` — the same escape hatch in both clients,
+awaited on the async one:
 
 ```python
-response = client.request("GET", "/v1/webhook-endpoints")
-endpoints = response.json()["data"]
+response = client.request("GET", "/v1/fax-account-users")
+grants = response.json()["data"]
 ```
 
 It carries your credential, your timeout, your User-Agent and the same

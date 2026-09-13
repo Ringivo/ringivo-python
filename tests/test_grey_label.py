@@ -82,11 +82,15 @@ def test_no_packaged_file_names_a_platform_brand_or_a_provider_host() -> None:
         "async_client.py",
         "async_fax_accounts.py",
         "async_faxes.py",
+        "async_webhook_deliveries.py",
+        "async_webhook_endpoints.py",
         "client.py",
         "fax_accounts.py",
         "faxes.py",
         "models.py",
         "py.typed",
+        "webhook_deliveries.py",
+        "webhook_endpoints.py",
         "webhooks.py",
     }
     assert anchors <= scanned, (

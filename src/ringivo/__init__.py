@@ -27,6 +27,14 @@ Fax accounts are `client.fax_accounts` — list them, read one, open one for
 a customer, change its settings, delete it, and read the numbers routed to
 it. Reads need `fax:read`; every write needs `fax-accounts:write`.
 
+Webhooks have two namespaces. `client.webhook_endpoints` registers where the
+platform should call you and with what signing secret — and the secret is
+readable ONCE, in the answer to the create or the rotate that minted it.
+`client.webhook_deliveries` is the evidence of what could not be delivered:
+a delivery that lands leaves no row, so `list(status="dead")` is what an
+outage cost you. Both need `webhooks:read`/`webhooks:write`, except on a
+`fax_account`-scoped endpoint, which a `fax:*` token already reaches.
+
 The base URL has no default and no hostname is compiled into this package:
 your provider gives you theirs. `scopes` has no default either, and an
 empty one is refused: a token minted without scopes carries none, and every
@@ -41,6 +49,8 @@ from ._version import __version__
 from .async_client import AsyncRingivo
 from .async_fax_accounts import AsyncFaxAccounts
 from .async_faxes import AsyncFaxes
+from .async_webhook_deliveries import AsyncWebhookDeliveries
+from .async_webhook_endpoints import AsyncWebhookEndpoints
 from .client import Ringivo
 from .errors import (
     ApiError,
@@ -51,7 +61,21 @@ from .errors import (
 )
 from .fax_accounts import NOT_GIVEN, FaxAccounts, NotGiven
 from .faxes import Faxes
-from .models import Fax, FaxAccount, FaxAccountNumber, FaxAccountPage, FaxDocument, FaxPage, MediaLink
+from .models import (
+    Fax,
+    FaxAccount,
+    FaxAccountNumber,
+    FaxAccountPage,
+    FaxDocument,
+    FaxPage,
+    MediaLink,
+    WebhookDelivery,
+    WebhookDeliveryPage,
+    WebhookEndpoint,
+    WebhookEndpointPage,
+)
+from .webhook_deliveries import WebhookDeliveries
+from .webhook_endpoints import WebhookEndpoints
 
 __all__ = [
     "ApiError",
@@ -59,6 +83,8 @@ __all__ = [
     "AsyncFaxAccounts",
     "AsyncFaxes",
     "AsyncRingivo",
+    "AsyncWebhookDeliveries",
+    "AsyncWebhookEndpoints",
     "AuthenticationError",
     "Fax",
     "FaxAccount",
@@ -74,6 +100,12 @@ __all__ = [
     "Ringivo",
     "RingivoError",
     "SignatureVerificationError",
+    "WebhookDeliveries",
+    "WebhookDelivery",
+    "WebhookDeliveryPage",
+    "WebhookEndpoint",
+    "WebhookEndpointPage",
+    "WebhookEndpoints",
     "__version__",
     "webhooks",
 ]
