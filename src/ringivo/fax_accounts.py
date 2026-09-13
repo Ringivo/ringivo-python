@@ -2,11 +2,12 @@
 
 -- WHY THIS IS A SECOND MODULE AND NOT MORE OF faxes.py ------------------------
 A fax and a fax account are different resources with different lifetimes,
-different scopes and different bodies, and the two modules share exactly
-four private helpers — the path escaper and the three JSON readers — which
-are imported rather than copied for the reason async_faxes.py gives about
-its own imports: one of them is a security control, and a second copy of a
-security control is a second thing to get wrong.
+different scopes and different bodies, and this module shares exactly four
+private helpers with faxes.py — the path escaper and the three JSON readers
+— which are imported rather than copied for the reason async_faxes.py gives
+about its own imports: one of them is a security control, and a second copy
+of a security control is a second thing to get wrong. The webhook modules
+import the same four, and the sentinel below, for the same reason.
 
 -- THE BODIES HERE ARE JSON:API DOCUMENTS --------------------------------------
 `POST /v1/faxes` is the odd one out on this API: its body is multipart or
@@ -68,6 +69,12 @@ class NotGiven:
     "clear the default caller ID" and `retention_days=None` means "keep the
     pages for ever" — both are values the API is sent as `null` — so "the
     caller said nothing about this field" needs a value that is not None.
+
+    IT LIVES HERE AND IS SHARED, not copied. webhook_endpoints.py writes
+    have the same three states (`events=None` there means "every event in
+    scope") and import this one rather than defining a second, because a
+    caller comparing with `isinstance` must get the same answer whichever
+    namespace they came from.
 
     It is falsey, like `None`, so a caller writing `if header_text:` gets
     the reading they expect. Nothing in this package branches on its

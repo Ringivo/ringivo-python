@@ -32,6 +32,10 @@ __all__ = [
     "FaxDocument",
     "FaxPage",
     "MediaLink",
+    "WebhookDelivery",
+    "WebhookDeliveryPage",
+    "WebhookEndpoint",
+    "WebhookEndpointPage",
 ]
 
 
@@ -73,6 +77,26 @@ def _boolean(source: Mapping[str, Any], key: str) -> bool | None:
 def _mapping(source: Mapping[str, Any], key: str) -> Mapping[str, Any] | None:
     value = source.get(key)
     return value if isinstance(value, Mapping) else None
+
+
+def _strings(source: Mapping[str, Any], key: str) -> tuple[str, ...] | None:
+    """A list of names as a tuple, or None when the member is not a list.
+
+    AN EMPTY TUPLE AND None ARE NOT THE SAME READING, which is why this does
+    not flatten one into the other. On a webhook endpoint's `events` the API
+    publishes back exactly what was written — `null` and `[]` both mean
+    "every event in scope", and it keeps them apart on purpose so a client
+    that sent `[]` can see its write was understood. So `null`, a missing
+    member and a value of the wrong type all read None here, while `[]`
+    reads `()`.
+
+    A non-string item is dropped rather than raising, for the reason every
+    other reader in this module gives: the whole value is still in `raw`.
+    """
+    value = source.get(key)
+    if not isinstance(value, list):
+        return None
+    return tuple(item for item in value if isinstance(item, str))
 
 
 def _relationship_id(resource: Mapping[str, Any], name: str) -> str | None:
@@ -385,3 +409,184 @@ class FaxAccountNumber:
             created_at=_parse_datetime(attributes.get("createdAt")),
             raw=resource,
         )
+
+
+@dataclass(frozen=True)
+class WebhookEndpoint:
+    """One registered endpoint: where the platform calls you, and about what.
+
+    `scope_type` and `scope_id` say what this endpoint hears about — a
+    tenant, a customer or one fax account — and they are fixed for its life.
+    The three are matched as a containment order, so a reseller-wide
+    endpoint and a per-account one both hear about the same fax.
+
+    `events` is the list of event names asked for, and **None or an empty
+    tuple both mean "every event in scope"**. The API publishes the list
+    back exactly as it was written rather than normalising it, so the two
+    are kept apart here too: None is the `null` it sent, `()` is the `[]`.
+
+    `secret` IS ONLY EVER FILLED IN ONCE PER SECRET. It carries a value on
+    the object `create()` returns and on the one `rotate_secret()` returns,
+    and it is None on every other read — the platform keeps no readable
+    copy, so a None here is an honest statement and not a gap. Store it when
+    you first see it.
+
+    `secret_previous_expires_at` is the deadline the PREVIOUS secret stops
+    signing at, and it is None outside a rotation's 24-hour grace window.
+    During that window a delivery's signature header carries two `v1`
+    values, newest first, and `webhooks.verify()` accepts either.
+    """
+
+    id: str
+    scope_type: str | None = None
+    scope_id: str | None = None
+    url: str | None = None
+    events: tuple[str, ...] | None = None
+    active: bool | None = None
+    secret: str | None = None
+    secret_previous_expires_at: datetime | None = None
+    created_at: datetime | None = None
+    updated_at: datetime | None = None
+    raw: Mapping[str, Any] = field(default_factory=dict, repr=False)
+
+    @classmethod
+    def _from_resource(cls, resource: Mapping[str, Any]) -> WebhookEndpoint:
+        """Build from a JSON:API resource object — every endpoint call."""
+        attributes = _mapping(resource, "attributes") or {}
+
+        return cls(
+            id=_text(resource, "id") or "",
+            scope_type=_text(attributes, "scopeType"),
+            scope_id=_text(attributes, "scopeId"),
+            url=_text(attributes, "url"),
+            events=_strings(attributes, "events"),
+            active=_boolean(attributes, "active"),
+            secret=_text(attributes, "secret"),
+            secret_previous_expires_at=_parse_datetime(attributes.get("secretPreviousExpiresAt")),
+            created_at=_parse_datetime(attributes.get("createdAt")),
+            updated_at=_parse_datetime(attributes.get("updatedAt")),
+            raw=resource,
+        )
+
+
+@dataclass(frozen=True)
+class WebhookEndpointPage:
+    """One page of `webhook_endpoints.list()`, newest first.
+
+    The same shape as `FaxAccountPage`, and for the same reasons:
+    `next_cursor` is the server's own cursor read out of
+    `meta.page.nextCursor`, never one this client built, and it is None on
+    the last page. `next_url` mirrors `links.next`, which is absent rather
+    than null at the end.
+
+    No endpoint on this page carries a secret. Only the create and the
+    rotate that minted one ever publish it.
+    """
+
+    endpoints: tuple[WebhookEndpoint, ...] = ()
+    next_url: str | None = None
+    next_cursor: str | None = None
+    raw: Mapping[str, Any] = field(default_factory=dict, repr=False)
+
+    def __iter__(self) -> Iterator[WebhookEndpoint]:
+        return iter(self.endpoints)
+
+    def __len__(self) -> int:
+        return len(self.endpoints)
+
+    def __getitem__(self, index: int) -> WebhookEndpoint:
+        return self.endpoints[index]
+
+
+@dataclass(frozen=True)
+class WebhookDelivery:
+    """One delivery the platform still owes you, or gave up on.
+
+    THIS IS EVIDENCE OF A FAILURE, NOT A HISTORY. A delivery that reaches
+    your endpoint leaves no row at all: a row appears when an attempt
+    fails, moves along the retry ladder, and is removed the moment a later
+    attempt succeeds. So `status` is `pending` — still on the ladder — or
+    `dead`, which is what an outage cost you. There is no `delivered`.
+
+    `endpoint_id` is the endpoint this was for, when the server sends the
+    relationship linkage; it is None when the server answers that
+    relationship with links alone, which is legal and says nothing about
+    the delivery (see `_relationship_id`).
+
+    `payload_sha256` is the digest of the exact bytes that were signed. The
+    body itself is never published here, so an integrator who kept what
+    they received can prove it is what was sent, and nobody who only reads
+    this collection learns the contents of somebody's fax.
+
+    `attempt_no` counts the POSTs made, not the ones that failed.
+    `status_code` is what your server answered and is None when it was
+    never reached — `error` is why, in that case.
+
+    The API also publishes a `deliveredAt` member. It is not read into this
+    model: it is always `null`, kept only so a client generated against an
+    older spec still parses, and treating it as a status would be wrong in
+    both directions. It is still in `raw`.
+    """
+
+    id: str
+    endpoint_id: str | None = None
+    event_id: str | None = None
+    event_type: str | None = None
+    payload_sha256: str | None = None
+    status: str | None = None
+    attempt_no: int | None = None
+    status_code: int | None = None
+    duration_ms: int | None = None
+    error: str | None = None
+    next_attempt_at: datetime | None = None
+    dead_at: datetime | None = None
+    created_at: datetime | None = None
+    updated_at: datetime | None = None
+    raw: Mapping[str, Any] = field(default_factory=dict, repr=False)
+
+    @classmethod
+    def _from_resource(cls, resource: Mapping[str, Any]) -> WebhookDelivery:
+        """Build from a JSON:API resource object — both delivery calls."""
+        attributes = _mapping(resource, "attributes") or {}
+
+        return cls(
+            id=_text(resource, "id") or "",
+            endpoint_id=_relationship_id(resource, "endpoint"),
+            event_id=_text(attributes, "eventId"),
+            event_type=_text(attributes, "eventType"),
+            payload_sha256=_text(attributes, "payloadSha256"),
+            status=_text(attributes, "status"),
+            attempt_no=_integer(attributes, "attemptNo"),
+            status_code=_integer(attributes, "statusCode"),
+            duration_ms=_integer(attributes, "durationMs"),
+            error=_text(attributes, "error"),
+            next_attempt_at=_parse_datetime(attributes.get("nextAttemptAt")),
+            dead_at=_parse_datetime(attributes.get("deadAt")),
+            created_at=_parse_datetime(attributes.get("createdAt")),
+            updated_at=_parse_datetime(attributes.get("updatedAt")),
+            raw=resource,
+        )
+
+
+@dataclass(frozen=True)
+class WebhookDeliveryPage:
+    """One page of `webhook_deliveries.list()`, newest first.
+
+    The same shape and the same cursor rules as `FaxAccountPage`. An empty
+    page is the good news here: nothing is owed and nothing was given up
+    on.
+    """
+
+    deliveries: tuple[WebhookDelivery, ...] = ()
+    next_url: str | None = None
+    next_cursor: str | None = None
+    raw: Mapping[str, Any] = field(default_factory=dict, repr=False)
+
+    def __iter__(self) -> Iterator[WebhookDelivery]:
+        return iter(self.deliveries)
+
+    def __len__(self) -> int:
+        return len(self.deliveries)
+
+    def __getitem__(self, index: int) -> WebhookDelivery:
+        return self.deliveries[index]

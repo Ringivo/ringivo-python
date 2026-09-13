@@ -2,7 +2,8 @@
 
 `Ringivo` owns three things: the base URL (there is no default — see below),
 one `httpx.Client` with the auth flow attached, and the resource namespaces
-hung off it (`client.faxes`, `client.fax_accounts`).
+hung off it (`client.faxes`, `client.fax_accounts`,
+`client.webhook_endpoints`, `client.webhook_deliveries`).
 
 -- NO HOSTNAME IS COMPILED IN --------------------------------------------------
 `base_url` is required and has no default. This package is grey-label: the
@@ -78,6 +79,8 @@ from .auth import USER_AGENT, ClientCredentialsAuth
 from .errors import raise_for_response
 from .fax_accounts import FaxAccounts
 from .faxes import Faxes
+from .webhook_deliveries import WebhookDeliveries
+from .webhook_endpoints import WebhookEndpoints
 
 __all__ = ["Ringivo"]
 
@@ -114,11 +117,14 @@ class Ringivo:
             rather than a puzzle in production. `fax:read` and
             `fax:write` are what the fax calls need; opening, changing or
             deleting a fax account needs `fax-accounts:write` as well,
-            which is a reseller-tier scope. What the token ends up
-            carrying is the intersection with what your grant allows, and
-            a scope outside that is dropped rather than refused as long as
-            something survives, so an over-broad request fails later at the
-            resource rather than here.
+            which is a reseller-tier scope. The webhook calls need
+            `webhooks:read` and `webhooks:write`, except on a
+            `fax_account`-scoped endpoint, which a `fax:*` token already
+            reaches. What the token ends up carrying is the intersection
+            with what your grant allows, and a scope outside that is
+            dropped rather than refused as long as something survives, so
+            an over-broad request fails later at the resource rather than
+            here.
         timeout: Seconds any single request may take, token requests
             included.
 
@@ -202,6 +208,8 @@ class Ringivo:
 
         self.faxes = Faxes(self)
         self.fax_accounts = FaxAccounts(self)
+        self.webhook_endpoints = WebhookEndpoints(self)
+        self.webhook_deliveries = WebhookDeliveries(self)
 
     @property
     def base_url(self) -> str:
@@ -243,12 +251,12 @@ class Ringivo:
         """Send one authenticated request and hand back the response, or raise.
 
         This is the ESCAPE HATCH, and it is public for that reason. This
-        package wraps the fax surface; an endpoint it does not wrap is
-        still reachable with your credential, your timeout, your
+        package wraps the fax and webhook surfaces; an endpoint it does not
+        wrap is still reachable with your credential, your timeout, your
         User-Agent and the same typed errors:
 
-            response = client.request("GET", "/v1/webhook-endpoints")
-            endpoints = response.json()["data"]
+            response = client.request("GET", "/v1/fax-account-users")
+            grants = response.json()["data"]
 
         `spec/openapi.yaml` in this package's repository is the reference
         for what those endpoints take and answer, and
@@ -266,8 +274,8 @@ class Ringivo:
         an `httpx.Response`, because you are past this package's boundary:
         the JSON behind it is the API's own — not parsed, not snake_cased,
         not one of the frozen objects in models.py, and not held still by
-        this package's version number. The wrapped methods on
-        `client.faxes` are where those guarantees live.
+        this package's version number. The wrapped namespaces are where
+        those guarantees live.
 
         Args:
             method: The HTTP method, uppercase — `"GET"`, `"POST"`.

@@ -77,6 +77,35 @@ def _phone_number_attributes() -> type:
 PhoneNumberAttributes = _phone_number_attributes()
 
 
+def _webhook_delivery_relationships() -> type:
+    """The generated TypedDict for a webhook delivery's relationships block.
+
+    FOUND BY ITS CONTENTS, NOT BY ITS NAME, for the reason
+    `_phone_number_attributes` gives: the block is inline in the OpenAPI
+    document, so datamodel-code-generator names it positionally —
+    `Relationships4` at the time of writing — and that number moves whenever
+    an inline schema is added ahead of it.
+
+    `endpoint` is the whole block and it is unique in the generated module,
+    which is what makes one member enough to identify it. The search reports
+    its own denominator either way.
+    """
+    wanted = {"endpoint"}
+    found = [
+        value
+        for value in vars(generated).values()
+        if isinstance(value, type) and wanted <= set(getattr(value, "__annotations__", {}))
+    ]
+    assert len(found) == 1, (
+        f"{len(found)} generated types carry {sorted(wanted)} "
+        f"({[t.__name__ for t in found]}) — the lookup is broken, not the spec"
+    )
+    return found[0]
+
+
+WebhookDeliveryRelationships = _webhook_delivery_relationships()
+
+
 # Every field a `_from_*` classmethod in models.py reads off a JSON shape,
 # paired with the exact generated TypedDict and key that shape names it —
 # read straight off the classmethod bodies, not guessed from the dataclass
@@ -246,6 +275,184 @@ _READS: tuple[_Read, ...] = (
         "createdAt",
         "FaxAccountNumber._from_resource",
     ),
+    # -- WebhookEndpoint._from_resource reads a WebhookEndpointResource ----
+    # (id) + its WebhookEndpointAttributes. `secret` is read like any other
+    # attribute: the platform sends it exactly once per secret, and the read
+    # is the same one either way.
+    _Read(
+        models.WebhookEndpoint,
+        "id",
+        generated.WebhookEndpointResource,
+        "id",
+        "WebhookEndpoint._from_resource",
+    ),
+    _Read(
+        models.WebhookEndpoint,
+        "scope_type",
+        generated.WebhookEndpointAttributes,
+        "scopeType",
+        "WebhookEndpoint._from_resource",
+    ),
+    _Read(
+        models.WebhookEndpoint,
+        "scope_id",
+        generated.WebhookEndpointAttributes,
+        "scopeId",
+        "WebhookEndpoint._from_resource",
+    ),
+    _Read(
+        models.WebhookEndpoint,
+        "url",
+        generated.WebhookEndpointAttributes,
+        "url",
+        "WebhookEndpoint._from_resource",
+    ),
+    _Read(
+        models.WebhookEndpoint,
+        "events",
+        generated.WebhookEndpointAttributes,
+        "events",
+        "WebhookEndpoint._from_resource",
+    ),
+    _Read(
+        models.WebhookEndpoint,
+        "active",
+        generated.WebhookEndpointAttributes,
+        "active",
+        "WebhookEndpoint._from_resource",
+    ),
+    _Read(
+        models.WebhookEndpoint,
+        "secret",
+        generated.WebhookEndpointAttributes,
+        "secret",
+        "WebhookEndpoint._from_resource",
+    ),
+    _Read(
+        models.WebhookEndpoint,
+        "secret_previous_expires_at",
+        generated.WebhookEndpointAttributes,
+        "secretPreviousExpiresAt",
+        "WebhookEndpoint._from_resource",
+    ),
+    _Read(
+        models.WebhookEndpoint,
+        "created_at",
+        generated.WebhookEndpointAttributes,
+        "createdAt",
+        "WebhookEndpoint._from_resource",
+    ),
+    _Read(
+        models.WebhookEndpoint,
+        "updated_at",
+        generated.WebhookEndpointAttributes,
+        "updatedAt",
+        "WebhookEndpoint._from_resource",
+    ),
+    # -- WebhookDelivery._from_resource reads a WebhookDeliveryResource ----
+    # (id) + its WebhookDeliveryAttributes, plus the endpoint LINKAGE off
+    # its relationships.
+    _Read(
+        models.WebhookDelivery,
+        "id",
+        generated.WebhookDeliveryResource,
+        "id",
+        "WebhookDelivery._from_resource",
+    ),
+    # The read that starts on the RELATIONSHIPS block rather than the
+    # attributes, the way FaxAccount.customer_id does: `endpoint_id` walks
+    # endpoint -> data -> id, and the member it reads is `endpoint`.
+    _Read(
+        models.WebhookDelivery,
+        "endpoint_id",
+        WebhookDeliveryRelationships,
+        "endpoint",
+        "WebhookDelivery._from_resource",
+    ),
+    _Read(
+        models.WebhookDelivery,
+        "event_id",
+        generated.WebhookDeliveryAttributes,
+        "eventId",
+        "WebhookDelivery._from_resource",
+    ),
+    _Read(
+        models.WebhookDelivery,
+        "event_type",
+        generated.WebhookDeliveryAttributes,
+        "eventType",
+        "WebhookDelivery._from_resource",
+    ),
+    _Read(
+        models.WebhookDelivery,
+        "payload_sha256",
+        generated.WebhookDeliveryAttributes,
+        "payloadSha256",
+        "WebhookDelivery._from_resource",
+    ),
+    _Read(
+        models.WebhookDelivery,
+        "status",
+        generated.WebhookDeliveryAttributes,
+        "status",
+        "WebhookDelivery._from_resource",
+    ),
+    _Read(
+        models.WebhookDelivery,
+        "attempt_no",
+        generated.WebhookDeliveryAttributes,
+        "attemptNo",
+        "WebhookDelivery._from_resource",
+    ),
+    _Read(
+        models.WebhookDelivery,
+        "status_code",
+        generated.WebhookDeliveryAttributes,
+        "statusCode",
+        "WebhookDelivery._from_resource",
+    ),
+    _Read(
+        models.WebhookDelivery,
+        "duration_ms",
+        generated.WebhookDeliveryAttributes,
+        "durationMs",
+        "WebhookDelivery._from_resource",
+    ),
+    _Read(
+        models.WebhookDelivery,
+        "error",
+        generated.WebhookDeliveryAttributes,
+        "error",
+        "WebhookDelivery._from_resource",
+    ),
+    _Read(
+        models.WebhookDelivery,
+        "next_attempt_at",
+        generated.WebhookDeliveryAttributes,
+        "nextAttemptAt",
+        "WebhookDelivery._from_resource",
+    ),
+    _Read(
+        models.WebhookDelivery,
+        "dead_at",
+        generated.WebhookDeliveryAttributes,
+        "deadAt",
+        "WebhookDelivery._from_resource",
+    ),
+    _Read(
+        models.WebhookDelivery,
+        "created_at",
+        generated.WebhookDeliveryAttributes,
+        "createdAt",
+        "WebhookDelivery._from_resource",
+    ),
+    _Read(
+        models.WebhookDelivery,
+        "updated_at",
+        generated.WebhookDeliveryAttributes,
+        "updatedAt",
+        "WebhookDelivery._from_resource",
+    ),
 )
 
 # Fields a model carries that no `_from_*` classmethod reads off a generated
@@ -261,20 +468,47 @@ _EXCLUDED: dict[tuple[type, str], str] = {
     (MediaLinkModel, "raw"): "holds the whole source mapping this object was built from",
     (models.FaxAccount, "raw"): "holds the whole source mapping this object was built from",
     (models.FaxAccountNumber, "raw"): "holds the whole source mapping this object was built from",
+    (models.WebhookEndpoint, "raw"): "holds the whole source mapping this object was built from",
+    (models.WebhookDelivery, "raw"): "holds the whole source mapping this object was built from",
 }
 
-# `FaxPage` and `FaxAccountPage` are deliberately not covered: unlike the
-# models above, neither has a `_from_*` classmethod of its own — `faxes.py`
-# and `fax_accounts.py` build them directly, reading `meta.page.nextCursor`
-# and `links.next` with their own module-level helpers, not a method
-# models.py owns. This test's scope is "what models.py reads"; a drift lock
-# for those modules' own reads would be a second test.
+# The other direction, and the only entry that needs it: a key the generated
+# types DO carry which no model reads ON PURPOSE. `_EXCLUDED` above cannot
+# say this — it is keyed by a dataclass field, and the point here is that
+# there is no field.
+#
+# Recorded rather than merely omitted, because a silent omission and an
+# oversight look identical in a diff, and this one is a decision: the spec
+# documents `deliveredAt` as ALWAYS null, kept only so a client generated
+# against an older spec still parses, and warns against reading it as a
+# status. Reading it into `WebhookDelivery` would invite exactly that.
+#
+# The assertion below is that the key still EXISTS. That is what keeps this
+# note honest: the day the API drops the member, this fails and the right fix
+# is to delete these lines, not to add a field.
+_NOT_READ: dict[tuple[type, str], str] = {
+    (generated.WebhookDeliveryAttributes, "deliveredAt"): (
+        "always null and kept only for clients generated against an older spec; a delivery "
+        "that lands leaves no row at all, and `status` is pending or dead and nothing else"
+    ),
+}
+
+# The four page models — `FaxPage`, `FaxAccountPage`, `WebhookEndpointPage`
+# and `WebhookDeliveryPage` — are deliberately not covered: unlike the models
+# above, none has a `_from_*` classmethod of its own. `faxes.py`,
+# `fax_accounts.py`, `webhook_endpoints.py` and `webhook_deliveries.py` build
+# them directly, reading `meta.page.nextCursor` and `links.next` with their
+# own module-level helpers, not a method models.py owns. This test's scope is
+# "what models.py reads"; a drift lock for those modules' own reads would be
+# a second test.
 _MODELS: tuple[type, ...] = (
     models.FaxDocument,
     models.Fax,
     MediaLinkModel,
     models.FaxAccount,
     models.FaxAccountNumber,
+    models.WebhookEndpoint,
+    models.WebhookDelivery,
 )
 
 
@@ -300,7 +534,7 @@ def test_every_field_a_model_reads_is_covered_by_the_read_table() -> None:
     them, in both directions, or this whole test proves nothing about that
     model.
     """
-    assert len(_MODELS) == 5, f"only {[m.__name__ for m in _MODELS]} was searched — the sweep is broken"
+    assert len(_MODELS) == 7, f"only {[m.__name__ for m in _MODELS]} was searched — the sweep is broken"
 
     mismatches: dict[str, str] = {}
     for model in _MODELS:
@@ -320,7 +554,7 @@ def test_every_field_a_model_reads_is_covered_by_the_read_table() -> None:
 
 
 def test_every_field_a_model_reads_exists_in_the_generated_types() -> None:
-    assert len(_READS) >= 50, f"only {len(_READS)} reads were checked — the sweep is broken"
+    assert len(_READS) >= 74, f"only {len(_READS)} reads were checked — the sweep is broken"
 
     failures: list[str] = []
     for read in _READS:
@@ -331,3 +565,23 @@ def test_every_field_a_model_reads_exists_in_the_generated_types() -> None:
             )
 
     assert failures == [], "\n".join(failures)
+
+
+def test_every_deliberately_unread_key_still_exists_to_be_unread() -> None:
+    """The `_NOT_READ` table above says "the API sends this and we ignore it,
+    for this reason". That is a claim about the generated types as much as
+    about the models, so it is checked: a key that has since been removed
+    makes the note a statement about a shape nobody sends any more, and the
+    fix is to delete the note rather than to leave a reader believing a field
+    was skipped on purpose when it no longer arrives at all.
+    """
+    assert _NOT_READ, "the not-read table is empty — either say so or delete this test"
+
+    stale = [
+        f"{typed_dict.__name__}[{key!r}] is recorded as deliberately unread "
+        f"({reason}), but it is not a member any more"
+        for (typed_dict, key), reason in _NOT_READ.items()
+        if key not in _generated_keys(typed_dict)
+    ]
+
+    assert stale == [], "\n".join(stale)

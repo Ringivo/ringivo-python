@@ -54,6 +54,8 @@ from ._version import __version__
 from .async_auth import AsyncClientCredentialsAuth
 from .async_fax_accounts import AsyncFaxAccounts
 from .async_faxes import AsyncFaxes
+from .async_webhook_deliveries import AsyncWebhookDeliveries
+from .async_webhook_endpoints import AsyncWebhookEndpoints
 from .auth import USER_AGENT
 from .client import JSONAPI_MEDIA_TYPE, _clean_params
 from .errors import raise_for_response
@@ -89,11 +91,14 @@ class AsyncRingivo:
             rather than a puzzle in production. `fax:read` and
             `fax:write` are what the fax calls need; opening, changing or
             deleting a fax account needs `fax-accounts:write` as well,
-            which is a reseller-tier scope. What the token ends up
-            carrying is the intersection with what your grant allows, and
-            a scope outside that is dropped rather than refused as long as
-            something survives, so an over-broad request fails later at the
-            resource rather than here.
+            which is a reseller-tier scope. The webhook calls need
+            `webhooks:read` and `webhooks:write`, except on a
+            `fax_account`-scoped endpoint, which a `fax:*` token already
+            reaches. What the token ends up carrying is the intersection
+            with what your grant allows, and a scope outside that is
+            dropped rather than refused as long as something survives, so
+            an over-broad request fails later at the resource rather than
+            here.
         timeout: Seconds any single request may take, token requests
             included.
 
@@ -174,6 +179,8 @@ class AsyncRingivo:
 
         self.faxes = AsyncFaxes(self)
         self.fax_accounts = AsyncFaxAccounts(self)
+        self.webhook_endpoints = AsyncWebhookEndpoints(self)
+        self.webhook_deliveries = AsyncWebhookDeliveries(self)
 
     @property
     def base_url(self) -> str:
@@ -215,12 +222,12 @@ class AsyncRingivo:
         """Send one authenticated request and hand back the response, or raise.
 
         The awaited twin of `Ringivo.request`, and the same ESCAPE HATCH:
-        this package wraps the fax surface, and an endpoint it does not
-        wrap is still reachable with your credential, your timeout, your
-        User-Agent and the same typed errors:
+        this package wraps the fax and webhook surfaces, and an endpoint it
+        does not wrap is still reachable with your credential, your timeout,
+        your User-Agent and the same typed errors:
 
-            response = await client.request("GET", "/v1/webhook-endpoints")
-            endpoints = response.json()["data"]
+            response = await client.request("GET", "/v1/fax-account-users")
+            grants = response.json()["data"]
 
         `spec/openapi.yaml` in this package's repository is the reference
         for what those endpoints take and answer, and
@@ -238,8 +245,8 @@ class AsyncRingivo:
         an `httpx.Response`, because you are past this package's boundary:
         the JSON behind it is the API's own — not parsed, not snake_cased,
         not one of the frozen objects in models.py, and not held still by
-        this package's version number. The wrapped methods on
-        `client.faxes` are where those guarantees live.
+        this package's version number. The wrapped namespaces are where
+        those guarantees live.
 
         Args:
             method: The HTTP method, uppercase — `"GET"`, `"POST"`.
