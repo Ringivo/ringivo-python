@@ -163,13 +163,18 @@ class WebhookEndpoints:
                 Neither this nor `scope_type` can be changed afterwards: the
                 delivery record is the evidence of what THAT scope was told,
                 so a different scope is a new endpoint.
-            events: The event names you want. `None` or `[]` both mean
-                EVERY event in scope, and the list is published back
-                verbatim rather than normalised. Leave it out and the
+            events: The event names you want, as a LIST. `None` or `[]`
+                both mean EVERY event in scope, and the list is published
+                back verbatim rather than normalised. Leave it out and the
                 platform decides what a new endpoint hears. An event name
                 this platform does not publish is a 422 — a typo would
                 otherwise subscribe you to silence.
             active: `False` registers an endpoint that is switched off.
+
+        Raises:
+            ValueError: `events` was one string rather than a list of names.
+                A str is a `Sequence[str]`, so it would be read one
+                character at a time.
 
         Needs `webhooks:write`, or `fax:write` for a `fax_account`-scoped
         endpoint only: naming a `customer` or `tenant` scope with a `fax:*`
@@ -219,6 +224,7 @@ class WebhookEndpoints:
             ValueError: No member was named. An empty PATCH spends a round
                 trip and an audit entry to change nothing, and it is far
                 more often a form that came back empty than an intention.
+            ValueError: `events` was one string rather than a list of names.
 
         Needs `webhooks:write`, or `fax:write` for a fax-account-scoped
         endpoint.
@@ -312,7 +318,27 @@ def _events(events: Sequence[str] | None | NotGiven) -> list[str] | None | NotGi
     Anything else becomes a `list`, so the member is a JSON array whatever
     sequence the caller reached for — a tuple would serialise the same way,
     but a caller who passed one should not have to know that.
+
+    ONE BARE STRING IS REFUSED, for the reason client.py refuses
+    `scopes="fax:read"`: a str IS a `Sequence[str]`, to the type checker and
+    to `list()`, so `events="fax.received"` type-checks and then asks to be
+    subscribed to twelve one-character event names — measured, with the
+    guard removed: `['f', 'a', 'x', '.', 'r', 'e', 'c', 'e', 'i', 'v', 'e',
+    'd']` reached the wire. The platform answers 422 naming events the
+    caller never typed, which is a puzzle rather than a sentence, so the
+    SHAPE is checked here, in the one place that builds this member, and
+    `create()` and `update()` on both classes inherit it.
+
+    Raises:
+        ValueError: `events` was one string rather than a list of names.
     """
+    if isinstance(events, str):
+        raise ValueError(
+            "events must be a list of event names, not one string: a str is read "
+            'one character at a time, so events="fax.received" asks for twelve '
+            "events that do not exist and the platform refuses every one of them. "
+            'Pass events=["fax.received"].'
+        )
     if isinstance(events, NotGiven) or events is None:
         return events
     return list(events)

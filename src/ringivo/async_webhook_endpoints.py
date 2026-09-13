@@ -99,6 +99,11 @@ class AsyncWebhookEndpoints:
         there is no way to read it back.** `events=None` or `[]` both mean
         every event in scope.
 
+        Raises:
+            ValueError: `events` was one string rather than a list of names.
+                A str is a `Sequence[str]`, so it would be read one
+                character at a time — the refusal `_events` explains.
+
         Needs `webhooks:write`, or `fax:write` for a `fax_account`-scoped
         endpoint only: naming a `customer` or `tenant` scope with a `fax:*`
         token is a 422.
@@ -134,7 +139,8 @@ class AsyncWebhookEndpoints:
         `scope_type` and `scope_id` cannot change.
 
         Raises:
-            ValueError: No member was named.
+            ValueError: No member was named, or `events` was one string
+                rather than a list of names.
 
         Needs `webhooks:write`, or `fax:write` for a fax-account-scoped
         endpoint.

@@ -525,6 +525,67 @@ def test_update_refuses_a_change_that_changes_nothing(
     assert respx_mock.calls.call_count == 0, "an empty update reached the wire"
 
 
+# -- the bare-string refusal -----------------------------------------------
+
+
+def test_create_refuses_one_bare_string_of_events_before_sending_anything(
+    respx_mock: respx.MockRouter, client: Ringivo
+) -> None:
+    # `events="fax.received"` TYPE-CHECKS: a str is a `Sequence[str]`, and
+    # `list()` reads it one character at a time. Sent, it would subscribe the
+    # endpoint to twelve one-character event names and earn a 422 naming
+    # events the caller never typed — the same failure client.py refuses for
+    # `scopes="fax:read"`. It is refused here, before the request exists.
+    route = respx_mock.post(ENDPOINTS_URL).mock(
+        return_value=httpx.Response(201, json={"data": _endpoint_resource(secret=SECRET)})
+    )
+
+    with client, pytest.raises(ValueError, match="not one string"):
+        client.webhook_endpoints.create(
+            url=HOOK_URL,
+            scope_type="fax_account",
+            scope_id=ACCOUNT_ID,
+            events="fax.received",  # type: ignore[arg-type]
+        )
+
+    assert route.call_count == 0
+    # Nothing at all went out — not even the token mint.
+    assert respx_mock.calls.call_count == 0, "a bare string of events reached the wire"
+
+
+def test_the_refusal_names_the_fix_rather_than_the_mistake(client: Ringivo) -> None:
+    # A caller reading this message must be able to act on it without
+    # reading the source, so it carries the corrected call.
+    with client, pytest.raises(ValueError) as caught:
+        client.webhook_endpoints.create(
+            url=HOOK_URL,
+            scope_type="fax_account",
+            scope_id=ACCOUNT_ID,
+            events="fax.received",  # type: ignore[arg-type]
+        )
+
+    assert 'events=["fax.received"]' in str(caught.value)
+
+
+def test_update_refuses_one_bare_string_of_events_before_sending_anything(
+    respx_mock: respx.MockRouter, client: Ringivo
+) -> None:
+    # The same guard on the other write, because `_events` is the one place
+    # that shapes the member and both calls go through it.
+    route = respx_mock.patch(ENDPOINT_URL).mock(
+        return_value=httpx.Response(200, json={"data": _endpoint_resource()})
+    )
+
+    with client, pytest.raises(ValueError, match="not one string"):
+        client.webhook_endpoints.update(
+            ENDPOINT_ID,
+            events="fax.received",  # type: ignore[arg-type]
+        )
+
+    assert route.call_count == 0
+    assert respx_mock.calls.call_count == 0, "a bare string of events reached the wire"
+
+
 # -- delete ----------------------------------------------------------------
 
 

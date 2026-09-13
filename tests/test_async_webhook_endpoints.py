@@ -238,6 +238,40 @@ async def test_update_refuses_a_change_that_changes_nothing(
 
 
 @pytest.mark.anyio
+async def test_both_writes_refuse_one_bare_string_of_events_before_sending_anything(
+    respx_mock: respx.MockRouter, client: AsyncRingivo
+) -> None:
+    # `events="fax.received"` type-checks and would ask for twelve
+    # one-character event names. The guard lives in `_events`, which this
+    # class imports rather than copies, so both writes inherit it — asserted
+    # here rather than assumed, because a shared helper reached through two
+    # call sites is two chances to have wired it up wrongly.
+    #
+    # BOTH calls happen inside ONE `async with`: leaving the block closes the
+    # client for good.
+    respx_mock.post(ENDPOINTS_URL).mock(return_value=httpx.Response(201, json={"data": {}}))
+    respx_mock.patch(ENDPOINT_URL).mock(return_value=httpx.Response(200, json={"data": {}}))
+
+    async with client:
+        with pytest.raises(ValueError, match="not one string") as created:
+            await client.webhook_endpoints.create(
+                url=HOOK_URL,
+                scope_type="fax_account",
+                scope_id=ACCOUNT_ID,
+                events="fax.received",  # type: ignore[arg-type]
+            )
+
+        with pytest.raises(ValueError, match="not one string"):
+            await client.webhook_endpoints.update(
+                ENDPOINT_ID,
+                events="fax.received",  # type: ignore[arg-type]
+            )
+
+    assert 'events=["fax.received"]' in str(created.value)
+    assert respx_mock.calls.call_count == 0, "a bare string of events reached the wire"
+
+
+@pytest.mark.anyio
 async def test_delete_returns_none_and_surfaces_an_unreachable_endpoint_as_404(
     respx_mock: respx.MockRouter, client: AsyncRingivo
 ) -> None:
