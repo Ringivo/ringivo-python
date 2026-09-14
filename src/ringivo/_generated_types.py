@@ -448,9 +448,17 @@ class FaxAccountUserAttributes(TypedDict):
     updatedAt: NotRequired[str | None]
 
 
+class FaxAccount(TypedDict):
+    data: ResourceIdentifier
+
+
+class User(TypedDict):
+    data: ResourceIdentifier
+
+
 class Relationships1(TypedDict):
-    faxAccount: NotRequired[RelationshipToOne]
-    user: NotRequired[RelationshipToOne]
+    faxAccount: NotRequired[FaxAccount]
+    user: NotRequired[User]
 
 
 class FaxAccountUserResource(TypedDict):
@@ -472,14 +480,6 @@ class FaxAccountUserCollectionDocument(TypedDict):
     data: list[FaxAccountUserResource]
     links: NotRequired[CollectionLinks]
     meta: NotRequired[DocumentMeta]
-
-
-class FaxAccount(TypedDict):
-    data: ResourceIdentifier
-
-
-class User(TypedDict):
-    data: ResourceIdentifier
 
 
 class Relationships2(TypedDict):
