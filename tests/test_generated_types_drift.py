@@ -31,6 +31,7 @@ test_grey_label.py::test_no_packaged_file_names_a_platform_brand_or_a_provider_h
 from __future__ import annotations
 
 import dataclasses
+import typing
 
 from ringivo import _generated_types as generated
 from ringivo import models
@@ -104,6 +105,37 @@ def _webhook_delivery_relationships() -> type:
 
 
 WebhookDeliveryRelationships = _webhook_delivery_relationships()
+
+
+def _fax_account_user_relationships() -> type:
+    """The generated TypedDict for a grant's relationships block.
+
+    REACHED THROUGH THE RESOURCE THAT DECLARES IT, not by a contents search
+    like the two helpers above — because a contents search cannot tell this
+    block apart from the one in the CREATE REQUEST. Both carry exactly
+    `{faxAccount, user}` and nothing else, so `wanted <= annotations` matches
+    two types and the denominator assertion those helpers rely on would fail
+    on a spec that is perfectly healthy. Their optional-ness does not
+    separate them either: the generated module is written with
+    `from __future__ import annotations`, so every `NotRequired[...]` is an
+    unresolved string and `__required_keys__` reports both blocks as fully
+    required at runtime.
+
+    `get_type_hints` resolves the `NotRequired[Relationships1]` forward
+    reference to the class itself, which makes this exact rather than
+    heuristic: it is the block THIS resource declares, whatever the
+    generator numbered it.
+    """
+    hints = typing.get_type_hints(generated.FaxAccountUserResource)
+    block = hints.get("relationships")
+    assert isinstance(block, type), (
+        f"FaxAccountUserResource declares no resolvable `relationships` member "
+        f"(got {block!r}) — the lookup is broken, not the spec"
+    )
+    return block
+
+
+FaxAccountUserRelationships = _fax_account_user_relationships()
 
 
 # Every field a `_from_*` classmethod in models.py reads off a JSON shape,
@@ -274,6 +306,52 @@ _READS: tuple[_Read, ...] = (
         PhoneNumberAttributes,
         "createdAt",
         "FaxAccountNumber._from_resource",
+    ),
+    # -- FaxAccountUser._from_resource reads a FaxAccountUserResource (id) -
+    # + its FaxAccountUserAttributes, plus BOTH halves of the pair off the
+    # relationships block. A grant is a pair and a fact, so the two linkage
+    # reads are the substance of it rather than a decoration on it.
+    _Read(
+        models.FaxAccountUser,
+        "id",
+        generated.FaxAccountUserResource,
+        "id",
+        "FaxAccountUser._from_resource",
+    ),
+    _Read(
+        models.FaxAccountUser,
+        "fax_account_id",
+        FaxAccountUserRelationships,
+        "faxAccount",
+        "FaxAccountUser._from_resource",
+    ),
+    _Read(
+        models.FaxAccountUser,
+        "user_id",
+        FaxAccountUserRelationships,
+        "user",
+        "FaxAccountUser._from_resource",
+    ),
+    _Read(
+        models.FaxAccountUser,
+        "user_email",
+        generated.FaxAccountUserAttributes,
+        "userEmail",
+        "FaxAccountUser._from_resource",
+    ),
+    _Read(
+        models.FaxAccountUser,
+        "created_at",
+        generated.FaxAccountUserAttributes,
+        "createdAt",
+        "FaxAccountUser._from_resource",
+    ),
+    _Read(
+        models.FaxAccountUser,
+        "updated_at",
+        generated.FaxAccountUserAttributes,
+        "updatedAt",
+        "FaxAccountUser._from_resource",
     ),
     # -- WebhookEndpoint._from_resource reads a WebhookEndpointResource ----
     # (id) + its WebhookEndpointAttributes. `secret` is read like any other
@@ -468,6 +546,7 @@ _EXCLUDED: dict[tuple[type, str], str] = {
     (MediaLinkModel, "raw"): "holds the whole source mapping this object was built from",
     (models.FaxAccount, "raw"): "holds the whole source mapping this object was built from",
     (models.FaxAccountNumber, "raw"): "holds the whole source mapping this object was built from",
+    (models.FaxAccountUser, "raw"): "holds the whole source mapping this object was built from",
     (models.WebhookEndpoint, "raw"): "holds the whole source mapping this object was built from",
     (models.WebhookDelivery, "raw"): "holds the whole source mapping this object was built from",
 }
@@ -493,20 +572,21 @@ _NOT_READ: dict[tuple[type, str], str] = {
     ),
 }
 
-# The four page models — `FaxPage`, `FaxAccountPage`, `WebhookEndpointPage`
-# and `WebhookDeliveryPage` — are deliberately not covered: unlike the models
-# above, none has a `_from_*` classmethod of its own. `faxes.py`,
-# `fax_accounts.py`, `webhook_endpoints.py` and `webhook_deliveries.py` build
-# them directly, reading `meta.page.nextCursor` and `links.next` with their
-# own module-level helpers, not a method models.py owns. This test's scope is
-# "what models.py reads"; a drift lock for those modules' own reads would be
-# a second test.
+# The five page models — `FaxPage`, `FaxAccountPage`, `FaxAccountUserPage`,
+# `WebhookEndpointPage` and `WebhookDeliveryPage` — are deliberately not
+# covered: unlike the models above, none has a `_from_*` classmethod of its
+# own. `faxes.py`, `fax_accounts.py`, `fax_account_users.py`,
+# `webhook_endpoints.py` and `webhook_deliveries.py` build them directly,
+# reading `meta.page.nextCursor` and `links.next` with their own module-level
+# helpers, not a method models.py owns. This test's scope is "what models.py
+# reads"; a drift lock for those modules' own reads would be a second test.
 _MODELS: tuple[type, ...] = (
     models.FaxDocument,
     models.Fax,
     MediaLinkModel,
     models.FaxAccount,
     models.FaxAccountNumber,
+    models.FaxAccountUser,
     models.WebhookEndpoint,
     models.WebhookDelivery,
 )
@@ -534,7 +614,7 @@ def test_every_field_a_model_reads_is_covered_by_the_read_table() -> None:
     them, in both directions, or this whole test proves nothing about that
     model.
     """
-    assert len(_MODELS) == 7, f"only {[m.__name__ for m in _MODELS]} was searched — the sweep is broken"
+    assert len(_MODELS) == 8, f"only {[m.__name__ for m in _MODELS]} was searched — the sweep is broken"
 
     mismatches: dict[str, str] = {}
     for model in _MODELS:
@@ -554,7 +634,7 @@ def test_every_field_a_model_reads_is_covered_by_the_read_table() -> None:
 
 
 def test_every_field_a_model_reads_exists_in_the_generated_types() -> None:
-    assert len(_READS) >= 74, f"only {len(_READS)} reads were checked — the sweep is broken"
+    assert len(_READS) >= 80, f"only {len(_READS)} reads were checked — the sweep is broken"
 
     failures: list[str] = []
     for read in _READS:

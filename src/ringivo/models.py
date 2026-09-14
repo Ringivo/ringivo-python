@@ -29,6 +29,8 @@ __all__ = [
     "FaxAccount",
     "FaxAccountNumber",
     "FaxAccountPage",
+    "FaxAccountUser",
+    "FaxAccountUserPage",
     "FaxDocument",
     "FaxPage",
     "MediaLink",
@@ -409,6 +411,86 @@ class FaxAccountNumber:
             created_at=_parse_datetime(attributes.get("createdAt")),
             raw=resource,
         )
+
+
+@dataclass(frozen=True)
+class FaxAccountUser:
+    """One grant: a person may read one fax account's content.
+
+    A ROW HERE IS A PAIR AND A FACT, not a user and not an account. It says
+    that this user may read this account's faxes and pages, and it exists or
+    it does not — there is no route that changes one, so a grant is
+    withdrawn by deleting it and re-made by creating another.
+
+    It is the answer to "who can see this account's faxes?", which is why
+    the API publishes `user_email` on the row: a page of ids answers nobody's
+    question. The email is the grantee's at the time of the read, not a copy
+    this grant owns.
+
+    `fax_account_id` and `user_id` are the two halves of the pair, read out
+    of the relationship linkages. Either is None when the server answered
+    that relationship with links alone — legal in JSON:API, and a statement
+    about the response rather than about the grant (see `_relationship_id`).
+    `raw` still carries whatever did arrive.
+
+    Reading a grant needs `fax:read`; making or withdrawing one needs
+    `fax-accounts:write`. The split is the point: administering an account
+    is permission-gated, while reading its content is grant-gated.
+    """
+
+    id: str
+    fax_account_id: str | None = None
+    user_id: str | None = None
+    user_email: str | None = None
+    created_at: datetime | None = None
+    updated_at: datetime | None = None
+    raw: Mapping[str, Any] = field(default_factory=dict, repr=False)
+
+    @classmethod
+    def _from_resource(cls, resource: Mapping[str, Any]) -> FaxAccountUser:
+        """Build from a JSON:API resource object — every grant call."""
+        attributes = _mapping(resource, "attributes") or {}
+
+        return cls(
+            id=_text(resource, "id") or "",
+            fax_account_id=_relationship_id(resource, "faxAccount"),
+            user_id=_relationship_id(resource, "user"),
+            user_email=_text(attributes, "userEmail"),
+            created_at=_parse_datetime(attributes.get("createdAt")),
+            updated_at=_parse_datetime(attributes.get("updatedAt")),
+            raw=resource,
+        )
+
+
+@dataclass(frozen=True)
+class FaxAccountUserPage:
+    """One page of `fax_account_users.list()`, newest first.
+
+    The same shape as `FaxAccountPage`, and for the same reasons:
+    `next_cursor` is the server's own cursor read out of
+    `meta.page.nextCursor`, never one this client built, and it is None on
+    the last page. `next_url` mirrors `links.next`, which is absent rather
+    than null at the end.
+
+    The rows are called `grants` because that is what they are: one row per
+    (user, fax account) pair. An empty page is a real answer — nobody has
+    been granted this account, and that is not the same as an account that
+    does not exist, which is a 404.
+    """
+
+    grants: tuple[FaxAccountUser, ...] = ()
+    next_url: str | None = None
+    next_cursor: str | None = None
+    raw: Mapping[str, Any] = field(default_factory=dict, repr=False)
+
+    def __iter__(self) -> Iterator[FaxAccountUser]:
+        return iter(self.grants)
+
+    def __len__(self) -> int:
+        return len(self.grants)
+
+    def __getitem__(self, index: int) -> FaxAccountUser:
+        return self.grants[index]
 
 
 @dataclass(frozen=True)
