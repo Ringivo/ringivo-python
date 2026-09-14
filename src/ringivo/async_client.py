@@ -52,6 +52,7 @@ import httpx
 
 from ._version import __version__
 from .async_auth import AsyncClientCredentialsAuth
+from .async_fax_account_users import AsyncFaxAccountUsers
 from .async_fax_accounts import AsyncFaxAccounts
 from .async_faxes import AsyncFaxes
 from .async_webhook_deliveries import AsyncWebhookDeliveries
@@ -179,6 +180,7 @@ class AsyncRingivo:
 
         self.faxes = AsyncFaxes(self)
         self.fax_accounts = AsyncFaxAccounts(self)
+        self.fax_account_users = AsyncFaxAccountUsers(self)
         self.webhook_endpoints = AsyncWebhookEndpoints(self)
         self.webhook_deliveries = AsyncWebhookDeliveries(self)
 
@@ -226,8 +228,8 @@ class AsyncRingivo:
         does not wrap is still reachable with your credential, your timeout,
         your User-Agent and the same typed errors:
 
-            response = await client.request("GET", "/v1/fax-account-users")
-            grants = response.json()["data"]
+            response = await client.request("GET", "/v1/sip-trunks")
+            trunks = response.json()["data"]
 
         `spec/openapi.yaml` in this package's repository is the reference
         for what those endpoints take and answer, and

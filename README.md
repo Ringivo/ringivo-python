@@ -270,6 +270,38 @@ It is refused while any number still routes to the account:
 Branch on `code`, not on the 409: a fax that cannot be cancelled is a 409
 too, and it carries no code at all.
 
+### Who may read an account's faxes
+
+Holding the account write permission lets somebody manage an account
+without being granted it. A GRANT is how you hand ONE account's faxes and
+pages to somebody who holds no such permission — a customer-facing staffer
+who should see this customer's faxes and no others. That is
+`client.fax_account_users`.
+
+```python
+    grant = client.fax_account_users.create(
+        fax_account=account.id,
+        user="0198c4a1-7081-72a3-d4a5-6f7081920314",
+    )
+
+    for row in client.fax_account_users.list(fax_account=account.id):
+        print(row.user_email, row.user_id)
+
+    client.fax_account_users.delete(grant.id)     # withdraw it
+```
+
+A grant is a pair and a fact — this user, this account — and it holds no
+settings, so there is no `update()`: you withdraw one by deleting it and
+re-make it by creating another. Withdrawing takes nothing else with it, and
+somebody who reaches the account by permission rather than by a grant still
+reaches it.
+
+Listing and reading grants needs `fax:read`; making and withdrawing them
+needs `fax-accounts:write`. The account you grant may be one you hold no
+grant on yourself — administering an account is permission-gated while
+reading its content is grant-gated, so somebody has to be able to add the
+first member.
+
 ## Webhook endpoints
 
 An endpoint is where the platform calls you, and what it calls you about.
@@ -506,6 +538,10 @@ are deliberately not wrapped.
 | `client.fax_accounts.create(*, customer, name, header_text=…, default_from_e164=…, retention_days=…, retention_pages=…)` | `fax-accounts:write` | Open an account for a customer. |
 | `client.fax_accounts.update(fax_account_id, *, name=…, header_text=…, default_from_e164=…, retention_days=…, retention_pages=…, status=…)` | `fax-accounts:write` | A sparse PATCH: only what you pass. |
 | `client.fax_accounts.delete(fax_account_id)` | `fax-accounts:write` | Delete the account and its pages. 409 while numbers route to it. |
+| `client.fax_account_users.list(*, fax_account=None, user=None, after=None, before=None, page_size=None)` | `fax:read` | A `FaxAccountUserPage` of grants: iterable, with `next_cursor`. The two filters are "who can see this account?" and "what can this person see?". |
+| `client.fax_account_users.get(fax_account_user_id)` | `fax:read` | One `FaxAccountUser`. |
+| `client.fax_account_users.create(*, fax_account, user)` | `fax-accounts:write` | Grant this user access to this account's content. Both are required; neither can be changed afterwards. |
+| `client.fax_account_users.delete(fax_account_user_id)` | `fax-accounts:write` | Withdraw the grant. The only way to undo one — there is no update route. |
 | `client.webhook_endpoints.list(*, scope_type=None, scope_id=None, active=None, after=None, before=None, page_size=None)` | `webhooks:read` | A `WebhookEndpointPage`: iterable, with `next_cursor`. A `fax:read` token sees fax-account-scoped rows only. |
 | `client.webhook_endpoints.get(webhook_endpoint_id)` | `webhooks:read` | One `WebhookEndpoint`. `secret` is always None here. |
 | `client.webhook_endpoints.create(*, url, scope_type, scope_id, events=…, active=…)` | `webhooks:write` | Register an endpoint. The only answer that carries the signing secret — store it. `fax:write` for a `fax_account` scope. |
@@ -516,9 +552,10 @@ are deliberately not wrapped.
 | `client.webhook_deliveries.get(webhook_delivery_id)` | `webhooks:read` | One `WebhookDelivery`. |
 | `webhooks.verify(payload, header, secret, *, tolerance=300)` | — | Raises unless the body is genuine and fresh. |
 
-`Fax`, `FaxAccount`, `FaxAccountNumber`, `FaxAccountPage`, `FaxDocument`,
-`FaxPage`, `MediaLink`, `WebhookDelivery`, `WebhookDeliveryPage`,
-`WebhookEndpoint` and `WebhookEndpointPage` are frozen dataclasses, and each
+`Fax`, `FaxAccount`, `FaxAccountNumber`, `FaxAccountPage`,
+`FaxAccountUser`, `FaxAccountUserPage`, `FaxDocument`, `FaxPage`,
+`MediaLink`, `WebhookDelivery`, `WebhookDeliveryPage`, `WebhookEndpoint`
+and `WebhookEndpointPage` are frozen dataclasses, and each
 keeps the JSON it was built from in `.raw` — so a field the API adds after
 this release reaches you without a new SDK.
 
@@ -534,8 +571,8 @@ offers, use `client.request()` — the same escape hatch in both clients,
 awaited on the async one:
 
 ```python
-response = client.request("GET", "/v1/fax-account-users")
-grants = response.json()["data"]
+response = client.request("GET", "/v1/sip-trunks")
+trunks = response.json()["data"]
 ```
 
 It carries your credential, your timeout, your User-Agent and the same
