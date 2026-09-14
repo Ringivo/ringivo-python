@@ -226,8 +226,8 @@ class AsyncRingivo:
         does not wrap is still reachable with your credential, your timeout,
         your User-Agent and the same typed errors:
 
-            response = await client.request("GET", "/v1/fax-account-users")
-            grants = response.json()["data"]
+            response = await client.request("GET", "/v1/sip-trunks")
+            trunks = response.json()["data"]
 
         `spec/openapi.yaml` in this package's repository is the reference
         for what those endpoints take and answer, and

@@ -3,7 +3,8 @@
 `Ringivo` owns three things: the base URL (there is no default — see below),
 one `httpx.Client` with the auth flow attached, and the resource namespaces
 hung off it (`client.faxes`, `client.fax_accounts`,
-`client.webhook_endpoints`, `client.webhook_deliveries`).
+`client.fax_account_users`, `client.webhook_endpoints`,
+`client.webhook_deliveries`).
 
 -- NO HOSTNAME IS COMPILED IN --------------------------------------------------
 `base_url` is required and has no default. This package is grey-label: the
@@ -77,6 +78,7 @@ import httpx
 from ._version import __version__
 from .auth import USER_AGENT, ClientCredentialsAuth
 from .errors import raise_for_response
+from .fax_account_users import FaxAccountUsers
 from .fax_accounts import FaxAccounts
 from .faxes import Faxes
 from .webhook_deliveries import WebhookDeliveries
@@ -208,6 +210,7 @@ class Ringivo:
 
         self.faxes = Faxes(self)
         self.fax_accounts = FaxAccounts(self)
+        self.fax_account_users = FaxAccountUsers(self)
         self.webhook_endpoints = WebhookEndpoints(self)
         self.webhook_deliveries = WebhookDeliveries(self)
 
@@ -255,8 +258,8 @@ class Ringivo:
         wrap is still reachable with your credential, your timeout, your
         User-Agent and the same typed errors:
 
-            response = client.request("GET", "/v1/fax-account-users")
-            grants = response.json()["data"]
+            response = client.request("GET", "/v1/sip-trunks")
+            trunks = response.json()["data"]
 
         `spec/openapi.yaml` in this package's repository is the reference
         for what those endpoints take and answer, and

@@ -27,6 +27,11 @@ Fax accounts are `client.fax_accounts` — list them, read one, open one for
 a customer, change its settings, delete it, and read the numbers routed to
 it. Reads need `fax:read`; every write needs `fax-accounts:write`.
 
+`client.fax_account_users` is who may READ one account's faxes. A grant is
+a pair and a fact — this user, this account — with no settings and no
+update route: you withdraw one by deleting it. Listing and reading grants
+needs `fax:read`; granting and withdrawing needs `fax-accounts:write`.
+
 Webhooks have two namespaces. `client.webhook_endpoints` registers where the
 platform should call you and with what signing secret — and the secret is
 readable ONCE, in the answer to the create or the rotate that minted it.
@@ -59,6 +64,7 @@ from .errors import (
     RingivoError,
     SignatureVerificationError,
 )
+from .fax_account_users import FaxAccountUsers
 from .fax_accounts import NOT_GIVEN, FaxAccounts, NotGiven
 from .faxes import Faxes
 from .models import (
@@ -94,6 +100,7 @@ __all__ = [
     "FaxAccountPage",
     "FaxAccountUser",
     "FaxAccountUserPage",
+    "FaxAccountUsers",
     "FaxAccounts",
     "FaxDocument",
     "FaxPage",
