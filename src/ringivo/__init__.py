@@ -52,6 +52,7 @@ and no network — it is pure computation, so both clients share the one.
 from . import webhooks
 from ._version import __version__
 from .async_client import AsyncRingivo
+from .async_fax_account_users import AsyncFaxAccountUsers
 from .async_fax_accounts import AsyncFaxAccounts
 from .async_faxes import AsyncFaxes
 from .async_webhook_deliveries import AsyncWebhookDeliveries
@@ -88,6 +89,7 @@ from .webhook_endpoints import WebhookEndpoints
 __all__ = [
     "ApiError",
     "ApiErrorDetail",
+    "AsyncFaxAccountUsers",
     "AsyncFaxAccounts",
     "AsyncFaxes",
     "AsyncRingivo",
