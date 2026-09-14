@@ -560,7 +560,7 @@ class Attributes2(TypedDict):
     url: str
     scopeType: WebhookScopeType
     scopeId: str
-    events: NotRequired[list[WebhookEventType] | None]
+    events: list[WebhookEventType]
     filter: NotRequired[str | None]
     active: NotRequired[bool]
 
@@ -576,7 +576,7 @@ class WebhookEndpointCreateRequest(TypedDict):
 
 class Attributes3(TypedDict):
     url: NotRequired[str]
-    events: NotRequired[list[WebhookEventType] | None]
+    events: NotRequired[list[WebhookEventType]]
     filter: NotRequired[str | None]
     active: NotRequired[bool]
     scopeType: NotRequired[WebhookScopeType]

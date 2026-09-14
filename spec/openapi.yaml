@@ -2675,10 +2675,12 @@ paths:
         address literal and a non-http scheme are each refused at registration. A hostname that
         does not resolve yet is accepted on purpose, so you can register before publishing DNS.
 
-        `events` is the list you want. **`null` or `[]` both mean "every event in scope"**, and the
-        list is published back verbatim rather than normalised, so a client that sent `[]` can tell
-        its write was understood. An event name this platform does not publish is a 422 — a typo
-        would otherwise subscribe you to silence.
+        `events` is the list you want, and **it must name at least one event type** — an omitted
+        member, `null` and `[]` are each a 422. An endpoint that named none would receive every
+        event type this platform ever adds, including families your integration has never seen. The
+        list is published back verbatim rather than normalised, so a client can tell its write was
+        understood. An event name this platform does not publish is a 422 too — a typo would
+        otherwise subscribe you to silence.
 
         `scopeType`/`scopeId` say what the endpoint hears about, and neither can be changed
         afterwards: the delivery history is the record of what THAT scope was told.
@@ -7335,7 +7337,15 @@ components:
         events:
           type: [array, 'null']
           maxItems: 64
-          description: 'Null or `[]` both mean "every event in scope".'
+          description: |
+            The event types this endpoint asked for. **A write names at least one** — `null` and
+            `[]` are refused on create and on update. Endpoints registered before 2026-09-14 that
+            named none were given the catalog as it stood that day.
+
+            No `minItems` here, unlike the create body, and the difference is deliberate: an empty
+            list still READS as "every event in scope" wherever an event is matched, so that a row
+            this rule never reached keeps receiving rather than going silently dark. This schema
+            describes what may come back, and the request bodies describe what you may send.
           items:
             $ref: '#/components/schemas/WebhookEventType'
         filter:
@@ -7370,6 +7380,12 @@ components:
             tightly than `AND`**, so `a:1 OR b:2 AND c:3` means `(a:1 OR b:2) AND c:3` — parenthesise
             when you want the other reading. Two adjacent terms with no keyword are an `AND`.
             Negation is `NOT x` or a leading `-`, which mean the same thing.
+
+            A field name is made of letters, digits, `_`, `.` and `-`. **A `-` is part of the name
+            everywhere except as the first character of a term**, where it is the negation above —
+            so `fax-account:A` names a field, `a.b-c:1` names one inside a path, and `-x-y:1` is
+            "not `x-y`". A term that starts with `-` therefore always negates: `--x:1` is `x:1`
+            negated twice, not a field called `-x`.
 
             The SYNTAX is checked when you register or edit the endpoint, and a 422 names the
             character it could not read. **The FIELD NAMES are not checked against anything.** A
@@ -7439,7 +7455,7 @@ components:
             type: { type: string, enum: [webhook-endpoints] }
             attributes:
               type: object
-              required: [url, scopeType, scopeId]
+              required: [url, scopeType, scopeId, events]
               properties:
                 url:
                   type: string
@@ -7450,8 +7466,12 @@ components:
                   $ref: '#/components/schemas/WebhookScopeType'
                 scopeId: { type: string, format: uuid }
                 events:
-                  type: [array, 'null']
+                  type: array
+                  minItems: 1
                   maxItems: 64
+                  description: |
+                    Name at least one event type. An endpoint that named none would receive every
+                    event type this platform ever adds, so `null` and `[]` are each a 422.
                   items:
                     $ref: '#/components/schemas/WebhookEventType'
                 filter:
@@ -7501,8 +7521,14 @@ components:
               properties:
                 url: { type: string, format: uri, maxLength: 2048 }
                 events:
-                  type: [array, 'null']
+                  type: array
+                  minItems: 1
                   maxItems: 64
+                  description: |
+                    Replaced wholesale by what you send, and it must still name at least one event
+                    type — `null` and `[]` are each a 422 here too. The rule is on this arm because
+                    the field means the same thing on each: an endpoint that could be emptied by a
+                    PATCH would reach the every-event state a create refuses, one request later.
                   items:
                     $ref: '#/components/schemas/WebhookEventType'
                 filter:
