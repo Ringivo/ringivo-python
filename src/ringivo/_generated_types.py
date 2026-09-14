@@ -1691,3 +1691,48 @@ class PhoneNumberCollectionDocument(TypedDict):
     data: list[PhoneNumberResource]
     links: NotRequired[CollectionLinks]
     meta: NotRequired[DocumentMeta]
+
+
+MessageReceivedEventData = TypedDict(
+    'MessageReceivedEventData',
+    {
+        'id': NotRequired[str],
+        'tenant_id': NotRequired[str],
+        'customer_id': NotRequired[str | None],
+        'kind': NotRequired[InboundMessageKind],
+        'from': NotRequired[str],
+        'to': NotRequired[str],
+        'body': NotRequired[str | None],
+        'media': NotRequired[list[InboundMessageMediaPart]],
+        'received_at': NotRequired[str],
+    },
+)
+
+
+PortOrderStatusChangedEventData = TypedDict(
+    'PortOrderStatusChangedEventData',
+    {
+        'port_order_id': NotRequired[str],
+        'tenant_id': NotRequired[str],
+        'from': NotRequired[PortOrderStatus],
+        'to': NotRequired[PortOrderStatus],
+    },
+)
+
+
+class PortOrderBillExtractionSettledEventData(TypedDict):
+    port_order_id: NotRequired[str]
+    tenant_id: NotRequired[str]
+    status: NotRequired[PortOrderBillExtractionStatus]
+
+
+class MessageReceivedEvent(WebhookEventEnvelope):
+    data: MessageReceivedEventData
+
+
+class PortOrderStatusChangedEvent(WebhookEventEnvelope):
+    data: PortOrderStatusChangedEventData
+
+
+class PortOrderBillExtractionSettledEvent(WebhookEventEnvelope):
+    data: PortOrderBillExtractionSettledEventData
