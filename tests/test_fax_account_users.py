@@ -16,6 +16,7 @@ filter reads back as a page of everything.
 
 from __future__ import annotations
 
+import json as jsonlib
 from datetime import datetime, timezone
 
 import httpx
@@ -296,6 +297,165 @@ def test_a_grant_that_is_not_yours_raises_a_typed_404(
 
     with client, pytest.raises(ApiError) as caught:
         client.fax_account_users.get(GRANT_ID)
+
+    assert caught.value.status_code == 404
+    assert caught.value.code == "not_found"
+
+
+# -- create ----------------------------------------------------------------
+
+
+def test_create_posts_a_document_that_is_all_relationships(
+    respx_mock: respx.MockRouter, client: Ringivo
+) -> None:
+    route = respx_mock.post(GRANTS_URL).mock(
+        return_value=httpx.Response(201, json={"data": _grant_resource()})
+    )
+
+    with client:
+        grant = client.fax_account_users.create(fax_account=ACCOUNT_ID, user=USER_ID)
+
+    request = route.calls.last.request
+    body = jsonlib.loads(request.content)
+
+    # The content type is the assertion that matters: httpx stamps
+    # `application/json` on a `json=` body, and this surface answers 415 to
+    # that. The explicit header wins because httpx only fills in what the
+    # caller left unset.
+    assert request.headers["content-type"] == JSONAPI
+    assert request.headers["accept"] == JSONAPI
+    assert body["data"]["type"] == "fax-account-users"
+    assert body["data"]["relationships"]["faxAccount"]["data"] == {
+        "type": "fax-accounts",
+        "id": ACCOUNT_ID,
+    }
+    assert body["data"]["relationships"]["user"]["data"] == {
+        "type": "users",
+        "id": USER_ID,
+    }
+    # NO attributes member at all — a grant has none a caller writes, and an
+    # empty `attributes: {}` would be this client inventing one.
+    assert "attributes" not in body["data"]
+    assert set(body["data"]) == {"type", "relationships"}
+    assert grant.id == GRANT_ID
+
+
+def test_create_names_the_relationships_camelcased_as_the_document_wants(
+    respx_mock: respx.MockRouter, client: Ringivo
+) -> None:
+    # The other half of the snake_case/camelCase split the filters have: the
+    # DOCUMENT member is `faxAccount`, and a snake_cased one here would be a
+    # 422 on a relationship the server does not know.
+    route = respx_mock.post(GRANTS_URL).mock(
+        return_value=httpx.Response(201, json={"data": _grant_resource()})
+    )
+
+    with client:
+        client.fax_account_users.create(fax_account=ACCOUNT_ID, user=USER_ID)
+
+    relationships = jsonlib.loads(route.calls.last.request.content)["data"]["relationships"]
+
+    assert set(relationships) == {"faxAccount", "user"}
+    assert "fax_account" not in relationships
+
+
+def test_a_fax_account_that_is_not_yours_answers_on_the_relationship_pointer(
+    respx_mock: respx.MockRouter, client: Ringivo
+) -> None:
+    respx_mock.post(GRANTS_URL).mock(
+        return_value=httpx.Response(
+            404,
+            json={
+                "errors": [
+                    {
+                        "status": "404",
+                        "title": "Not Found",
+                        "detail": "The related resource does not exist.",
+                        "source": {"pointer": "/data/relationships/faxAccount"},
+                    }
+                ]
+            },
+        )
+    )
+
+    with client, pytest.raises(ApiError) as caught:
+        client.fax_account_users.create(fax_account=ACCOUNT_ID, user=USER_ID)
+
+    assert caught.value.status_code == 404
+    assert caught.value.errors[0].source == {"pointer": "/data/relationships/faxAccount"}
+
+
+def test_granting_the_same_pair_twice_is_the_servers_refusal_to_make(
+    respx_mock: respx.MockRouter, client: Ringivo
+) -> None:
+    # The pair IS the row, so a duplicate is a conflict rather than a second
+    # grant. This client does not read the collection first to find out —
+    # that would be a race with a truthful-looking answer.
+    respx_mock.post(GRANTS_URL).mock(
+        return_value=httpx.Response(
+            422,
+            json={
+                "errors": [
+                    {
+                        "status": "422",
+                        "title": "Unprocessable Content",
+                        "detail": "This user already has access to this fax account.",
+                        "source": {"pointer": "/data/relationships/user"},
+                    }
+                ]
+            },
+        )
+    )
+
+    with client, pytest.raises(ApiError) as caught:
+        client.fax_account_users.create(fax_account=ACCOUNT_ID, user=USER_ID)
+
+    assert caught.value.status_code == 422
+
+
+# -- delete ----------------------------------------------------------------
+
+
+def test_delete_answers_nothing_and_returns_none(
+    respx_mock: respx.MockRouter, client: Ringivo
+) -> None:
+    route = respx_mock.delete(GRANT_URL).mock(return_value=httpx.Response(204))
+
+    with client:
+        answer = client.fax_account_users.delete(GRANT_ID)
+
+    assert answer is None
+    assert route.calls.last.request.method == "DELETE"
+
+
+def test_an_empty_grant_id_is_refused_before_a_withdrawal_reaches_the_wire(
+    respx_mock: respx.MockRouter, client: Ringivo
+) -> None:
+    # The refusal names the id the caller passed, and it happens BEFORE the
+    # request exists: an empty segment would otherwise send
+    # `DELETE /v1/fax-account-users/` at the collection.
+    with client, pytest.raises(ValueError, match="a fax account user id is required"):
+        client.fax_account_users.delete("")
+
+    assert respx_mock.calls.call_count == 0, "an empty withdrawal reached the wire"
+
+
+def test_a_withdrawal_of_a_grant_that_is_gone_is_a_typed_404(
+    respx_mock: respx.MockRouter, client: Ringivo
+) -> None:
+    respx_mock.delete(GRANT_URL).mock(
+        return_value=httpx.Response(
+            404,
+            json={
+                "errors": [
+                    {"status": "404", "code": "not_found", "title": "Not found", "detail": "No."}
+                ]
+            },
+        )
+    )
+
+    with client, pytest.raises(ApiError) as caught:
+        client.fax_account_users.delete(GRANT_ID)
 
     assert caught.value.status_code == 404
     assert caught.value.code == "not_found"
