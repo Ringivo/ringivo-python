@@ -370,8 +370,12 @@ class FaxAccountAttributes(TypedDict):
     updatedAt: NotRequired[str | None]
 
 
+class Customer(TypedDict):
+    data: ResourceIdentifier
+
+
 class FaxAccountRelationships(TypedDict):
-    customer: NotRequired[RelationshipToOne]
+    customer: NotRequired[Customer]
     numbers: NotRequired[RelationshipToMany]
 
 
@@ -412,10 +416,6 @@ class FaxAccountCreateAttributes(TypedDict):
     retentionDays: NotRequired[int | None]
     retentionPages: NotRequired[int | None]
     status: NotRequired[FaxAccountStatus]
-
-
-class Customer(TypedDict):
-    data: ResourceIdentifier
 
 
 class Relationships(TypedDict):
@@ -980,12 +980,12 @@ class Attributes5(TypedDict):
     label: NotRequired[str | None]
 
 
-class Customer2(TypedDict):
+class Customer3(TypedDict):
     data: ResourceIdentifier | None
 
 
 class Relationships7(TypedDict):
-    customer: NotRequired[Customer2]
+    customer: NotRequired[Customer3]
 
 
 class Data10(TypedDict):
@@ -1003,7 +1003,7 @@ class Attributes6(TypedDict):
 
 
 class Relationships8(TypedDict):
-    customer: NotRequired[Customer2]
+    customer: NotRequired[Customer3]
 
 
 class Data11(TypedDict):
@@ -1482,12 +1482,12 @@ class SipTrunkCreateAttributes(TypedDict):
     codecs: NotRequired[list[Literal['PCMU', 'PCMA', 'G722']]]
 
 
-class Customer4(TypedDict):
+class Customer5(TypedDict):
     data: ResourceIdentifier
 
 
 class Relationships9(TypedDict):
-    customer: Customer4
+    customer: Customer5
 
 
 class Data21(TypedDict):
