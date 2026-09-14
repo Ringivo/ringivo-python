@@ -528,6 +528,7 @@ class WebhookEndpointAttributes(TypedDict):
     scopeId: NotRequired[str | None]
     url: NotRequired[str | None]
     events: NotRequired[list[WebhookEventType] | None]
+    filter: NotRequired[str | None]
     active: NotRequired[bool | None]
     secret: NotRequired[str | None]
     secretPreviousExpiresAt: NotRequired[str | None]
@@ -560,6 +561,7 @@ class Attributes2(TypedDict):
     scopeType: WebhookScopeType
     scopeId: str
     events: NotRequired[list[WebhookEventType] | None]
+    filter: NotRequired[str | None]
     active: NotRequired[bool]
 
 
@@ -575,6 +577,7 @@ class WebhookEndpointCreateRequest(TypedDict):
 class Attributes3(TypedDict):
     url: NotRequired[str]
     events: NotRequired[list[WebhookEventType] | None]
+    filter: NotRequired[str | None]
     active: NotRequired[bool]
     scopeType: NotRequired[WebhookScopeType]
     scopeId: NotRequired[str]
