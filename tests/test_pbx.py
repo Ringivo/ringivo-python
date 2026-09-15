@@ -25,6 +25,7 @@ they were not passed, and the boolean that is always sent.
 from __future__ import annotations
 
 from datetime import datetime, timezone
+from typing import Any, cast
 
 import httpx
 import pytest
@@ -638,8 +639,8 @@ def test_call_records_list_builds_every_filter_and_the_page_query(
             started_after="2026-09-01T00:00:00Z",
             started_before="2026-09-30T23:59:59Z",
             direction="inbound",
-            disposition="answered",
             user=USER_ID,
+            call_id=CALL_ID,
             include_hidden=True,
             after="0198c4a1",
             page_size=100,
@@ -656,12 +657,39 @@ def test_call_records_list_builds_every_filter_and_the_page_query(
     assert params["filter[started-after]"] == "2026-09-01T00:00:00Z"
     assert params["filter[started-before]"] == "2026-09-30T23:59:59Z"
     assert params["filter[direction]"] == "inbound"
-    assert params["filter[disposition]"] == "answered"
     assert params["filter[user]"] == USER_ID
+    # The id `users.call()` answered with, KEBAB-CASE like the date range.
+    assert params["filter[call-id]"] == CALL_ID
     assert params["filter[include-hidden]"] == "true"
     assert params["page[after]"] == "0198c4a1"
     assert params["page[size]"] == "100"
     assert "page[before]" not in params
+
+
+def test_call_records_list_no_longer_sends_a_disposition_filter(
+    respx_mock: respx.MockRouter, client: Ringivo
+) -> None:
+    # The platform answers `filter[disposition]` with a 400 now. Removing the
+    # argument is not proof on its own, so this asks the way a caller who
+    # reaches past the type hint would — and checks the WIRE first, then the
+    # refusal. The `cast` is that caller: the type checker already refuses
+    # the argument.
+    route = respx_mock.get(CALL_RECORDS_URL).mock(
+        return_value=httpx.Response(200, json={"data": []})
+    )
+
+    refused = False
+    with client:
+        try:
+            cast(Any, client.pbx.call_records).list(disposition="missed")
+        except TypeError:
+            refused = True
+
+    sent = [call.request.url.params for call in route.calls]
+    assert not any("filter[disposition]" in params for params in sent), (
+        f"filter[disposition] reached the wire: {sent}"
+    )
+    assert refused, "list() accepted disposition= instead of refusing it"
 
 
 def test_call_records_list_sends_include_hidden_false_rather_than_dropping_it(

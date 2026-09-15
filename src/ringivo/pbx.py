@@ -172,9 +172,9 @@ class PbxUsers:
         AND THE ID IT HANDS BACK IS NOT A CALL-RECORD ID. It names the call
         on the PHONE SYSTEM — it is the SIP Call-ID the call is placed
         under — while a call record's id comes from the switch's CDR row.
-        No call-record field carries the SIP call id, so there is no join
-        to make from it in this release; a later one may publish the call
-        id on call records. See `PbxCall`.
+        To find the records this call wrote, pass it to
+        `call_records.list(call_id=...)` once the call has ended. See
+        `PbxCall`.
 
         THIS IS NOT SAFE TO RETRY BLINDLY. A call is undoable by nothing —
         a real phone rings and a person picks it up — and this action
@@ -311,8 +311,8 @@ class PbxCallRecords:
         started_after: str | None = None,
         started_before: str | None = None,
         direction: str | None = None,
-        disposition: str | None = None,
         user: str | None = None,
+        call_id: str | None = None,
         include_hidden: bool | None = None,
         after: str | None = None,
         before: str | None = None,
@@ -338,10 +338,18 @@ class PbxCallRecords:
                 that list is refused with a 400 rather than answered with
                 an empty page, which is why this client passes the value
                 through instead of keeping a copy of the vocabulary that
-                would go stale here.
-            disposition: `answered` or `missed`, the same way.
+                would go stale here. There is no filter on disposition:
+                each `CallRecord` still carries `disposition`, and the list
+                takes no argument for it.
             user: Calls with this subscriber on EITHER leg — placed by them
                 or taken by them — by `users` id, not by extension.
+            call_id: The records of ONE click-to-dial call. Pass the `id`
+                that `users.call()` returned. The call record appears once
+                the call has ended. One call writes two records: by default
+                the list returns the visible dial-out record, and the hidden
+                leg that rang the subscriber comes back only with
+                `include_hidden=True`. An id that names no call answers an
+                empty page, not an error.
             include_hidden: `True` also returns the records the phone
                 system marks hidden. They are left out by default, which is
                 what the phone system's own call log does; a direct `get()`
@@ -365,8 +373,8 @@ class PbxCallRecords:
             "filter[started-after]": started_after,
             "filter[started-before]": started_before,
             "filter[direction]": direction,
-            "filter[disposition]": disposition,
             "filter[user]": user,
+            "filter[call-id]": call_id,
             "filter[include-hidden]": include_hidden,
         }
         document = self._client.request("GET", "/v1/pbx/call-records", params=params).json()

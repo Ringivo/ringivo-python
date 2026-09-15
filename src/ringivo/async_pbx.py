@@ -117,9 +117,10 @@ class AsyncPbxUsers:
 
         The awaited twin of `PbxUsers.call`, and it carries the same
         warnings: a 202 says the request was accepted, not that a phone
-        rang; the id it hands back names the call on the PHONE SYSTEM and
-        does not join to any call record in this release; and THIS IS NOT
-        SAFE TO RETRY BLINDLY — a call is undoable by nothing and the
+        rang; the id it hands back names the call on the PHONE SYSTEM rather
+        than a call record, and `call_records.list(call_id=...)` finds the
+        records it wrote once the call has ended; and THIS IS NOT SAFE TO
+        RETRY BLINDLY — a call is undoable by nothing and the
         action carries no idempotency key. A 502 is the exception, and
         `errors[0].meta["vendor_status"]` is why.
 
@@ -208,8 +209,8 @@ class AsyncPbxCallRecords:
         started_after: str | None = None,
         started_before: str | None = None,
         direction: str | None = None,
-        disposition: str | None = None,
         user: str | None = None,
+        call_id: str | None = None,
         include_hidden: bool | None = None,
         after: str | None = None,
         before: str | None = None,
@@ -224,6 +225,11 @@ class AsyncPbxCallRecords:
 
         Hidden records are left out unless `include_hidden=True`.
 
+        `call_id` takes the `id` that `users.call()` returned, and finds
+        that call's records once the call has ended: by default the visible
+        dial-out record, and the hidden leg that rang the subscriber only
+        with `include_hidden=True`. There is no filter on disposition.
+
         Needs `pbx-call-records:read`.
         """
         params: dict[str, Any] = {
@@ -234,8 +240,8 @@ class AsyncPbxCallRecords:
             "filter[started-after]": started_after,
             "filter[started-before]": started_before,
             "filter[direction]": direction,
-            "filter[disposition]": disposition,
             "filter[user]": user,
+            "filter[call-id]": call_id,
             "filter[include-hidden]": include_hidden,
         }
         response = await self._client.request("GET", "/v1/pbx/call-records", params=params)

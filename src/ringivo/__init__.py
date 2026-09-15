@@ -32,6 +32,10 @@ a pair and a fact — this user, this account — with no settings and no
 update route: you withdraw one by deleting it. Listing and reading grants
 needs `fax:read`; granting and withdrawing needs `fax-accounts:write`.
 
+`client.customers` reads your customers: list them, or read one. A
+customer's `id` is what `customer=` takes on the `client.pbx` lists. It
+needs `customers:read`, which only an account-wide credential can hold.
+
 `client.pbx` is your customers' phone systems: `pbx.users` are the
 subscribers, `pbx.devices` are the registrations their phones have made, and
 `pbx.call_records` is the call log — newest first, and the date range decides
@@ -59,6 +63,7 @@ and no network — it is pure computation, so both clients share the one.
 from . import webhooks
 from ._version import __version__
 from .async_client import AsyncRingivo
+from .async_customers import AsyncCustomers
 from .async_fax_account_users import AsyncFaxAccountUsers
 from .async_fax_accounts import AsyncFaxAccounts
 from .async_faxes import AsyncFaxes
@@ -71,6 +76,7 @@ from .async_pbx import (
 from .async_webhook_deliveries import AsyncWebhookDeliveries
 from .async_webhook_endpoints import AsyncWebhookEndpoints
 from .client import Ringivo
+from .customers import Customers
 from .errors import (
     ApiError,
     ApiErrorDetail,
@@ -84,6 +90,8 @@ from .faxes import Faxes
 from .models import (
     CallRecord,
     CallRecordPage,
+    Customer,
+    CustomerPage,
     Fax,
     FaxAccount,
     FaxAccountNumber,
@@ -110,6 +118,7 @@ from .webhook_endpoints import WebhookEndpoints
 __all__ = [
     "ApiError",
     "ApiErrorDetail",
+    "AsyncCustomers",
     "AsyncFaxAccountUsers",
     "AsyncFaxAccounts",
     "AsyncFaxes",
@@ -123,6 +132,9 @@ __all__ = [
     "AuthenticationError",
     "CallRecord",
     "CallRecordPage",
+    "Customer",
+    "CustomerPage",
+    "Customers",
     "Fax",
     "FaxAccount",
     "FaxAccountNumber",

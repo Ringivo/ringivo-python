@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import json
 from datetime import datetime, timezone
+from typing import Any, cast
 
 import httpx
 import pytest
@@ -405,8 +406,8 @@ async def test_call_records_list_builds_every_filter_and_the_page_query(
             started_after="2026-09-01T00:00:00Z",
             started_before="2026-09-30T23:59:59Z",
             direction="outbound",
-            disposition="missed",
             user=USER_ID,
+            call_id=CALL_ID,
             include_hidden=True,
             after="0198c4a1",
             page_size=100,
@@ -421,12 +422,35 @@ async def test_call_records_list_builds_every_filter_and_the_page_query(
     assert params["filter[started-after]"] == "2026-09-01T00:00:00Z"
     assert params["filter[started-before]"] == "2026-09-30T23:59:59Z"
     assert params["filter[direction]"] == "outbound"
-    assert params["filter[disposition]"] == "missed"
     assert params["filter[user]"] == USER_ID
+    assert params["filter[call-id]"] == CALL_ID
     assert params["filter[include-hidden]"] == "true"
     assert params["page[after]"] == "0198c4a1"
     assert params["page[size]"] == "100"
     assert "page[before]" not in params
+
+
+@pytest.mark.anyio
+async def test_call_records_list_no_longer_sends_a_disposition_filter(
+    respx_mock: respx.MockRouter, client: AsyncRingivo
+) -> None:
+    # The mirror of the sync test: the wire first, then the refusal.
+    route = respx_mock.get(CALL_RECORDS_URL).mock(
+        return_value=httpx.Response(200, json={"data": []})
+    )
+
+    refused = False
+    async with client:
+        try:
+            await cast(Any, client.pbx.call_records).list(disposition="missed")
+        except TypeError:
+            refused = True
+
+    sent = [call.request.url.params for call in route.calls]
+    assert not any("filter[disposition]" in params for params in sent), (
+        f"filter[disposition] reached the wire: {sent}"
+    )
+    assert refused, "list() accepted disposition= instead of refusing it"
 
 
 @pytest.mark.anyio

@@ -3,8 +3,8 @@
 `Ringivo` owns three things: the base URL (there is no default — see below),
 one `httpx.Client` with the auth flow attached, and the resource namespaces
 hung off it (`client.faxes`, `client.fax_accounts`,
-`client.fax_account_users`, `client.pbx`, `client.webhook_endpoints`,
-`client.webhook_deliveries`).
+`client.fax_account_users`, `client.customers`, `client.pbx`,
+`client.webhook_endpoints`, `client.webhook_deliveries`).
 
 -- NO HOSTNAME IS COMPILED IN --------------------------------------------------
 `base_url` is required and has no default. This package is grey-label: the
@@ -77,6 +77,7 @@ import httpx
 
 from ._version import __version__
 from .auth import USER_AGENT, ClientCredentialsAuth
+from .customers import Customers
 from .errors import raise_for_response
 from .fax_account_users import FaxAccountUsers
 from .fax_accounts import FaxAccounts
@@ -212,6 +213,7 @@ class Ringivo:
         self.faxes = Faxes(self)
         self.fax_accounts = FaxAccounts(self)
         self.fax_account_users = FaxAccountUsers(self)
+        self.customers = Customers(self)
         self.pbx = Pbx(self)
         self.webhook_endpoints = WebhookEndpoints(self)
         self.webhook_deliveries = WebhookDeliveries(self)
