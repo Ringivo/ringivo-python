@@ -32,6 +32,13 @@ a pair and a fact — this user, this account — with no settings and no
 update route: you withdraw one by deleting it. Listing and reading grants
 needs `fax:read`; granting and withdrawing needs `fax-accounts:write`.
 
+`client.pbx` is your customers' phone systems: `pbx.users` are the
+subscribers, `pbx.devices` are the registrations their phones have made, and
+`pbx.call_records` is the call log — newest first, and the date range decides
+which months are read. `pbx.users.call()` asks a subscriber's phone to ring
+and dial somebody. Reads need `pbx-users:read` (users AND devices) or
+`pbx-call-records:read`; the call needs `pbx-calls:write`.
+
 Webhooks have two namespaces. `client.webhook_endpoints` registers where the
 platform should call you and with what signing secret — and the secret is
 readable ONCE, in the answer to the create or the rotate that minted it.
@@ -55,6 +62,12 @@ from .async_client import AsyncRingivo
 from .async_fax_account_users import AsyncFaxAccountUsers
 from .async_fax_accounts import AsyncFaxAccounts
 from .async_faxes import AsyncFaxes
+from .async_pbx import (
+    AsyncPbx,
+    AsyncPbxCallRecords,
+    AsyncPbxDevices,
+    AsyncPbxUsers,
+)
 from .async_webhook_deliveries import AsyncWebhookDeliveries
 from .async_webhook_endpoints import AsyncWebhookEndpoints
 from .client import Ringivo
@@ -69,6 +82,8 @@ from .fax_account_users import FaxAccountUsers
 from .fax_accounts import NOT_GIVEN, FaxAccounts, NotGiven
 from .faxes import Faxes
 from .models import (
+    CallRecord,
+    CallRecordPage,
     Fax,
     FaxAccount,
     FaxAccountNumber,
@@ -78,11 +93,17 @@ from .models import (
     FaxDocument,
     FaxPage,
     MediaLink,
+    PbxCall,
+    PbxDevice,
+    PbxDevicePage,
+    PbxUser,
+    PbxUserPage,
     WebhookDelivery,
     WebhookDeliveryPage,
     WebhookEndpoint,
     WebhookEndpointPage,
 )
+from .pbx import Pbx, PbxCallRecords, PbxDevices, PbxUsers
 from .webhook_deliveries import WebhookDeliveries
 from .webhook_endpoints import WebhookEndpoints
 
@@ -92,10 +113,16 @@ __all__ = [
     "AsyncFaxAccountUsers",
     "AsyncFaxAccounts",
     "AsyncFaxes",
+    "AsyncPbx",
+    "AsyncPbxCallRecords",
+    "AsyncPbxDevices",
+    "AsyncPbxUsers",
     "AsyncRingivo",
     "AsyncWebhookDeliveries",
     "AsyncWebhookEndpoints",
     "AuthenticationError",
+    "CallRecord",
+    "CallRecordPage",
     "Fax",
     "FaxAccount",
     "FaxAccountNumber",
@@ -110,6 +137,15 @@ __all__ = [
     "MediaLink",
     "NOT_GIVEN",
     "NotGiven",
+    "Pbx",
+    "PbxCall",
+    "PbxCallRecords",
+    "PbxDevice",
+    "PbxDevicePage",
+    "PbxDevices",
+    "PbxUser",
+    "PbxUserPage",
+    "PbxUsers",
     "Ringivo",
     "RingivoError",
     "SignatureVerificationError",
