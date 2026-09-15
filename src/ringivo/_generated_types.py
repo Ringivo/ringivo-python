@@ -1291,6 +1291,54 @@ class PortOrderRequestLinkSent(TypedDict):
     data: Data19
 
 
+CustomerRegionPreference: TypeAlias = Literal['partner_default', 'use1', 'usw1']
+
+
+CustomerTransport: TypeAlias = Literal['udp', 'tcp', 'tls']
+
+
+class CustomerAttributes(TypedDict):
+    name: NotRequired[str]
+    code: NotRequired[str | None]
+    country: NotRequired[str | None]
+    addressLines: NotRequired[list[str]]
+    city: NotRequired[str | None]
+    region: NotRequired[str | None]
+    postalCode: NotRequired[str | None]
+    timeZone: NotRequired[str | None]
+    dataResidencyCountry: NotRequired[str]
+    regionPreference: NotRequired[CustomerRegionPreference]
+    effectiveRegion: NotRequired[str]
+    pbx: NotRequired[bool]
+    residential: NotRequired[bool | None]
+    callLimit: NotRequired[int | None]
+    callLimitExternal: NotRequired[int | None]
+    transports: NotRequired[list[CustomerTransport] | None]
+    provisioningState: NotRequired[ProvisioningState | None]
+    createdAt: NotRequired[str | None]
+    updatedAt: NotRequired[str | None]
+
+
+class CustomerResource(TypedDict):
+    type: Literal['customers']
+    id: str
+    attributes: NotRequired[CustomerAttributes]
+    links: NotRequired[ResourceLinks]
+    meta: NotRequired[ResourceMeta]
+
+
+class CustomerDocumentResponse(TypedDict):
+    data: CustomerResource
+    links: NotRequired[ResourceLinks]
+    meta: NotRequired[DocumentMeta]
+
+
+class CustomerCollectionDocument(TypedDict):
+    data: list[CustomerResource]
+    links: NotRequired[CollectionLinks]
+    meta: NotRequired[DocumentMeta]
+
+
 TenantStatus: TypeAlias = Literal[
     'pending_email',
     'pending_kyc',
