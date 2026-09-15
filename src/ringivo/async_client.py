@@ -52,6 +52,7 @@ import httpx
 
 from ._version import __version__
 from .async_auth import AsyncClientCredentialsAuth
+from .async_customers import AsyncCustomers
 from .async_fax_account_users import AsyncFaxAccountUsers
 from .async_fax_accounts import AsyncFaxAccounts
 from .async_faxes import AsyncFaxes
@@ -182,6 +183,7 @@ class AsyncRingivo:
         self.faxes = AsyncFaxes(self)
         self.fax_accounts = AsyncFaxAccounts(self)
         self.fax_account_users = AsyncFaxAccountUsers(self)
+        self.customers = AsyncCustomers(self)
         self.pbx = AsyncPbx(self)
         self.webhook_endpoints = AsyncWebhookEndpoints(self)
         self.webhook_deliveries = AsyncWebhookDeliveries(self)

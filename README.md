@@ -1,10 +1,10 @@
 # ringivo
 
 The Python client for the Ringivo API: send a fax, read one, list them,
-cancel one, fetch its pages, manage your customers' fax accounts, register
-the webhooks that tell you what happened, and verify what arrives. It also
-reads your customers' phone systems — the subscribers, their registrations
-and the call log — and places a call from one.
+cancel one, fetch its pages, read your customers, manage their fax accounts,
+register the webhooks that tell you what happened, and verify what arrives.
+It also reads your customers' phone systems — the subscribers, their
+registrations and the call log — and places a call from one.
 
 ```
 pip install ringivo
@@ -424,6 +424,40 @@ what was sent. Reading needs `webhooks:read`; a delivery borrows its
 endpoint's reach, so a `fax:read` token sees the deliveries of
 fax-account-scoped endpoints alone.
 
+## Customers
+
+`client.customers` reads the businesses you sell to: list them, or read one.
+It needs `customers:read`, and only a credential issued for your whole
+reseller account can hold that scope. A credential issued for one customer
+never carries it.
+
+```python
+    page = client.customers.list(code="jpz3k")
+    for customer in page:
+        print(customer.id, customer.name, customer.pbx, customer.effective_region)
+
+    customer = client.customers.get("0198c4a1-7a10-7c3e-9d21-4f5a6b7c8d9e")
+```
+
+**A customer's `id` is what the rest of this client asks for.** Pass it as
+`customer=` to `client.pbx.users.list`, `client.pbx.devices.list` and
+`client.pbx.call_records.list`, and to the fax-account calls:
+
+```python
+    for user in client.pbx.users.list(customer=customer.id):
+        print(user.user, user.display_name)
+```
+
+The list is newest first. It walks by cursor, like every other list here.
+`code=` finds the one customer whose code is exactly that value. A customer
+that is not on your account answers 404 on `get()`, the same as an id that
+names nothing.
+
+When `customer.pbx` is False, the five phone-system fields —
+`residential`, `call_limit`, `call_limit_external`, `transports` and
+`provisioning_state` — are None. `transports` keeps the server's order,
+because the order is the DNS preference.
+
 ## Call records, users, devices and click-to-dial
 
 `client.pbx` is your customers' phone systems: `pbx.users` are the
@@ -462,7 +496,6 @@ relationship sharing the name of the `user` attribute beside it.
         started_after="2026-09-01T00:00:00Z",
         started_before="2026-09-30T23:59:59Z",
         direction="inbound",
-        disposition="missed",
     )
 
     for call in page:
@@ -483,8 +516,10 @@ with `include_hidden=True`, or read one by id:
     call = client.pbx.call_records.get(call_id)      # served even if hidden
 ```
 
-`direction` is `inbound`, `outbound` or `on-net` and `disposition` is
-`answered` or `missed`. The phone system records ONE integer carrying both,
+`call.direction` is `inbound`, `outbound` or `on-net`, and
+`call.disposition` is `answered` or `missed`. The list filters on
+`direction` but not on disposition: read `call.disposition` on each record
+instead. The phone system records ONE integer carrying both,
 and it is published as `call.vendor_type` for a support conversation. An
 integer this API has no word for arrives as its own digits in `direction`
 rather than as null, so match on the values you know and let the rest fall
@@ -520,13 +555,33 @@ and handed to the phone system. Nothing here says a phone rang or anybody
 answered, and `status` is `requested` — the only value this endpoint
 publishes.
 
-**The id you get back is not a call-record id.** It names the call on the
-phone system: it is the SIP call id the call is placed under. A call
-record's id comes from the switch's own call-detail row instead, and no
-call-record field carries the SIP call id, so **there is no way to look
-this call up on `client.pbx.call_records` in this release**. Keep it for
-the phone system's logs and for a support conversation; a later release
-may publish the call id on call records so the two can be joined.
+**The id you get back is not a call-record id, but it finds the call's
+records.** It names the call on the phone system: it is the SIP call id the
+call is placed under. A call record's own id comes from the switch's
+call-detail row, so the two ids differ. Pass this id as `call_id=` to the
+call-record list:
+
+```python
+    placed = client.pbx.users.call(user.id, destination="+13025556789")
+
+    # Later, once the call has ended. With no range, only the current and
+    # the previous month are searched.
+    for record in client.pbx.call_records.list(call_id=placed.id):
+        print(record.id, record.disposition, record.duration)
+```
+
+The call record appears once the call has ended.
+
+**The date range still applies.** The call id is matched only inside the
+months your range covers, and with no `started_after` or `started_before`
+that is the current and the previous month. To find an older call, pass a
+range that covers when it was placed. So an empty page means the call has
+not ended yet, it was placed outside the range, or the id names no call. It
+is never an error.
+
+One call writes two records: by default the list returns the visible
+dial-out record, and the hidden leg that rang the subscriber comes back
+only with `include_hidden=True`.
 
 **Do not retry this blindly.** A call is undoable by nothing, and unlike
 `faxes.send()` it carries no idempotency key: a retry is a second phone
@@ -684,22 +739,24 @@ are deliberately not wrapped.
 | `client.webhook_endpoints.rotate_secret(webhook_endpoint_id)` | `webhooks:write` | Mint a new secret and start the 24-hour grace window. |
 | `client.webhook_deliveries.list(*, endpoint=None, event_type=None, status=None, after=None, before=None, page_size=None)` | `webhooks:read` | A `WebhookDeliveryPage` of what is still owed or was given up on. `status="dead"` is the one to ask after an outage. |
 | `client.webhook_deliveries.get(webhook_delivery_id)` | `webhooks:read` | One `WebhookDelivery`. |
+| `client.customers.list(*, code=None, after=None, before=None, page_size=None)` | `customers:read` | A `CustomerPage`, newest first: iterable, with `next_cursor`. A customer's `id` is what `client.pbx.*.list(customer=...)` takes. |
+| `client.customers.get(customer_id)` | `customers:read` | One `Customer`. A customer that is not on your account is a 404, not a 403. |
 | `client.pbx.users.list(*, customer=None, user=None, search=None, after=None, before=None, page_size=None)` | `pbx-users:read` | A `PbxUserPage`: iterable, with `next_cursor`. `user` is an EXACT extension; `search` is the directory search box. |
 | `client.pbx.users.get(pbx_user_id)` | `pbx-users:read` | One `PbxUser`. A subscriber you cannot reach is a 404, not a 403. |
-| `client.pbx.users.call(pbx_user_id, *, destination, caller_id=None, auto_answer=False, device=None)` | `pbx-calls:write` | Ring this subscriber and dial `destination`. Returns the accepted `PbxCall` — a 202, no idempotency key, and an id that names the call on the phone system rather than a call record. |
+| `client.pbx.users.call(pbx_user_id, *, destination, caller_id=None, auto_answer=False, device=None)` | `pbx-calls:write` | Ring this subscriber and dial `destination`. Returns the accepted `PbxCall` — a 202, no idempotency key, and an id that names the call on the phone system rather than a call record. Pass that id to `call_records.list(call_id=...)` once the call has ended. |
 | `client.pbx.devices.list(*, customer=None, user=None, registered=None, after=None, before=None, page_size=None)` | `pbx-users:read` | A `PbxDevicePage`. `user` here is a `users` ID, not an extension. |
 | `client.pbx.devices.get(pbx_device_id)` | `pbx-users:read` | One `PbxDevice` — one registration, not one handset. |
-| `client.pbx.call_records.list(*, customer=None, started_after=None, started_before=None, direction=None, disposition=None, user=None, include_hidden=None, after=None, before=None, page_size=None)` | `pbx-call-records:read` | A `CallRecordPage`, newest first. The date range decides which months are read; no range means the current and previous one. |
+| `client.pbx.call_records.list(*, customer=None, started_after=None, started_before=None, direction=None, user=None, call_id=None, include_hidden=None, after=None, before=None, page_size=None)` | `pbx-call-records:read` | A `CallRecordPage`, newest first. The date range decides which months are read; no range means the current and previous one. `call_id` finds the records of one `users.call()`, matched only inside the range's months. |
 | `client.pbx.call_records.get(call_record_id)` | `pbx-call-records:read` | One `CallRecord`. A hidden record IS served here. |
 | `webhooks.verify(payload, header, secret, *, tolerance=300)` | — | Raises unless the body is genuine and fresh. |
 
-`CallRecord`, `CallRecordPage`, `Fax`, `FaxAccount`, `FaxAccountNumber`,
-`FaxAccountPage`, `FaxAccountUser`, `FaxAccountUserPage`, `FaxDocument`,
-`FaxPage`, `MediaLink`, `PbxCall`, `PbxDevice`, `PbxDevicePage`, `PbxUser`,
-`PbxUserPage`, `WebhookDelivery`, `WebhookDeliveryPage`, `WebhookEndpoint`
-and `WebhookEndpointPage` are frozen dataclasses, and each
-keeps the JSON it was built from in `.raw` — so a field the API adds after
-this release reaches you without a new SDK.
+`CallRecord`, `CallRecordPage`, `Customer`, `CustomerPage`, `Fax`,
+`FaxAccount`, `FaxAccountNumber`, `FaxAccountPage`, `FaxAccountUser`,
+`FaxAccountUserPage`, `FaxDocument`, `FaxPage`, `MediaLink`, `PbxCall`,
+`PbxDevice`, `PbxDevicePage`, `PbxUser`, `PbxUserPage`, `WebhookDelivery`,
+`WebhookDeliveryPage`, `WebhookEndpoint` and `WebhookEndpointPage` are
+frozen dataclasses, and each keeps the JSON it was built from in `.raw` —
+so a field the API adds after this release reaches you without a new SDK.
 
 `NOT_GIVEN` is the sentinel the `create()` and `update()` calls on
 `fax_accounts` and `webhook_endpoints` default every optional argument to.
@@ -708,10 +765,9 @@ field" on `fax_accounts`, rather than "I said nothing".
 
 ### Reaching an endpoint this client does not wrap
 
-The table above is the fax, webhook and phone-system surfaces. For anything
-else the API
-offers, use `client.request()` — the same escape hatch in both clients,
-awaited on the async one:
+The table above is the fax, customer, webhook and phone-system surfaces.
+For anything else the API offers, use `client.request()` — the same escape
+hatch in both clients, awaited on the async one:
 
 ```python
 response = client.request("GET", "/v1/sip-trunks")

@@ -27,6 +27,8 @@ from typing import Any
 __all__ = [
     "CallRecord",
     "CallRecordPage",
+    "Customer",
+    "CustomerPage",
     "Fax",
     "FaxAccount",
     "FaxAccountNumber",
@@ -1040,15 +1042,24 @@ class PbxCall:
     publishes. Nothing here says a phone rang, a person answered, or a call
     connected.
 
-    `id` IS NOT A CALL-RECORD ID. The platform mints it before the call
-    exists and hands it to the phone system as the SIP Call-ID the call is
-    placed under, so it names the call ON THE PHONE SYSTEM. A call record's
-    id is derived from the switch's own CDR row instead, and no call-record
-    field carries the SIP call id, so **there is no join to make from this
-    id in this release** — do not go looking for it on
-    `pbx.call_records.get()`. Keep it for the phone system's own logs and
-    for a support conversation; a later release may publish the call id on
-    call records so the two can be correlated.
+    `id` IS NOT A CALL-RECORD ID, BUT IT FINDS THE CALL'S RECORDS. The
+    platform mints it before the call exists and hands it to the phone
+    system as the SIP Call-ID the call is placed under, so it names the call
+    ON THE PHONE SYSTEM. A call record's own id comes from the switch's CDR
+    row, so the two ids differ: do not pass this one to
+    `pbx.call_records.get()`. Pass it to
+    `pbx.call_records.list(call_id=call.id)` instead. The call record
+    appears there once the call has ended. One call writes two records —
+    the leg that rang the subscriber and the leg that dialled out — and by
+    default the list returns the visible dial-out record; the hidden ring
+    leg comes back only with `include_hidden=True`.
+
+    THE LIST'S DATE RANGE STILL APPLIES. The call id is matched only inside
+    the months your range covers, and with no `started_after` or
+    `started_before` that is the current and the previous month. To find an
+    older call, pass a range that covers when it was placed. So an empty
+    page means the call has not ended yet, it was placed outside the range,
+    or the id names no call. It is never an error.
 
     THE ATTRIBUTES ARE WHAT WAS SENT TO THE SWITCH, not what you typed, and
     `caller_id` is where the two differ: this platform stores every caller
@@ -1096,3 +1107,123 @@ class PbxCall:
             requested_at=_parse_datetime(attributes.get("requested-at")),
             raw=resource,
         )
+
+
+@dataclass(frozen=True)
+class Customer:
+    """One of your customers: a business you sell to.
+
+    `id` is what the rest of this API asks for when it asks for a customer —
+    `customer=` on `pbx.users.list()`, `pbx.devices.list()` and
+    `pbx.call_records.list()`, and on the fax-account calls.
+
+    -- THE ADDRESS IS THE SERVICE ADDRESS ------------------------------------
+    `address_lines`, `city`, `region`, `postal_code` and `country` are the
+    service address as it was validated. `region` is the state or province,
+    and `country` is ISO 3166-1 alpha-2. `address_lines` keeps the reading
+    `_strings` gives every list in this module: `()` means the server sent
+    an empty list, and None means it sent no list at all.
+
+    -- WHERE THE DATA IS KEPT, AND WHICH REGION SERVES IT --------------------
+    `data_residency_country` is the country this customer's data is kept in.
+    It is set when the customer is created and never changes.
+    `region_preference` is `partner_default`, `use1` or `usw1`, and
+    `effective_region` is what that preference resolves to now. For
+    `partner_default` that is your account's current default region, so it
+    moves when your default moves.
+
+    -- WITHOUT A PHONE SYSTEM, FIVE FIELDS ARE None --------------------------
+    `pbx` says whether this customer has a phone system. When it is False,
+    `residential`, `call_limit`, `call_limit_external`, `transports` and
+    `provisioning_state` are None. `transports` keeps the server's order,
+    because the order is data: it is the order the SIP transports are
+    offered in DNS, first preferred.
+
+    `region_preference`, `transports` and `provisioning_state` are passed
+    through as text rather than checked against a copy of the vocabulary
+    that would go stale here. Match on the values you know and let the rest
+    fall through.
+
+    `created_at` and `updated_at` are real datetimes: the platform writes
+    them itself, in RFC 3339.
+
+    There is no relationships block to read: the resource carries none.
+    """
+
+    id: str
+    name: str | None = None
+    code: str | None = None
+    country: str | None = None
+    address_lines: tuple[str, ...] | None = None
+    city: str | None = None
+    region: str | None = None
+    postal_code: str | None = None
+    time_zone: str | None = None
+    data_residency_country: str | None = None
+    region_preference: str | None = None
+    effective_region: str | None = None
+    pbx: bool | None = None
+    residential: bool | None = None
+    call_limit: int | None = None
+    call_limit_external: int | None = None
+    transports: tuple[str, ...] | None = None
+    provisioning_state: str | None = None
+    created_at: datetime | None = None
+    updated_at: datetime | None = None
+    raw: Mapping[str, Any] = field(default_factory=dict, repr=False)
+
+    @classmethod
+    def _from_resource(cls, resource: Mapping[str, Any]) -> Customer:
+        """Build from a JSON:API resource object — both customer calls."""
+        attributes = _mapping(resource, "attributes") or {}
+
+        return cls(
+            id=_text(resource, "id") or "",
+            name=_text(attributes, "name"),
+            code=_text(attributes, "code"),
+            country=_text(attributes, "country"),
+            address_lines=_strings(attributes, "addressLines"),
+            city=_text(attributes, "city"),
+            region=_text(attributes, "region"),
+            postal_code=_text(attributes, "postalCode"),
+            time_zone=_text(attributes, "timeZone"),
+            data_residency_country=_text(attributes, "dataResidencyCountry"),
+            region_preference=_text(attributes, "regionPreference"),
+            effective_region=_text(attributes, "effectiveRegion"),
+            pbx=_boolean(attributes, "pbx"),
+            residential=_boolean(attributes, "residential"),
+            call_limit=_integer(attributes, "callLimit"),
+            call_limit_external=_integer(attributes, "callLimitExternal"),
+            transports=_strings(attributes, "transports"),
+            provisioning_state=_text(attributes, "provisioningState"),
+            created_at=_parse_datetime(attributes.get("createdAt")),
+            updated_at=_parse_datetime(attributes.get("updatedAt")),
+            raw=resource,
+        )
+
+
+@dataclass(frozen=True)
+class CustomerPage:
+    """One page of `customers.list()`, newest first.
+
+    The same shape and the same cursor rules as `FaxAccountPage`.
+
+    This collection also carries an exact count of every matching customer
+    in `meta.page.total`. This page does not publish it as a field, as no
+    other page in this package does; read it from
+    `page.raw["meta"]["page"]["total"]`.
+    """
+
+    customers: tuple[Customer, ...] = ()
+    next_url: str | None = None
+    next_cursor: str | None = None
+    raw: Mapping[str, Any] = field(default_factory=dict, repr=False)
+
+    def __iter__(self) -> Iterator[Customer]:
+        return iter(self.customers)
+
+    def __len__(self) -> int:
+        return len(self.customers)
+
+    def __getitem__(self, index: int) -> Customer:
+        return self.customers[index]

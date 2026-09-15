@@ -889,6 +889,142 @@ _READS: tuple[_Read, ...] = (
         "requested-at",
         "PbxCall._from_resource",
     ),
+    # -- Customer._from_resource reads a CustomerResource (id) + its --------
+    # CustomerAttributes. The resource carries no relationships block.
+    _Read(models.Customer, "id", generated.CustomerResource, "id", "Customer._from_resource"),
+    _Read(
+        models.Customer,
+        "name",
+        generated.CustomerAttributes,
+        "name",
+        "Customer._from_resource",
+    ),
+    _Read(
+        models.Customer,
+        "code",
+        generated.CustomerAttributes,
+        "code",
+        "Customer._from_resource",
+    ),
+    _Read(
+        models.Customer,
+        "country",
+        generated.CustomerAttributes,
+        "country",
+        "Customer._from_resource",
+    ),
+    _Read(
+        models.Customer,
+        "address_lines",
+        generated.CustomerAttributes,
+        "addressLines",
+        "Customer._from_resource",
+    ),
+    _Read(
+        models.Customer,
+        "city",
+        generated.CustomerAttributes,
+        "city",
+        "Customer._from_resource",
+    ),
+    _Read(
+        models.Customer,
+        "region",
+        generated.CustomerAttributes,
+        "region",
+        "Customer._from_resource",
+    ),
+    _Read(
+        models.Customer,
+        "postal_code",
+        generated.CustomerAttributes,
+        "postalCode",
+        "Customer._from_resource",
+    ),
+    _Read(
+        models.Customer,
+        "time_zone",
+        generated.CustomerAttributes,
+        "timeZone",
+        "Customer._from_resource",
+    ),
+    _Read(
+        models.Customer,
+        "data_residency_country",
+        generated.CustomerAttributes,
+        "dataResidencyCountry",
+        "Customer._from_resource",
+    ),
+    _Read(
+        models.Customer,
+        "region_preference",
+        generated.CustomerAttributes,
+        "regionPreference",
+        "Customer._from_resource",
+    ),
+    _Read(
+        models.Customer,
+        "effective_region",
+        generated.CustomerAttributes,
+        "effectiveRegion",
+        "Customer._from_resource",
+    ),
+    _Read(
+        models.Customer,
+        "pbx",
+        generated.CustomerAttributes,
+        "pbx",
+        "Customer._from_resource",
+    ),
+    _Read(
+        models.Customer,
+        "residential",
+        generated.CustomerAttributes,
+        "residential",
+        "Customer._from_resource",
+    ),
+    _Read(
+        models.Customer,
+        "call_limit",
+        generated.CustomerAttributes,
+        "callLimit",
+        "Customer._from_resource",
+    ),
+    _Read(
+        models.Customer,
+        "call_limit_external",
+        generated.CustomerAttributes,
+        "callLimitExternal",
+        "Customer._from_resource",
+    ),
+    _Read(
+        models.Customer,
+        "transports",
+        generated.CustomerAttributes,
+        "transports",
+        "Customer._from_resource",
+    ),
+    _Read(
+        models.Customer,
+        "provisioning_state",
+        generated.CustomerAttributes,
+        "provisioningState",
+        "Customer._from_resource",
+    ),
+    _Read(
+        models.Customer,
+        "created_at",
+        generated.CustomerAttributes,
+        "createdAt",
+        "Customer._from_resource",
+    ),
+    _Read(
+        models.Customer,
+        "updated_at",
+        generated.CustomerAttributes,
+        "updatedAt",
+        "Customer._from_resource",
+    ),
 )
 
 # Fields a model carries that no `_from_*` classmethod reads off a generated
@@ -911,6 +1047,7 @@ _EXCLUDED: dict[tuple[type, str], str] = {
     (models.PbxDevice, "raw"): "holds the whole source mapping this object was built from",
     (models.CallRecord, "raw"): "holds the whole source mapping this object was built from",
     (models.PbxCall, "raw"): "holds the whole source mapping this object was built from",
+    (models.Customer, "raw"): "holds the whole source mapping this object was built from",
 }
 
 # The other direction, and the only entry that needs it: a key the generated
@@ -934,14 +1071,12 @@ _NOT_READ: dict[tuple[type, str], str] = {
     ),
 }
 
-# The five page models — `FaxPage`, `FaxAccountPage`, `FaxAccountUserPage`,
-# `WebhookEndpointPage` and `WebhookDeliveryPage` — are deliberately not
-# covered: unlike the models above, none has a `_from_*` classmethod of its
-# own. `faxes.py`, `fax_accounts.py`, `fax_account_users.py`,
-# `webhook_endpoints.py` and `webhook_deliveries.py` build them directly,
-# reading `meta.page.nextCursor` and `links.next` with their own module-level
-# helpers, not a method models.py owns. This test's scope is "what models.py
-# reads"; a drift lock for those modules' own reads would be a second test.
+# The page models are deliberately not covered: unlike the models above, none
+# has a `_from_*` classmethod of its own. Each namespace module builds its
+# page directly, reading `meta.page.nextCursor` and `links.next` with its own
+# module-level helpers, not a method models.py owns. This test's scope is
+# "what models.py reads"; a drift lock for those modules' own reads would be a
+# second test.
 _MODELS: tuple[type, ...] = (
     models.FaxDocument,
     models.Fax,
@@ -955,6 +1090,7 @@ _MODELS: tuple[type, ...] = (
     models.PbxDevice,
     models.CallRecord,
     models.PbxCall,
+    models.Customer,
 )
 
 
@@ -980,7 +1116,7 @@ def test_every_field_a_model_reads_is_covered_by_the_read_table() -> None:
     them, in both directions, or this whole test proves nothing about that
     model.
     """
-    assert len(_MODELS) == 12, f"only {[m.__name__ for m in _MODELS]} was searched — the sweep is broken"
+    assert len(_MODELS) == 13, f"only {[m.__name__ for m in _MODELS]} was searched — the sweep is broken"
 
     mismatches: dict[str, str] = {}
     for model in _MODELS:
@@ -1000,7 +1136,7 @@ def test_every_field_a_model_reads_is_covered_by_the_read_table() -> None:
 
 
 def test_every_field_a_model_reads_exists_in_the_generated_types() -> None:
-    assert len(_READS) == 148, f"{len(_READS)} reads were checked, not 148 — the sweep is broken"
+    assert len(_READS) == 168, f"{len(_READS)} reads were checked, not 168 — the sweep is broken"
 
     failures: list[str] = []
     for read in _READS:
