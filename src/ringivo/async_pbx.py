@@ -225,10 +225,20 @@ class AsyncPbxCallRecords:
 
         Hidden records are left out unless `include_hidden=True`.
 
-        `call_id` takes the `id` that `users.call()` returned, and finds
-        that call's records once the call has ended: by default the visible
-        dial-out record, and the hidden leg that rang the subscriber only
-        with `include_hidden=True`. There is no filter on disposition.
+        There is no filter on disposition.
+
+        call_id: The records of ONE click-to-dial call. Pass the `id`
+            that `users.call()` returned. The call record appears once
+            the call has ended. One call writes two records: by default
+            the list returns the visible dial-out record, and the hidden
+            leg that rang the subscriber comes back only with
+            `include_hidden=True`. THE DATE RANGE STILL APPLIES: the
+            call id is matched only inside the months your range
+            covers, and with no `started_after` or `started_before`
+            that is the current and the previous month. To find an
+            older call, pass a range that covers when it was placed. So
+            an empty page means one of two things: the call has not
+            ended yet, or it was placed outside the range.
 
         Needs `pbx-call-records:read`.
         """

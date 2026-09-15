@@ -1054,6 +1054,13 @@ class PbxCall:
     default the list returns the visible dial-out record; the hidden ring
     leg comes back only with `include_hidden=True`.
 
+    THE LIST'S DATE RANGE STILL APPLIES. The call id is matched only inside
+    the months your range covers, and with no `started_after` or
+    `started_before` that is the current and the previous month. To find an
+    older call, pass a range that covers when it was placed. So an empty
+    page means one of two things: the call has not ended yet, or it was
+    placed outside the range.
+
     THE ATTRIBUTES ARE WHAT WAS SENT TO THE SWITCH, not what you typed, and
     `caller_id` is where the two differ: this platform stores every caller
     id as E.164 **without** the plus, so a request for `+14074366118` comes

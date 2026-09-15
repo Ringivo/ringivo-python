@@ -3,8 +3,8 @@
 The Python client for the Ringivo API: send a fax, read one, list them,
 cancel one, fetch its pages, read your customers, manage their fax accounts,
 register the webhooks that tell you what happened, and verify what arrives.
-It also reads your customers' phone systems — the subscribers, their registrations
-and the call log — and places a call from one.
+It also reads your customers' phone systems — the subscribers, their
+registrations and the call log — and places a call from one.
 
 ```
 pip install ringivo
@@ -448,7 +448,7 @@ never carries it.
         print(user.user, user.display_name)
 ```
 
-The list is newest first and walks by cursor, like every other list here.
+The list is newest first. It walks by cursor, like every other list here.
 `code=` finds the one customer whose code is exactly that value. A customer
 that is not on your account answers 404 on `get()`, the same as an id that
 names nothing.
@@ -564,16 +564,23 @@ call-record list:
 ```python
     placed = client.pbx.users.call(user.id, destination="+13025556789")
 
-    # Later, once the call has ended:
+    # Later, once the call has ended. With no range, only the current and
+    # the previous month are searched.
     for record in client.pbx.call_records.list(call_id=placed.id):
         print(record.id, record.disposition, record.duration)
 ```
 
-The call record appears once the call has ended. One call writes two
-records: by default the list returns the visible dial-out record, and the
-hidden leg that rang the subscriber comes back only with
-`include_hidden=True`. An id that names no call answers an empty page, not
-an error.
+The call record appears once the call has ended.
+
+**The date range still applies.** The call id is matched only inside the
+months your range covers, and with no `started_after` or `started_before`
+that is the current and the previous month. To find an older call, pass a
+range that covers when it was placed. So an empty page means one of two
+things: the call has not ended yet, or it was placed outside the range.
+
+One call writes two records: by default the list returns the visible
+dial-out record, and the hidden leg that rang the subscriber comes back
+only with `include_hidden=True`.
 
 **Do not retry this blindly.** A call is undoable by nothing, and unlike
 `faxes.send()` it carries no idempotency key: a retry is a second phone
@@ -738,17 +745,17 @@ are deliberately not wrapped.
 | `client.pbx.users.call(pbx_user_id, *, destination, caller_id=None, auto_answer=False, device=None)` | `pbx-calls:write` | Ring this subscriber and dial `destination`. Returns the accepted `PbxCall` — a 202, no idempotency key, and an id that names the call on the phone system rather than a call record. Pass that id to `call_records.list(call_id=...)` once the call has ended. |
 | `client.pbx.devices.list(*, customer=None, user=None, registered=None, after=None, before=None, page_size=None)` | `pbx-users:read` | A `PbxDevicePage`. `user` here is a `users` ID, not an extension. |
 | `client.pbx.devices.get(pbx_device_id)` | `pbx-users:read` | One `PbxDevice` — one registration, not one handset. |
-| `client.pbx.call_records.list(*, customer=None, started_after=None, started_before=None, direction=None, user=None, call_id=None, include_hidden=None, after=None, before=None, page_size=None)` | `pbx-call-records:read` | A `CallRecordPage`, newest first. The date range decides which months are read; no range means the current and previous one. `call_id` finds the records of one `users.call()`. |
+| `client.pbx.call_records.list(*, customer=None, started_after=None, started_before=None, direction=None, user=None, call_id=None, include_hidden=None, after=None, before=None, page_size=None)` | `pbx-call-records:read` | A `CallRecordPage`, newest first. The date range decides which months are read; no range means the current and previous one. `call_id` finds the records of one `users.call()`, matched only inside the range's months. |
 | `client.pbx.call_records.get(call_record_id)` | `pbx-call-records:read` | One `CallRecord`. A hidden record IS served here. |
 | `webhooks.verify(payload, header, secret, *, tolerance=300)` | — | Raises unless the body is genuine and fresh. |
 
 `CallRecord`, `CallRecordPage`, `Customer`, `CustomerPage`, `Fax`,
-`FaxAccount`, `FaxAccountNumber`, `FaxAccountPage`, `FaxAccountUser`, `FaxAccountUserPage`, `FaxDocument`,
-`FaxPage`, `MediaLink`, `PbxCall`, `PbxDevice`, `PbxDevicePage`, `PbxUser`,
-`PbxUserPage`, `WebhookDelivery`, `WebhookDeliveryPage`, `WebhookEndpoint`
-and `WebhookEndpointPage` are frozen dataclasses, and each
-keeps the JSON it was built from in `.raw` — so a field the API adds after
-this release reaches you without a new SDK.
+`FaxAccount`, `FaxAccountNumber`, `FaxAccountPage`, `FaxAccountUser`,
+`FaxAccountUserPage`, `FaxDocument`, `FaxPage`, `MediaLink`, `PbxCall`,
+`PbxDevice`, `PbxDevicePage`, `PbxUser`, `PbxUserPage`, `WebhookDelivery`,
+`WebhookDeliveryPage`, `WebhookEndpoint` and `WebhookEndpointPage` are
+frozen dataclasses, and each keeps the JSON it was built from in `.raw` —
+so a field the API adds after this release reaches you without a new SDK.
 
 `NOT_GIVEN` is the sentinel the `create()` and `update()` calls on
 `fax_accounts` and `webhook_endpoints` default every optional argument to.
@@ -757,10 +764,9 @@ field" on `fax_accounts`, rather than "I said nothing".
 
 ### Reaching an endpoint this client does not wrap
 
-The table above is the fax, customer, webhook and phone-system surfaces. For anything
-else the API
-offers, use `client.request()` — the same escape hatch in both clients,
-awaited on the async one:
+The table above is the fax, customer, webhook and phone-system surfaces.
+For anything else the API offers, use `client.request()` — the same escape
+hatch in both clients, awaited on the async one:
 
 ```python
 response = client.request("GET", "/v1/sip-trunks")

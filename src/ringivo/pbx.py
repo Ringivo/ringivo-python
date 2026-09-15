@@ -348,8 +348,13 @@ class PbxCallRecords:
                 the call has ended. One call writes two records: by default
                 the list returns the visible dial-out record, and the hidden
                 leg that rang the subscriber comes back only with
-                `include_hidden=True`. An id that names no call answers an
-                empty page, not an error.
+                `include_hidden=True`. THE DATE RANGE STILL APPLIES: the
+                call id is matched only inside the months your range
+                covers, and with no `started_after` or `started_before`
+                that is the current and the previous month. To find an
+                older call, pass a range that covers when it was placed. So
+                an empty page means one of two things: the call has not
+                ended yet, or it was placed outside the range.
             include_hidden: `True` also returns the records the phone
                 system marks hidden. They are left out by default, which is
                 what the phone system's own call log does; a direct `get()`
