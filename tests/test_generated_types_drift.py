@@ -531,6 +531,364 @@ _READS: tuple[_Read, ...] = (
         "updatedAt",
         "WebhookDelivery._from_resource",
     ),
+    # -- PbxUser._from_resource reads a PbxUserResource (id) + its ---------
+    # PbxUserAttributes, plus BOTH relationship linkages. The attribute keys
+    # here are KEBAB-CASE, unlike every block above: this server writes
+    # `display-name`, not `displayName`, and the generated TypedDict is
+    # spelled in functional syntax for exactly that reason.
+    _Read(models.PbxUser, "id", generated.PbxUserResource, "id", "PbxUser._from_resource"),
+    _Read(models.PbxUser, "user", generated.PbxUserAttributes, "user", "PbxUser._from_resource"),
+    _Read(models.PbxUser, "domain", generated.PbxUserAttributes, "domain", "PbxUser._from_resource"),
+    _Read(
+        models.PbxUser,
+        "display_name",
+        generated.PbxUserAttributes,
+        "display-name",
+        "PbxUser._from_resource",
+    ),
+    _Read(
+        models.PbxUser,
+        "first_name",
+        generated.PbxUserAttributes,
+        "first-name",
+        "PbxUser._from_resource",
+    ),
+    _Read(
+        models.PbxUser, "last_name", generated.PbxUserAttributes, "last-name", "PbxUser._from_resource"
+    ),
+    _Read(models.PbxUser, "email", generated.PbxUserAttributes, "email", "PbxUser._from_resource"),
+    _Read(models.PbxUser, "scope", generated.PbxUserAttributes, "scope", "PbxUser._from_resource"),
+    _Read(models.PbxUser, "group", generated.PbxUserAttributes, "group", "PbxUser._from_resource"),
+    _Read(models.PbxUser, "site", generated.PbxUserAttributes, "site", "PbxUser._from_resource"),
+    _Read(
+        models.PbxUser, "presence", generated.PbxUserAttributes, "presence", "PbxUser._from_resource"
+    ),
+    _Read(
+        models.PbxUser,
+        "caller_id_number",
+        generated.PbxUserAttributes,
+        "caller-id-number",
+        "PbxUser._from_resource",
+    ),
+    _Read(
+        models.PbxUser,
+        "caller_id_name",
+        generated.PbxUserAttributes,
+        "caller-id-name",
+        "PbxUser._from_resource",
+    ),
+    _Read(
+        models.PbxUser, "time_zone", generated.PbxUserAttributes, "time-zone", "PbxUser._from_resource"
+    ),
+    _Read(
+        models.PbxUser, "created_at", generated.PbxUserAttributes, "created-at", "PbxUser._from_resource"
+    ),
+    _Read(
+        models.PbxUser, "updated_at", generated.PbxUserAttributes, "updated-at", "PbxUser._from_resource"
+    ),
+    _Read(
+        models.PbxUser,
+        "customer_id",
+        generated.PbxUserRelationships,
+        "customer",
+        "PbxUser._from_resource",
+    ),
+    # The to-MANY linkage read, and the only one in this table: `device_ids`
+    # walks devices -> data -> [id], so the member it reads is `devices`.
+    _Read(
+        models.PbxUser,
+        "device_ids",
+        generated.PbxUserRelationships,
+        "devices",
+        "PbxUser._from_resource",
+    ),
+    # -- PbxDevice._from_resource reads a PbxDeviceResource (id) + its ------
+    # PbxDeviceAttributes, plus both relationship linkages.
+    _Read(models.PbxDevice, "id", generated.PbxDeviceResource, "id", "PbxDevice._from_resource"),
+    _Read(models.PbxDevice, "aor", generated.PbxDeviceAttributes, "aor", "PbxDevice._from_resource"),
+    _Read(models.PbxDevice, "user", generated.PbxDeviceAttributes, "user", "PbxDevice._from_resource"),
+    _Read(
+        models.PbxDevice, "domain", generated.PbxDeviceAttributes, "domain", "PbxDevice._from_resource"
+    ),
+    _Read(models.PbxDevice, "mode", generated.PbxDeviceAttributes, "mode", "PbxDevice._from_resource"),
+    _Read(
+        models.PbxDevice,
+        "user_agent",
+        generated.PbxDeviceAttributes,
+        "user-agent",
+        "PbxDevice._from_resource",
+    ),
+    _Read(
+        models.PbxDevice, "contact", generated.PbxDeviceAttributes, "contact", "PbxDevice._from_resource"
+    ),
+    _Read(
+        models.PbxDevice,
+        "transport",
+        generated.PbxDeviceAttributes,
+        "transport",
+        "PbxDevice._from_resource",
+    ),
+    _Read(
+        models.PbxDevice,
+        "received_from",
+        generated.PbxDeviceAttributes,
+        "received-from",
+        "PbxDevice._from_resource",
+    ),
+    _Read(
+        models.PbxDevice,
+        "registered_at",
+        generated.PbxDeviceAttributes,
+        "registered-at",
+        "PbxDevice._from_resource",
+    ),
+    _Read(
+        models.PbxDevice,
+        "registration_expires_at",
+        generated.PbxDeviceAttributes,
+        "registration-expires-at",
+        "PbxDevice._from_resource",
+    ),
+    _Read(
+        models.PbxDevice,
+        "registered",
+        generated.PbxDeviceAttributes,
+        "registered",
+        "PbxDevice._from_resource",
+    ),
+    _Read(
+        models.PbxDevice,
+        "auto_answer",
+        generated.PbxDeviceAttributes,
+        "auto-answer",
+        "PbxDevice._from_resource",
+    ),
+    _Read(
+        models.PbxDevice,
+        "created_at",
+        generated.PbxDeviceAttributes,
+        "created-at",
+        "PbxDevice._from_resource",
+    ),
+    _Read(
+        models.PbxDevice,
+        "customer_id",
+        generated.PbxDeviceRelationships,
+        "customer",
+        "PbxDevice._from_resource",
+    ),
+    # `pbx-user`, not `user`: JSON:API forbids a relationship sharing the
+    # name of an attribute, and `user` is already one on this resource.
+    _Read(
+        models.PbxDevice,
+        "pbx_user_id",
+        generated.PbxDeviceRelationships,
+        "pbx-user",
+        "PbxDevice._from_resource",
+    ),
+    # -- CallRecord._from_resource reads a CallRecordResource (id) + its ----
+    # CallRecordAttributes, plus all three relationship linkages.
+    _Read(models.CallRecord, "id", generated.CallRecordResource, "id", "CallRecord._from_resource"),
+    _Read(
+        models.CallRecord,
+        "direction",
+        generated.CallRecordAttributes,
+        "direction",
+        "CallRecord._from_resource",
+    ),
+    _Read(
+        models.CallRecord,
+        "disposition",
+        generated.CallRecordAttributes,
+        "disposition",
+        "CallRecord._from_resource",
+    ),
+    _Read(
+        models.CallRecord,
+        "vendor_type",
+        generated.CallRecordAttributes,
+        "vendor-type",
+        "CallRecord._from_resource",
+    ),
+    _Read(
+        models.CallRecord,
+        "domain",
+        generated.CallRecordAttributes,
+        "domain",
+        "CallRecord._from_resource",
+    ),
+    _Read(
+        models.CallRecord,
+        "from_user",
+        generated.CallRecordAttributes,
+        "from-user",
+        "CallRecord._from_resource",
+    ),
+    _Read(
+        models.CallRecord,
+        "from_uri",
+        generated.CallRecordAttributes,
+        "from-uri",
+        "CallRecord._from_resource",
+    ),
+    _Read(
+        models.CallRecord,
+        "from_name",
+        generated.CallRecordAttributes,
+        "from-name",
+        "CallRecord._from_resource",
+    ),
+    _Read(
+        models.CallRecord,
+        "to_user",
+        generated.CallRecordAttributes,
+        "to-user",
+        "CallRecord._from_resource",
+    ),
+    _Read(
+        models.CallRecord,
+        "to_uri",
+        generated.CallRecordAttributes,
+        "to-uri",
+        "CallRecord._from_resource",
+    ),
+    _Read(
+        models.CallRecord,
+        "dialed",
+        generated.CallRecordAttributes,
+        "dialed",
+        "CallRecord._from_resource",
+    ),
+    _Read(
+        models.CallRecord,
+        "by_user",
+        generated.CallRecordAttributes,
+        "by-user",
+        "CallRecord._from_resource",
+    ),
+    _Read(
+        models.CallRecord,
+        "term_user",
+        generated.CallRecordAttributes,
+        "term-user",
+        "CallRecord._from_resource",
+    ),
+    _Read(
+        models.CallRecord,
+        "started_at",
+        generated.CallRecordAttributes,
+        "started-at",
+        "CallRecord._from_resource",
+    ),
+    _Read(
+        models.CallRecord,
+        "answered_at",
+        generated.CallRecordAttributes,
+        "answered-at",
+        "CallRecord._from_resource",
+    ),
+    _Read(
+        models.CallRecord,
+        "released_at",
+        generated.CallRecordAttributes,
+        "released-at",
+        "CallRecord._from_resource",
+    ),
+    _Read(
+        models.CallRecord,
+        "duration",
+        generated.CallRecordAttributes,
+        "duration",
+        "CallRecord._from_resource",
+    ),
+    _Read(
+        models.CallRecord,
+        "talk_time",
+        generated.CallRecordAttributes,
+        "talk-time",
+        "CallRecord._from_resource",
+    ),
+    _Read(
+        models.CallRecord, "tag", generated.CallRecordAttributes, "tag", "CallRecord._from_resource"
+    ),
+    _Read(
+        models.CallRecord,
+        "hidden",
+        generated.CallRecordAttributes,
+        "hidden",
+        "CallRecord._from_resource",
+    ),
+    _Read(
+        models.CallRecord,
+        "has_recording",
+        generated.CallRecordAttributes,
+        "has-recording",
+        "CallRecord._from_resource",
+    ),
+    _Read(
+        models.CallRecord,
+        "vendor_id",
+        generated.CallRecordAttributes,
+        "vendor-id",
+        "CallRecord._from_resource",
+    ),
+    _Read(
+        models.CallRecord,
+        "customer_id",
+        generated.CallRecordRelationships,
+        "customer",
+        "CallRecord._from_resource",
+    ),
+    _Read(
+        models.CallRecord,
+        "from_pbx_user_id",
+        generated.CallRecordRelationships,
+        "from-pbx-user",
+        "CallRecord._from_resource",
+    ),
+    _Read(
+        models.CallRecord,
+        "to_pbx_user_id",
+        generated.CallRecordRelationships,
+        "to-pbx-user",
+        "CallRecord._from_resource",
+    ),
+    # -- PbxCall._from_resource reads a PbxCallResource (id) + its ----------
+    # PbxCallAttributes. This resource has NO relationships block at all:
+    # a call request is answered before the call exists, so there is nothing
+    # yet to point at.
+    #
+    # These seven were excluded from this table until the click-to-dial
+    # action reached the spec, and a tripwire test held the exclusion honest.
+    # The action landed in rev 6882916 and the tripwire fired, which is what
+    # it was for; both it and the exclusions are gone.
+    _Read(models.PbxCall, "id", generated.PbxCallResource, "id", "PbxCall._from_resource"),
+    _Read(
+        models.PbxCall,
+        "destination",
+        generated.PbxCallAttributes,
+        "destination",
+        "PbxCall._from_resource",
+    ),
+    _Read(
+        models.PbxCall, "caller_id", generated.PbxCallAttributes, "caller-id", "PbxCall._from_resource"
+    ),
+    _Read(
+        models.PbxCall,
+        "auto_answer",
+        generated.PbxCallAttributes,
+        "auto-answer",
+        "PbxCall._from_resource",
+    ),
+    _Read(models.PbxCall, "device", generated.PbxCallAttributes, "device", "PbxCall._from_resource"),
+    _Read(models.PbxCall, "status", generated.PbxCallAttributes, "status", "PbxCall._from_resource"),
+    _Read(
+        models.PbxCall,
+        "requested_at",
+        generated.PbxCallAttributes,
+        "requested-at",
+        "PbxCall._from_resource",
+    ),
 )
 
 # Fields a model carries that no `_from_*` classmethod reads off a generated
@@ -549,6 +907,10 @@ _EXCLUDED: dict[tuple[type, str], str] = {
     (models.FaxAccountUser, "raw"): "holds the whole source mapping this object was built from",
     (models.WebhookEndpoint, "raw"): "holds the whole source mapping this object was built from",
     (models.WebhookDelivery, "raw"): "holds the whole source mapping this object was built from",
+    (models.PbxUser, "raw"): "holds the whole source mapping this object was built from",
+    (models.PbxDevice, "raw"): "holds the whole source mapping this object was built from",
+    (models.CallRecord, "raw"): "holds the whole source mapping this object was built from",
+    (models.PbxCall, "raw"): "holds the whole source mapping this object was built from",
 }
 
 # The other direction, and the only entry that needs it: a key the generated
@@ -589,6 +951,10 @@ _MODELS: tuple[type, ...] = (
     models.FaxAccountUser,
     models.WebhookEndpoint,
     models.WebhookDelivery,
+    models.PbxUser,
+    models.PbxDevice,
+    models.CallRecord,
+    models.PbxCall,
 )
 
 
@@ -614,7 +980,7 @@ def test_every_field_a_model_reads_is_covered_by_the_read_table() -> None:
     them, in both directions, or this whole test proves nothing about that
     model.
     """
-    assert len(_MODELS) == 8, f"only {[m.__name__ for m in _MODELS]} was searched — the sweep is broken"
+    assert len(_MODELS) == 12, f"only {[m.__name__ for m in _MODELS]} was searched — the sweep is broken"
 
     mismatches: dict[str, str] = {}
     for model in _MODELS:
@@ -634,7 +1000,7 @@ def test_every_field_a_model_reads_is_covered_by_the_read_table() -> None:
 
 
 def test_every_field_a_model_reads_exists_in_the_generated_types() -> None:
-    assert len(_READS) >= 80, f"only {len(_READS)} reads were checked — the sweep is broken"
+    assert len(_READS) == 148, f"{len(_READS)} reads were checked, not 148 — the sweep is broken"
 
     failures: list[str] = []
     for read in _READS:

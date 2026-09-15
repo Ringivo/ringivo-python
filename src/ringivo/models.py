@@ -25,6 +25,8 @@ from datetime import datetime
 from typing import Any
 
 __all__ = [
+    "CallRecord",
+    "CallRecordPage",
     "Fax",
     "FaxAccount",
     "FaxAccountNumber",
@@ -34,6 +36,11 @@ __all__ = [
     "FaxDocument",
     "FaxPage",
     "MediaLink",
+    "PbxCall",
+    "PbxDevice",
+    "PbxDevicePage",
+    "PbxUser",
+    "PbxUserPage",
     "WebhookDelivery",
     "WebhookDeliveryPage",
     "WebhookEndpoint",
@@ -115,6 +122,33 @@ def _relationship_id(resource: Mapping[str, Any], name: str) -> str | None:
     relation = _mapping(relationships, name) if relationships else None
     data = _mapping(relation, "data") if relation else None
     return _text(data, "id") if data else None
+
+
+def _relationship_ids(resource: Mapping[str, Any], name: str) -> tuple[str, ...] | None:
+    """Every id inside a to-MANY relationship's linkage, or None.
+
+    The to-many twin of `_relationship_id`, and it keeps the same
+    distinction the singular one does: None means THE SERVER DID NOT SEND
+    THE LINKAGE — a `links`-only relationship is legal JSON:API and this
+    API's schema marks the member `NotRequired` — while `()` means it sent
+    an empty list, which really is "none of them".
+
+    Flattening the two would turn "we did not tell you" into "there are
+    none", and on a user's `devices` those read very differently: one says
+    nothing, the other says nobody has registered a phone.
+    """
+    relationships = _mapping(resource, "relationships")
+    relation = _mapping(relationships, name) if relationships else None
+    if relation is None:
+        return None
+    data = relation.get("data")
+    if not isinstance(data, list):
+        return None
+    return tuple(
+        identifier
+        for item in data
+        if isinstance(item, Mapping) and (identifier := _text(item, "id")) is not None
+    )
 
 
 @dataclass(frozen=True)
@@ -672,3 +706,392 @@ class WebhookDeliveryPage:
 
     def __getitem__(self, index: int) -> WebhookDelivery:
         return self.deliveries[index]
+
+
+@dataclass(frozen=True)
+class PbxUser:
+    """One subscriber on a customer's phone system.
+
+    `user` is the extension and `domain` is the phone system it lives on;
+    together they are what `id` is computed from, which is why the id is
+    the same one wherever this subscriber is read.
+
+    EVERY FIELD HERE IS READ-ONLY. This surface does not write the phone
+    system, so there is no `update()` and no argument that would try.
+
+    -- THE THREE TIMESTAMPS ARE TEXT, AND THAT IS DELIBERATE --------------
+    `created_at` and `updated_at` are `str`, not `datetime`, unlike every
+    other model in this module. The API serves them exactly as the phone
+    system stores them and says why: the switch has never published what
+    format it writes, so a parse here would be a guess, and a WRONG guess
+    is silent — an instant that is off by a time zone looks like an
+    instant. A string a caller can read, log and compare is the honest
+    answer, and the day the format is published this can become a
+    `datetime` without anybody having been misled first.
+
+    `customer_id` and `device_ids` come off the relationship linkages, so
+    each is None when the server answered that relationship with links
+    alone (see `_relationship_id` and `_relationship_ids`) — a statement
+    about the response, never about the subscriber.
+    """
+
+    id: str
+    user: str | None = None
+    domain: str | None = None
+    display_name: str | None = None
+    first_name: str | None = None
+    last_name: str | None = None
+    email: str | None = None
+    scope: str | None = None
+    group: str | None = None
+    site: str | None = None
+    presence: str | None = None
+    caller_id_number: str | None = None
+    caller_id_name: str | None = None
+    time_zone: str | None = None
+    created_at: str | None = None
+    updated_at: str | None = None
+    customer_id: str | None = None
+    device_ids: tuple[str, ...] | None = None
+    raw: Mapping[str, Any] = field(default_factory=dict, repr=False)
+
+    @classmethod
+    def _from_resource(cls, resource: Mapping[str, Any]) -> PbxUser:
+        """Build from a JSON:API resource object — both PBX-user calls."""
+        attributes = _mapping(resource, "attributes") or {}
+
+        return cls(
+            id=_text(resource, "id") or "",
+            user=_text(attributes, "user"),
+            domain=_text(attributes, "domain"),
+            display_name=_text(attributes, "display-name"),
+            first_name=_text(attributes, "first-name"),
+            last_name=_text(attributes, "last-name"),
+            email=_text(attributes, "email"),
+            scope=_text(attributes, "scope"),
+            group=_text(attributes, "group"),
+            site=_text(attributes, "site"),
+            presence=_text(attributes, "presence"),
+            caller_id_number=_text(attributes, "caller-id-number"),
+            caller_id_name=_text(attributes, "caller-id-name"),
+            time_zone=_text(attributes, "time-zone"),
+            created_at=_text(attributes, "created-at"),
+            updated_at=_text(attributes, "updated-at"),
+            customer_id=_relationship_id(resource, "customer"),
+            device_ids=_relationship_ids(resource, "devices"),
+            raw=resource,
+        )
+
+
+@dataclass(frozen=True)
+class PbxUserPage:
+    """One page of `pbx.users.list()`, by extension unless you sorted it.
+
+    The same shape and the same cursor rules as `FaxAccountPage`:
+    `next_cursor` is the server's own cursor read out of
+    `meta.page.nextCursor`, never one this client built, and it is None on
+    the last page. `next_url` mirrors `links.next`, which is absent rather
+    than null at the end.
+    """
+
+    users: tuple[PbxUser, ...] = ()
+    next_url: str | None = None
+    next_cursor: str | None = None
+    raw: Mapping[str, Any] = field(default_factory=dict, repr=False)
+
+    def __iter__(self) -> Iterator[PbxUser]:
+        return iter(self.users)
+
+    def __len__(self) -> int:
+        return len(self.users)
+
+    def __getitem__(self, index: int) -> PbxUser:
+        return self.users[index]
+
+
+@dataclass(frozen=True)
+class PbxDevice:
+    """One REGISTRATION, not one handset.
+
+    The row exists because something sent a SIP REGISTER, and it
+    disappears when nothing does. So a phone that is unplugged does not
+    become `registered=False` — it stops being here at all, and the rows
+    that are here with `registered=False` are registrations that ran out
+    before anything renewed them.
+
+    `registered` is DERIVED by the API from `registration_expires_at`, and
+    it is the field to read: the two timestamps beside it are the phone
+    system's own text (see `PbxUser` for why this module does not parse
+    them), so comparing them yourself would mean guessing the format the
+    API refused to guess.
+
+    `user` is the subscriber's extension — a string off the registration,
+    not the `users` resource. `pbx_user_id` is that resource, read off the
+    relationship linkage. It is named `pbx_user_id` rather than `user_id`
+    because the attribute and the relationship would otherwise collide,
+    which is the same reason the API calls the relationship `pbx-user`.
+    """
+
+    id: str
+    aor: str | None = None
+    user: str | None = None
+    domain: str | None = None
+    mode: str | None = None
+    user_agent: str | None = None
+    contact: str | None = None
+    transport: str | None = None
+    received_from: str | None = None
+    registered_at: str | None = None
+    registration_expires_at: str | None = None
+    registered: bool | None = None
+    auto_answer: bool | None = None
+    created_at: str | None = None
+    customer_id: str | None = None
+    pbx_user_id: str | None = None
+    raw: Mapping[str, Any] = field(default_factory=dict, repr=False)
+
+    @classmethod
+    def _from_resource(cls, resource: Mapping[str, Any]) -> PbxDevice:
+        """Build from a JSON:API resource object — both device calls."""
+        attributes = _mapping(resource, "attributes") or {}
+
+        return cls(
+            id=_text(resource, "id") or "",
+            aor=_text(attributes, "aor"),
+            user=_text(attributes, "user"),
+            domain=_text(attributes, "domain"),
+            mode=_text(attributes, "mode"),
+            user_agent=_text(attributes, "user-agent"),
+            contact=_text(attributes, "contact"),
+            transport=_text(attributes, "transport"),
+            received_from=_text(attributes, "received-from"),
+            registered_at=_text(attributes, "registered-at"),
+            registration_expires_at=_text(attributes, "registration-expires-at"),
+            registered=_boolean(attributes, "registered"),
+            auto_answer=_boolean(attributes, "auto-answer"),
+            created_at=_text(attributes, "created-at"),
+            customer_id=_relationship_id(resource, "customer"),
+            pbx_user_id=_relationship_id(resource, "pbx-user"),
+            raw=resource,
+        )
+
+
+@dataclass(frozen=True)
+class PbxDevicePage:
+    """One page of `pbx.devices.list()`, by address of record.
+
+    The same shape and the same cursor rules as `FaxAccountPage`.
+    """
+
+    devices: tuple[PbxDevice, ...] = ()
+    next_url: str | None = None
+    next_cursor: str | None = None
+    raw: Mapping[str, Any] = field(default_factory=dict, repr=False)
+
+    def __iter__(self) -> Iterator[PbxDevice]:
+        return iter(self.devices)
+
+    def __len__(self) -> int:
+        return len(self.devices)
+
+    def __getitem__(self, index: int) -> PbxDevice:
+        return self.devices[index]
+
+
+@dataclass(frozen=True)
+class CallRecord:
+    """One call, as the phone system recorded it.
+
+    -- THE THREE INSTANTS ARE REAL DATETIMES ------------------------------
+    Unlike `PbxUser` and `PbxDevice`, whose timestamps stay strings,
+    `started_at`, `answered_at` and `released_at` are parsed: the switch
+    stores them as Unix epochs and the API publishes them as RFC 3339 in
+    UTC, which is the one timestamp shape that carries no zone ambiguity.
+    `answered_at` is None when nobody answered.
+
+    -- direction, disposition AND vendor_type ARE ONE INTEGER -------------
+    The phone system records a single number carrying both which way the
+    call went and whether anybody picked it up. The API splits it into two
+    words and publishes the number itself as `vendor_type` — so quote
+    `vendor_type` in a support conversation, and branch on the words.
+
+    A number this API has no word for is published as ITS OWN DIGITS in
+    `direction` rather than as null, so a vocabulary that grows at the
+    switch's end never erases a call from your reading of it. Match on the
+    values you know and let the rest fall through; do not assume the set is
+    closed.
+
+    `duration` is the call end to end and `talk_time` is how much of it
+    anybody was talking, both in seconds.
+
+    `has_recording` says a recording is HELD, not that you can fetch it:
+    the media endpoint that hands the audio back is a later release. There
+    is nothing on this object to download.
+
+    `hidden` is the phone system's own flag, and it decides where a record
+    can be found rather than whether it exists: hidden records are left out
+    of `list()` unless you ask for them with `include_hidden=True`, and a
+    direct `get()` serves one either way.
+
+    `from_pbx_user_id` and `to_pbx_user_id` are the `users` resources for
+    the two legs when the extensions resolve on that domain, and null when
+    they do not — an outside caller has no subscriber to point at. Both are
+    None as well when the server answered the relationship with links alone
+    (see `_relationship_id`), which is a statement about the response
+    rather than about the call.
+    """
+
+    id: str
+    direction: str | None = None
+    disposition: str | None = None
+    vendor_type: int | None = None
+    domain: str | None = None
+    from_user: str | None = None
+    from_uri: str | None = None
+    from_name: str | None = None
+    to_user: str | None = None
+    to_uri: str | None = None
+    dialed: str | None = None
+    by_user: str | None = None
+    term_user: str | None = None
+    started_at: datetime | None = None
+    answered_at: datetime | None = None
+    released_at: datetime | None = None
+    duration: int | None = None
+    talk_time: int | None = None
+    tag: str | None = None
+    hidden: bool | None = None
+    has_recording: bool | None = None
+    vendor_id: str | None = None
+    customer_id: str | None = None
+    from_pbx_user_id: str | None = None
+    to_pbx_user_id: str | None = None
+    raw: Mapping[str, Any] = field(default_factory=dict, repr=False)
+
+    @classmethod
+    def _from_resource(cls, resource: Mapping[str, Any]) -> CallRecord:
+        """Build from a JSON:API resource object — both call-record calls."""
+        attributes = _mapping(resource, "attributes") or {}
+
+        return cls(
+            id=_text(resource, "id") or "",
+            direction=_text(attributes, "direction"),
+            disposition=_text(attributes, "disposition"),
+            vendor_type=_integer(attributes, "vendor-type"),
+            domain=_text(attributes, "domain"),
+            from_user=_text(attributes, "from-user"),
+            from_uri=_text(attributes, "from-uri"),
+            from_name=_text(attributes, "from-name"),
+            to_user=_text(attributes, "to-user"),
+            to_uri=_text(attributes, "to-uri"),
+            dialed=_text(attributes, "dialed"),
+            by_user=_text(attributes, "by-user"),
+            term_user=_text(attributes, "term-user"),
+            started_at=_parse_datetime(attributes.get("started-at")),
+            answered_at=_parse_datetime(attributes.get("answered-at")),
+            released_at=_parse_datetime(attributes.get("released-at")),
+            duration=_integer(attributes, "duration"),
+            talk_time=_integer(attributes, "talk-time"),
+            tag=_text(attributes, "tag"),
+            hidden=_boolean(attributes, "hidden"),
+            has_recording=_boolean(attributes, "has-recording"),
+            vendor_id=_text(attributes, "vendor-id"),
+            customer_id=_relationship_id(resource, "customer"),
+            from_pbx_user_id=_relationship_id(resource, "from-pbx-user"),
+            to_pbx_user_id=_relationship_id(resource, "to-pbx-user"),
+            raw=resource,
+        )
+
+
+@dataclass(frozen=True)
+class CallRecordPage:
+    """One page of `pbx.call_records.list()`, newest first.
+
+    The same shape and the same cursor rules as `FaxAccountPage`.
+
+    NO RECORD ON THIS PAGE IS HIDDEN unless you asked for them: the list
+    leaves hidden records out by default, the way the phone system's own
+    call log does, and a direct `get()` serves one regardless.
+    """
+
+    call_records: tuple[CallRecord, ...] = ()
+    next_url: str | None = None
+    next_cursor: str | None = None
+    raw: Mapping[str, Any] = field(default_factory=dict, repr=False)
+
+    def __iter__(self) -> Iterator[CallRecord]:
+        return iter(self.call_records)
+
+    def __len__(self) -> int:
+        return len(self.call_records)
+
+    def __getitem__(self, index: int) -> CallRecord:
+        return self.call_records[index]
+
+
+@dataclass(frozen=True)
+class PbxCall:
+    """A call the platform was ASKED to place, answered before it rings.
+
+    `pbx.users.call()` returns one of these with a 202, which is the whole
+    shape of the promise: the request was accepted and handed to the phone
+    system, and `status` is `requested` — the only value this endpoint ever
+    publishes. Nothing here says a phone rang, a person answered, or a call
+    connected.
+
+    `id` IS NOT A CALL-RECORD ID. The platform mints it before the call
+    exists and hands it to the phone system as the SIP Call-ID the call is
+    placed under, so it names the call ON THE PHONE SYSTEM. A call record's
+    id is derived from the switch's own CDR row instead, and no call-record
+    field carries the SIP call id, so **there is no join to make from this
+    id in this release** — do not go looking for it on
+    `pbx.call_records.get()`. Keep it for the phone system's own logs and
+    for a support conversation; a later release may publish the call id on
+    call records so the two can be correlated.
+
+    THE ATTRIBUTES ARE WHAT WAS SENT TO THE SWITCH, not what you typed, and
+    `caller_id` is where the two differ: this platform stores every caller
+    id as E.164 **without** the plus, so a request for `+14074366118` comes
+    back as `14074366118`. It is None when the request named none and the
+    subscriber's own was used.
+
+    `device` is the `devices` id the call originates from, and None when
+    none was named. It is an attribute the answer echoes rather than a
+    relationship, which is why it is spelled `device` and not `device_id`.
+
+    There is no relationships block on this resource at all: a call request
+    is answered before the call exists, so there is nothing yet to point
+    at.
+    """
+
+    id: str
+    destination: str | None = None
+    caller_id: str | None = None
+    auto_answer: bool | None = None
+    device: str | None = None
+    status: str | None = None
+    requested_at: datetime | None = None
+    raw: Mapping[str, Any] = field(default_factory=dict, repr=False)
+
+    @classmethod
+    def _from_resource(cls, resource: Mapping[str, Any]) -> PbxCall:
+        """Build from the JSON:API resource object the 202 carries.
+
+        `requested_at` is a real instant, and the spec now says so rather
+        than this package inferring it: `PbxCallAttributes.requested-at` is
+        `{type: string, format: date-time}`. It is the platform's own
+        timestamp, minted here — which is why it is parsed while a user's
+        and a device's are not (see `PbxUser`).
+        """
+        attributes = _mapping(resource, "attributes") or {}
+
+        return cls(
+            id=_text(resource, "id") or "",
+            destination=_text(attributes, "destination"),
+            caller_id=_text(attributes, "caller-id"),
+            auto_answer=_boolean(attributes, "auto-answer"),
+            device=_text(attributes, "device"),
+            status=_text(attributes, "status"),
+            requested_at=_parse_datetime(attributes.get("requested-at")),
+            raw=resource,
+        )
