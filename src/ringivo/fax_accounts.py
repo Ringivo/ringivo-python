@@ -71,8 +71,8 @@ class NotGiven:
     caller said nothing about this field" needs a value that is not None.
 
     IT LIVES HERE AND IS SHARED, not copied. webhook_endpoints.py writes
-    have the same three states (`events=None` there means "every event in
-    scope") and import this one rather than defining a second, because a
+    need the same "the caller said nothing" state for `url=`, `events=` and
+    `active=`, and import this one rather than defining a second, because a
     caller comparing with `isinstance` must get the same answer whichever
     namespace they came from.
 

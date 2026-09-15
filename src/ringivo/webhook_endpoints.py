@@ -28,16 +28,22 @@ with the content type set explicitly on each write because httpx stamps
 
 -- SPARSE WRITES, AND THE SENTINEL SHARED WITH FAX ACCOUNTS --------------------
 `update()` sends only the members the caller named, so switching an endpoint
-off leaves its event list alone. That needs the same three states per
-argument fax_accounts.py sets out — send this value, send `null`, send
-nothing — so this module IMPORTS that module's `NOT_GIVEN` rather than
-inventing a second sentinel: a caller comparing with `isinstance` must get
-the same answer whichever namespace they are in.
+off leaves its event list alone. `url=` and `active=` each need two states,
+not the three `fax_accounts.py` sets out — send this value, or send nothing
+— so this module IMPORTS that module's `NOT_GIVEN` rather than inventing a
+second sentinel: a caller comparing with `isinstance` must get the same
+answer whichever namespace they are in.
 
-`events=None` is a VALUE here and not an omission. `None` and `[]` both mean
-"every event in scope", and the API publishes the list back verbatim rather
-than normalising it, so a client that sent `[]` can see its write was
-understood.
+-- `events` IS REQUIRED ON CREATE, AND NEVER NULL ------------------------------
+This tightened on 2026-09-14: `events` used to be optional and nullable, and
+`None` or `[]` each meant "every event in scope". The platform refuses both
+now — an endpoint that named none would receive every event type it ever
+adds, at a handler nobody asked whether it wanted one — so `create()` here
+takes `events` as a required, non-default argument, and `update()` never
+sends `null`: a caller who names no other member alongside a stray
+`events=None` meets the empty-PATCH refusal below rather than a 422 from the
+platform. `[]` is refused locally on both calls, for the same reason.
+`_events_for_create()` and `_events_for_update()` are where each rule lives.
 
 -- A KNOWN DEFECT IN THE VENDORED SPEC ----------------------------------------
 `spec/openapi.yaml` marks `url` as REQUIRED in `WebhookEndpointUpdateRequest`.
@@ -141,7 +147,7 @@ class WebhookEndpoints:
         url: str,
         scope_type: str,
         scope_id: str,
-        events: Sequence[str] | None | NotGiven = NOT_GIVEN,
+        events: Sequence[str],
         active: bool | NotGiven = NOT_GIVEN,
     ) -> WebhookEndpoint:
         """Register an endpoint, and read its signing secret for the only time.
@@ -163,18 +169,20 @@ class WebhookEndpoints:
                 Neither this nor `scope_type` can be changed afterwards: the
                 delivery record is the evidence of what THAT scope was told,
                 so a different scope is a new endpoint.
-            events: The event names you want, as a LIST. `None` or `[]`
-                both mean EVERY event in scope, and the list is published
-                back verbatim rather than normalised. Leave it out and the
-                platform decides what a new endpoint hears. An event name
-                this platform does not publish is a 422 — a typo would
-                otherwise subscribe you to silence.
+            events: The event names you want, as a LIST — REQUIRED, and it
+                must name at least one. There is no spelling left that means
+                "every event in scope": `None` and `[]` are each refused
+                before the request is built, exactly as the platform refuses
+                them. An event name this platform does not publish is a
+                422 — a typo would otherwise subscribe you to silence.
             active: `False` registers an endpoint that is switched off.
 
         Raises:
             ValueError: `events` was one string rather than a list of names.
                 A str is a `Sequence[str]`, so it would be read one
                 character at a time.
+            ValueError: `events` named no event type. `None` and `[]` are
+                both refused, for the reason `events` explains above.
 
         Needs `webhooks:write`, or `fax:write` for a `fax_account`-scoped
         endpoint only: naming a `customer` or `tenant` scope with a `fax:*`
@@ -184,8 +192,13 @@ class WebhookEndpoints:
         with the SAME message, on purpose — telling them apart would make
         this field a way to discover which ids are real.
         """
-        attributes: dict[str, Any] = {"url": url, "scopeType": scope_type, "scopeId": scope_id}
-        attributes.update(_given({"events": _events(events), "active": active}))
+        attributes: dict[str, Any] = {
+            "url": url,
+            "scopeType": scope_type,
+            "scopeId": scope_id,
+            "events": _events_for_create(events),
+        }
+        attributes.update(_given({"active": active}))
 
         document = {"data": {"type": _TYPE, "attributes": attributes}}
 
@@ -203,16 +216,19 @@ class WebhookEndpoints:
         webhook_endpoint_id: str,
         *,
         url: str | NotGiven = NOT_GIVEN,
-        events: Sequence[str] | None | NotGiven = NOT_GIVEN,
+        events: Sequence[str] | NotGiven = NOT_GIVEN,
         active: bool | NotGiven = NOT_GIVEN,
     ) -> WebhookEndpoint:
         """Change an endpoint's URL, its event list, or its switch.
 
         A SPARSE PATCH: only the arguments you pass are sent, so switching
         an endpoint off leaves its event list exactly as it was, and adding
-        an event is `update(id, events=[...])` with nothing else named.
-        `events=None` is a VALUE — every event in scope — rather than an
-        omission.
+        an event is `update(id, events=[...])` with nothing else named. The
+        list REPLACES the old one — name every event you want, not only the
+        new ones — and it must still name at least one: `[]` is refused.
+        There is no `events=` spelling left that clears the list to "every
+        event in scope"; `None` is not sent as `null` here, so passing it
+        alone is the same as naming nothing.
 
         `scope_type` and `scope_id` cannot change and there is no argument
         here that would try: a different scope is a new endpoint.
@@ -224,17 +240,17 @@ class WebhookEndpoints:
             ValueError: No member was named. An empty PATCH spends a round
                 trip and an audit entry to change nothing, and it is far
                 more often a form that came back empty than an intention.
+                A bare `events=None` with nothing else named lands here too.
             ValueError: `events` was one string rather than a list of names.
+            ValueError: `events` was `[]`.
 
         Needs `webhooks:write`, or `fax:write` for a fax-account-scoped
         endpoint.
         """
-        attributes = _given({"url": url, "events": _events(events), "active": active})
+        attributes = _given({"url": url, "events": _events_for_update(events), "active": active})
         if not attributes:
             raise ValueError(
-                "update() needs at least one member to change: url=, events= or active=. "
-                "Pass events=None or events=[] to hear about every event in scope — that "
-                "counts as a change."
+                "update() needs at least one member to change: url=, events= or active=."
             )
 
         document = {"data": {"type": _TYPE, "id": webhook_endpoint_id, "attributes": attributes}}
@@ -310,14 +326,27 @@ def _page(document: Any) -> WebhookEndpointPage:
     )
 
 
-def _events(events: Sequence[str] | None | NotGiven) -> list[str] | None | NotGiven:
-    """The `events` member as the wire wants it, with all three states kept.
+#: The message `_events_for_create` and `_events_for_update` share for one
+#: bare string of events — the guard is the same mistake on both calls, so
+#: the words that name it are the same too.
+_BARE_STRING_EVENTS = (
+    "events must be a list of event names, not one string: a str is read "
+    'one character at a time, so events="fax.received" asks for twelve '
+    "events that do not exist and the platform refuses every one of them. "
+    'Pass events=["fax.received"].'
+)
 
-    `NOT_GIVEN` and `None` pass through untouched, because `_given` must
-    still be able to tell "said nothing" from "said every event in scope".
-    Anything else becomes a `list`, so the member is a JSON array whatever
-    sequence the caller reached for — a tuple would serialise the same way,
-    but a caller who passed one should not have to know that.
+
+def _events_for_create(events: Sequence[str]) -> list[str]:
+    """The `events` member for `create()` — REQUIRED, and never empty.
+
+    Mirrors the `scopes` guard on `Ringivo.__init__`: `not events` catches
+    `None` and `[]` with the one check and the one message, because a caller
+    who reaches either has made the same mistake — asking to register an
+    endpoint that hears about everything, which the platform refuses
+    outright. `create()` declares `events` with no default, so the caller
+    who names it not at all never reaches this function: Python itself
+    raises `TypeError` for that, before a single line here runs.
 
     ONE BARE STRING IS REFUSED, for the reason client.py refuses
     `scopes="fax:read"`: a str IS a `Sequence[str]`, to the type checker and
@@ -326,19 +355,55 @@ def _events(events: Sequence[str] | None | NotGiven) -> list[str] | None | NotGi
     guard removed: `['f', 'a', 'x', '.', 'r', 'e', 'c', 'e', 'i', 'v', 'e',
     'd']` reached the wire. The platform answers 422 naming events the
     caller never typed, which is a puzzle rather than a sentence, so the
-    SHAPE is checked here, in the one place that builds this member, and
-    `create()` and `update()` on both classes inherit it.
+    SHAPE is checked here instead.
 
     Raises:
         ValueError: `events` was one string rather than a list of names.
+        ValueError: `events` was `None` or `[]`.
     """
     if isinstance(events, str):
+        raise ValueError(_BARE_STRING_EVENTS)
+    if not events:
         raise ValueError(
-            "events must be a list of event names, not one string: a str is read "
-            'one character at a time, so events="fax.received" asks for twelve '
-            "events that do not exist and the platform refuses every one of them. "
-            'Pass events=["fax.received"].'
+            "events must name at least one event type: null and [] are each refused, "
+            "exactly as the platform refuses them. An endpoint that named none would "
+            "receive every event type this platform ever adds, at a handler nobody asked "
+            'whether it wanted one. Pass the events you handle: events=["fax.received"].'
         )
-    if isinstance(events, NotGiven) or events is None:
-        return events
     return list(events)
+
+
+def _events_for_update(events: Sequence[str] | NotGiven) -> list[str] | NotGiven:
+    """The `events` member for `update()` — optional, but never `null`.
+
+    `NOT_GIVEN` passes through so `_given` drops it, the same as `url=` and
+    `active=`. A bare `None` is treated the same way rather than sent as
+    `null`: that spelling used to mean "every event in scope" and the
+    platform refuses it now, so a caller who reaches past the type hint with
+    `events=None` gets the argument dropped instead of a 422 — and, named
+    alongside nothing else, meets `update()`'s own empty-PATCH refusal. This
+    mirrors the TypeScript client's `options.events != null` guard, kept
+    here for the same reason it exists there: a caller who bypasses static
+    types is the one this line is for.
+
+    ONE BARE STRING IS REFUSED — see `_events_for_create` for why — and so is
+    `[]`: the list REPLACES the old one, so an empty replacement would reach,
+    one request later, the every-event state a registration refuses.
+
+    Raises:
+        ValueError: `events` was one string rather than a list of names.
+        ValueError: `events` was `[]`.
+    """
+    if isinstance(events, NotGiven) or events is None:
+        return NOT_GIVEN
+    if isinstance(events, str):
+        raise ValueError(_BARE_STRING_EVENTS)
+    result = list(events)
+    if not result:
+        raise ValueError(
+            "events must still name at least one event type when you replace the list: "
+            "[] is refused, exactly as the platform refuses it. The list REPLACES the old "
+            "one, so an empty replacement would reach, one request later, the every-event "
+            'state a registration refuses. Pass the events you want: events=["fax.received"].'
+        )
+    return result

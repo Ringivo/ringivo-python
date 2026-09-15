@@ -6,12 +6,12 @@ nothing is shared between the two classes, because the only thing they
 could share is the awaiting itself.
 
 What IS shared is the module-private helpers webhook_endpoints.py already
-owns — `_events`, `_page` and the constants — plus the `NOT_GIVEN` sentinel
-and `_given` from fax_accounts.py and `_path_segment` and `_data_object`
-from faxes.py. Those are pure functions of their arguments, they touch no
-client, and one of them (`_path_segment`) is a security control: a second
-copy of it is a second thing to get wrong. So they are imported, not
-duplicated.
+owns — `_events_for_create`, `_events_for_update`, `_page` and the constants
+— plus the `NOT_GIVEN` sentinel and `_given` from fax_accounts.py and
+`_path_segment` and `_data_object` from faxes.py. Those are pure functions
+of their arguments, they touch no client, and one of them (`_path_segment`)
+is a security control: a second copy of it is a second thing to get wrong.
+So they are imported, not duplicated.
 
 Read webhook_endpoints.py for the whys: why the secret is readable exactly
 once per secret, what a rotation's grace window is, why the write bodies are
@@ -27,7 +27,7 @@ from typing import TYPE_CHECKING, Any
 from .fax_accounts import NOT_GIVEN, _JSONAPI, NotGiven, _given
 from .faxes import _data_object, _path_segment
 from .models import WebhookEndpoint, WebhookEndpointPage
-from .webhook_endpoints import _NOUN, _TYPE, _events, _page
+from .webhook_endpoints import _NOUN, _TYPE, _events_for_create, _events_for_update, _page
 
 if TYPE_CHECKING:  # pragma: no cover - import cycle broken for the type only
     from .async_client import AsyncRingivo
@@ -88,7 +88,7 @@ class AsyncWebhookEndpoints:
         url: str,
         scope_type: str,
         scope_id: str,
-        events: Sequence[str] | None | NotGiven = NOT_GIVEN,
+        events: Sequence[str],
         active: bool | NotGiven = NOT_GIVEN,
     ) -> WebhookEndpoint:
         """Register an endpoint, and read its signing secret for the only time.
@@ -96,20 +96,28 @@ class AsyncWebhookEndpoints:
         The awaited twin of `WebhookEndpoints.create`: same arguments, same
         meanings, and the same rule that matters most — **the returned
         `secret` is the only copy you will ever be handed, so store it now;
-        there is no way to read it back.** `events=None` or `[]` both mean
-        every event in scope.
+        there is no way to read it back.** `events` is REQUIRED and must
+        name at least one event type: `None` and `[]` are each refused
+        before the request is built, exactly as the platform refuses them.
 
         Raises:
             ValueError: `events` was one string rather than a list of names.
                 A str is a `Sequence[str]`, so it would be read one
-                character at a time — the refusal `_events` explains.
+                character at a time — the refusal `_events_for_create`
+                explains.
+            ValueError: `events` was `None` or `[]`.
 
         Needs `webhooks:write`, or `fax:write` for a `fax_account`-scoped
         endpoint only: naming a `customer` or `tenant` scope with a `fax:*`
         token is a 422.
         """
-        attributes: dict[str, Any] = {"url": url, "scopeType": scope_type, "scopeId": scope_id}
-        attributes.update(_given({"events": _events(events), "active": active}))
+        attributes: dict[str, Any] = {
+            "url": url,
+            "scopeType": scope_type,
+            "scopeId": scope_id,
+            "events": _events_for_create(events),
+        }
+        attributes.update(_given({"active": active}))
 
         document = {"data": {"type": _TYPE, "attributes": attributes}}
 
@@ -127,30 +135,30 @@ class AsyncWebhookEndpoints:
         webhook_endpoint_id: str,
         *,
         url: str | NotGiven = NOT_GIVEN,
-        events: Sequence[str] | None | NotGiven = NOT_GIVEN,
+        events: Sequence[str] | NotGiven = NOT_GIVEN,
         active: bool | NotGiven = NOT_GIVEN,
     ) -> WebhookEndpoint:
         """Change an endpoint's URL, its event list, or its switch.
 
         A SPARSE PATCH, exactly as `WebhookEndpoints.update` describes: only
         the arguments you pass are sent, so adding an event is
-        `update(id, events=[...])` and nothing else moves. `events=None` is
-        a value — every event in scope — rather than an omission.
-        `scope_type` and `scope_id` cannot change.
+        `update(id, events=[...])` and nothing else moves. The list REPLACES
+        the old one and must still name at least one: `[]` is refused, and
+        `None` is not sent as `null` — passing it alone is the same as
+        naming nothing. `scope_type` and `scope_id` cannot change.
 
         Raises:
-            ValueError: No member was named, or `events` was one string
-                rather than a list of names.
+            ValueError: No member was named — a bare `events=None` with
+                nothing else named lands here too — or `events` was one
+                string rather than a list of names, or `[]`.
 
         Needs `webhooks:write`, or `fax:write` for a fax-account-scoped
         endpoint.
         """
-        attributes = _given({"url": url, "events": _events(events), "active": active})
+        attributes = _given({"url": url, "events": _events_for_update(events), "active": active})
         if not attributes:
             raise ValueError(
-                "update() needs at least one member to change: url=, events= or active=. "
-                "Pass events=None or events=[] to hear about every event in scope — that "
-                "counts as a change."
+                "update() needs at least one member to change: url=, events= or active=."
             )
 
         document = {"data": {"type": _TYPE, "id": webhook_endpoint_id, "attributes": attributes}}
