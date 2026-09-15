@@ -1664,6 +1664,40 @@ CallDirection: TypeAlias = Literal['outbound', 'inbound', 'on-net']
 CallDisposition: TypeAlias = Literal['answered', 'missed']
 
 
+PbxCallRequestAttributes = TypedDict(
+    'PbxCallRequestAttributes',
+    {
+        'destination': str,
+        'caller-id': NotRequired[str | None],
+        'auto-answer': NotRequired[bool],
+        'device': NotRequired[str | None],
+    },
+)
+
+
+PbxCallAttributes = TypedDict(
+    'PbxCallAttributes',
+    {
+        'destination': NotRequired[str],
+        'caller-id': NotRequired[str | None],
+        'auto-answer': NotRequired[bool],
+        'device': NotRequired[str | None],
+        'status': NotRequired[Literal['requested']],
+        'requested-at': NotRequired[str],
+    },
+)
+
+
+class PbxCallResource(TypedDict):
+    type: Literal['calls']
+    id: str
+    attributes: NotRequired[PbxCallAttributes]
+
+
+class PbxCallDocumentResponse(TypedDict):
+    data: PbxCallResource
+
+
 PbxUserAttributes = TypedDict(
     'PbxUserAttributes',
     {
@@ -1902,3 +1936,12 @@ class PortOrderStatusChangedEvent(WebhookEventEnvelope):
 
 class PortOrderBillExtractionSettledEvent(WebhookEventEnvelope):
     data: PortOrderBillExtractionSettledEventData
+
+
+class Data27(TypedDict):
+    type: Literal['calls']
+    attributes: PbxCallRequestAttributes
+
+
+class PbxCallRequest(TypedDict):
+    data: Data27

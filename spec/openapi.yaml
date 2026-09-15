@@ -265,6 +265,14 @@ tags:
       The registrations your customers' phones have made. A row exists because something sent a SIP
       REGISTER and disappears when nothing does, so `registered` is derived from the expiry rather
       than stored.
+  - name: PBX calls
+    description: |
+      Click-to-dial: ask one of your customers' PBX users to call a number, from their own phone.
+
+      **This is the one write on `/v1/pbx/`**, it needs its own scope (`pbx-calls:write`), and the
+      read scopes do not imply it — the act has a cost and a caller ID attached. It answers **202**,
+      never 201: the phone system takes the command onto its own bus and the call has not happened
+      yet. What happened to it arrives later on `/v1/pbx/call-records`, under the same id.
   - name: Call records
     description: |
       Your customers' call log.
@@ -5740,6 +5748,60 @@ paths:
           $ref: '#/components/responses/Forbidden'
         '404':
           $ref: '#/components/responses/NotFound'
+  /v1/pbx/users/{user}/calls:
+    post:
+      tags: [PBX calls]
+      operationId: placePbxCall
+      summary: Place a click-to-dial call
+      description: |
+        Asks the phone system to ring `{user}`'s phone and connect it to `destination`.
+
+        **202, and the id is yours before the call exists.** The `data.id` in the answer is minted
+        here and handed to the phone system as the SIP Call-ID it places the call under. Nothing
+        else about the call is knowable at this point, which is why `status` is always `requested`.
+
+        **This release does not link that id to the call record.** A call record's id is derived
+        from the phone system's own CDR row, and no call-record field carries the SIP call id, so
+        there is no join to make from this id today. A later release may expose the call id on call
+        records so you can correlate.
+
+        **`device` must belong to `{user}`.** A device id that names a registration owned by
+        somebody else — including a user of the same name on another domain — is refused with a
+        **422** pointing at `/data/attributes/device`. Nothing is dialled.
+
+        A user outside your customers' domains answers **404**, not 403 — the same answer an id that
+        names nothing gives. A phone system that refuses or cannot be reached answers **502** with
+        its own status in `errors[0].meta.vendor_status`; nothing was dialled and the request may be
+        retried.
+      security:
+        - bearerAuth: [pbx-calls:write]
+      parameters:
+        - $ref: '#/components/parameters/PbxUserId'
+      requestBody:
+        required: true
+        content:
+          application/vnd.api+json:
+            schema:
+              $ref: '#/components/schemas/PbxCallRequest'
+      responses:
+        '202':
+          description: The call was accepted by the phone system. It has not happened yet.
+          content:
+            application/vnd.api+json:
+              schema:
+                $ref: '#/components/schemas/PbxCallDocumentResponse'
+        '400':
+          $ref: '#/components/responses/BadQuery'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/UnprocessableDocument'
+        '502':
+          $ref: '#/components/responses/PhoneSystemUnreachable'
   /v1/pbx/devices:
     get:
       tags: [PBX devices]
@@ -6653,6 +6715,15 @@ components:
         The document was well formed and could not be applied — a field the machinery owns carrying
         a CHANGED value, a value past a published limit, or a missing required member. Each error's
         `source.pointer` names the member.
+      content:
+        application/vnd.api+json:
+          schema:
+            $ref: '#/components/schemas/ErrorDocument'
+    PhoneSystemUnreachable:
+      description: |
+        The phone system refused the request or could not be reached. Nothing was dialled and the
+        request may be retried. `errors[0].meta.vendor_status` carries the status the phone system
+        itself answered with, so a refusal and an outage can be told apart.
       content:
         application/vnd.api+json:
           schema:
@@ -10281,6 +10352,91 @@ components:
       type: [string, 'null']
       description: Whether anybody answered. Derived from the same integer as `direction`.
       enum: [answered, missed]
+    # -- Click-to-dial (POST /v1/pbx/users/{user}/calls) -------------------------------------------
+    PbxCallRequest:
+      type: object
+      required: [data]
+      properties:
+        data:
+          type: object
+          required: [type, attributes]
+          properties:
+            type: { type: string, enum: [calls] }
+            attributes:
+              $ref: '#/components/schemas/PbxCallRequestAttributes'
+    PbxCallRequestAttributes:
+      type: object
+      required: [destination]
+      properties:
+        destination:
+          type: string
+          description: |
+            Who to call: an E.164 number with its `+`, or an extension of 2 to 7 digits on the
+            user's own domain. The phone system completes an extension against that domain itself.
+          examples: ['+13025046250', '2002']
+        caller-id:
+          type: [string, 'null']
+          description: |
+            The number the called party sees. E.164, with or without the `+`; a ten-digit North
+            American number is also accepted and answered with its country code, because this
+            platform stores every caller ID as E.164 **without** the plus. A value that is not a
+            telephone number is refused rather than ignored. Omit it to use the user's own caller ID.
+          examples: ['+14074366118', '4074366118']
+        auto-answer:
+          type: boolean
+          default: false
+          description: Ask the user's own phone to go off-hook by itself instead of ringing.
+        device:
+          type: [string, 'null']
+          description: |
+            Which of the user's registered devices to call from — a `devices` id. It MUST belong to
+            this user; one that does not is a 422 pointing at `/data/attributes/device`. Omit it to
+            let the phone system ring the user's devices as it normally would.
+          format: uuid
+    PbxCallAttributes:
+      type: object
+      description: |
+        The call as it was requested. Every value is what was actually sent to the phone system,
+        which is not always what was typed: `caller-id` comes back in the spelling the called party
+        will see.
+      properties:
+        destination: { type: string, description: 'Who was called, as sent.' }
+        caller-id:
+          type: [string, 'null']
+          description: 'The number presented, E.164 without the `+`. Null when the user''s own was used.'
+        auto-answer: { type: boolean }
+        device:
+          type: [string, 'null']
+          description: 'The `devices` id the call originates from, as sent. Null when none was named.'
+        status:
+          type: string
+          enum: [requested]
+          description: |
+            Always `requested` from this endpoint. The phone system has taken the command and
+            nothing about the call is knowable yet; what happened to it arrives on
+            `/v1/pbx/call-records` under this same id.
+        requested-at: { type: string, format: date-time }
+    PbxCallResource:
+      type: object
+      required: [type, id]
+      properties:
+        type: { type: string, enum: [calls] }
+        id:
+          type: string
+          format: uuid
+          description: |
+            Minted by this API before the call was placed, and handed to the phone system as the SIP
+            Call-ID it places the call under. It names the call on the PHONE SYSTEM; this release
+            does not link it to anything on `/v1/pbx/call-records`, whose ids come from the CDR row
+            instead. A later release may expose the call id there so you can correlate.
+        attributes:
+          $ref: '#/components/schemas/PbxCallAttributes'
+    PbxCallDocumentResponse:
+      type: object
+      required: [data]
+      properties:
+        data:
+          $ref: '#/components/schemas/PbxCallResource'
     PbxUserAttributes:
       type: object
       description: |
