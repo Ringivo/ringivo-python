@@ -222,11 +222,12 @@ def test_get_reads_a_jsonapi_document_into_the_public_dataclass(
 def test_a_null_event_list_is_every_event_rather_than_an_empty_one(
     respx_mock: respx.MockRouter, client: Ringivo
 ) -> None:
-    # `null` and `[]` both mean "every event in scope", and the API publishes
-    # back whichever was written. They stay distinguishable here — None for
-    # the null, `()` for the empty list — because a caller comparing what
-    # they wrote with what came back is the reason the API does not
-    # normalise them.
+    # A WRITE must name at least one event type now, but a READ can still
+    # answer either spelling — from a row registered before the platform
+    # tightened this, on 2026-09-14 — and the platform treats both as "every
+    # event in scope". They stay distinguishable here — None for the null,
+    # `()` for the empty list — so `raw` carries the exact shape the read
+    # returned rather than this client guessing which one it meant.
     respx_mock.get(ENDPOINT_URL).mock(
         side_effect=[
             httpx.Response(200, json={"data": _endpoint_resource(events=None)}),
@@ -409,6 +410,31 @@ def test_create_refuses_a_null_event_list_before_sending_anything(
 
     assert route.call_count == 0
     assert respx_mock.calls.call_count == 0, "a null event list reached the wire"
+
+
+def test_create_refuses_an_empty_generator_of_events(
+    respx_mock: respx.MockRouter, client: Ringivo
+) -> None:
+    # A one-shot iterator (a generator here) is ALWAYS truthy, whatever it
+    # would yield: `not events` on the argument itself cannot tell an empty
+    # one from a full one, and would let `create(events=(e for e in []))`
+    # sail through to `list(events)` and put `"events": []` on the wire —
+    # exactly the value this guard exists to refuse. The list has to be
+    # built first, and the emptiness check run on THAT.
+    route = respx_mock.post(ENDPOINTS_URL).mock(
+        return_value=httpx.Response(201, json={"data": _endpoint_resource(secret=SECRET)})
+    )
+
+    with client, pytest.raises(ValueError, match="at least one event type"):
+        client.webhook_endpoints.create(
+            url=HOOK_URL,
+            scope_type="fax_account",
+            scope_id=ACCOUNT_ID,
+            events=(e for e in ()),  # type: ignore[arg-type]
+        )
+
+    assert route.call_count == 0
+    assert respx_mock.calls.call_count == 0, "an empty generator of events reached the wire"
 
 
 def test_a_scope_a_fax_token_may_not_register_is_a_typed_422(

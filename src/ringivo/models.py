@@ -92,12 +92,11 @@ def _strings(source: Mapping[str, Any], key: str) -> tuple[str, ...] | None:
     """A list of names as a tuple, or None when the member is not a list.
 
     AN EMPTY TUPLE AND None ARE NOT THE SAME READING, which is why this does
-    not flatten one into the other. On a webhook endpoint's `events` the API
-    publishes back exactly what was written — `null` and `[]` both mean
-    "every event in scope", and it keeps them apart on purpose so a client
-    that sent `[]` can see its write was understood. So `null`, a missing
-    member and a value of the wrong type all read None here, while `[]`
-    reads `()`.
+    not flatten one into the other. On a webhook endpoint's `events`, a
+    write must name at least one event type. `None` or `()` can still come
+    back from a row the rule never reached, and the platform treats it as
+    every event in scope. So `null`, a missing member and a value of the
+    wrong type all read None here, while `[]` reads `()`.
 
     A non-string item is dropped rather than raising, for the reason every
     other reader in this module gives: the whole value is still in `raw`.
@@ -536,10 +535,12 @@ class WebhookEndpoint:
     The three are matched as a containment order, so a reseller-wide
     endpoint and a per-account one both hear about the same fax.
 
-    `events` is the list of event names asked for, and **None or an empty
-    tuple both mean "every event in scope"**. The API publishes the list
-    back exactly as it was written rather than normalising it, so the two
-    are kept apart here too: None is the `null` it sent, `()` is the `[]`.
+    `events` is the list of event names asked for. **A write must name at
+    least one** — `None` or an empty tuple can still come back here, from a
+    row the rule never reached, and the platform treats either reading as
+    "every event in scope". This client tells the two apart rather than
+    flattening one into the other — None is the `null` the API sent, `()`
+    is the `[]` — so `raw` still carries the exact shape a read returned.
 
     `secret` IS ONLY EVER FILLED IN ONCE PER SECRET. It carries a value on
     the object `create()` returns and on the one `rotate_secret()` returns,

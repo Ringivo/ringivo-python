@@ -202,6 +202,28 @@ async def test_create_refuses_a_null_or_empty_event_list_before_sending_anything
 
 
 @pytest.mark.anyio
+async def test_create_refuses_an_empty_generator_of_events(
+    respx_mock: respx.MockRouter, client: AsyncRingivo
+) -> None:
+    # A one-shot iterator (a generator here) is ALWAYS truthy, whatever it
+    # would yield: a `not events` check on the argument itself cannot tell
+    # an empty one from a full one, and would let
+    # `create(events=(e for e in []))` sail through to `list(events)` and
+    # put `"events": []` on the wire. The list has to be built first, and
+    # the emptiness check run on THAT.
+    async with client:
+        with pytest.raises(ValueError, match="at least one event type"):
+            await client.webhook_endpoints.create(
+                url=HOOK_URL,
+                scope_type="fax_account",
+                scope_id=ACCOUNT_ID,
+                events=(e for e in ()),  # type: ignore[arg-type]
+            )
+
+    assert respx_mock.calls.call_count == 0, "an empty generator of events reached the wire"
+
+
+@pytest.mark.anyio
 async def test_update_sends_only_what_was_named(
     respx_mock: respx.MockRouter, client: AsyncRingivo
 ) -> None:

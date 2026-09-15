@@ -340,13 +340,9 @@ _BARE_STRING_EVENTS = (
 def _events_for_create(events: Sequence[str]) -> list[str]:
     """The `events` member for `create()` — REQUIRED, and never empty.
 
-    Mirrors the `scopes` guard on `Ringivo.__init__`: `not events` catches
-    `None` and `[]` with the one check and the one message, because a caller
-    who reaches either has made the same mistake — asking to register an
-    endpoint that hears about everything, which the platform refuses
-    outright. `create()` declares `events` with no default, so the caller
-    who names it not at all never reaches this function: Python itself
-    raises `TypeError` for that, before a single line here runs.
+    `create()` declares `events` with no default, so the caller who names it
+    not at all never reaches this function: Python itself raises `TypeError`
+    for that, before a single line here runs.
 
     ONE BARE STRING IS REFUSED, for the reason client.py refuses
     `scopes="fax:read"`: a str IS a `Sequence[str]`, to the type checker and
@@ -357,20 +353,30 @@ def _events_for_create(events: Sequence[str]) -> list[str]:
     caller never typed, which is a puzzle rather than a sentence, so the
     SHAPE is checked here instead.
 
+    THE LIST IS BUILT BEFORE THE EMPTINESS CHECK, not `if not events:` on
+    the argument itself — a `not events` check on a one-shot iterator (a
+    generator, `map()`, a bare iterator) is ALWAYS false, because none of
+    those define emptiness by truthiness: `create(events=(e for e in []))`
+    would sail past a check written that way and put `"events": []` on the
+    wire, exactly the value this function exists to refuse. Building the
+    list first and checking THAT is the same order `_events_for_update`
+    already uses, below.
+
     Raises:
         ValueError: `events` was one string rather than a list of names.
-        ValueError: `events` was `None` or `[]`.
+        ValueError: `events` was `None` or `[]` (or emptied out an iterator).
     """
     if isinstance(events, str):
         raise ValueError(_BARE_STRING_EVENTS)
-    if not events:
+    result = [] if events is None else list(events)
+    if not result:
         raise ValueError(
             "events must name at least one event type: null and [] are each refused, "
             "exactly as the platform refuses them. An endpoint that named none would "
             "receive every event type this platform ever adds, at a handler nobody asked "
             'whether it wanted one. Pass the events you handle: events=["fax.received"].'
         )
-    return list(events)
+    return result
 
 
 def _events_for_update(events: Sequence[str] | NotGiven) -> list[str] | NotGiven:
