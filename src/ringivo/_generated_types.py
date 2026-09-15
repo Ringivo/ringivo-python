@@ -154,7 +154,7 @@ FaxAccountStatus: TypeAlias = Literal['active', 'suspended']
 FaxResolution: TypeAlias = Literal['fine', 'standard']
 
 
-WebhookScopeType: TypeAlias = Literal['tenant', 'customer', 'fax_account']
+WebhookScopeType: TypeAlias = Literal['tenant', 'customer']
 
 
 WebhookEventType: TypeAlias = Literal[

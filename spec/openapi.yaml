@@ -124,17 +124,17 @@ tags:
     description: |
       Where you want to be called back, and with what signing secret.
 
-      **Scope note.** These operations accept EITHER vocabulary, and the two do not reach the same
-      endpoints: `fax:*` reaches only **fax-account-scoped** webhook endpoints, while
-      customer-scoped and tenant-scoped endpoints require `webhooks:*`. An endpoint your token
-      cannot reach answers **404**, exactly as an id that names nothing does.
+      **Scope note.** These operations accept EITHER vocabulary. A `fax:*` token reaches the
+      endpoints its own credential already reaches, and may register or edit them for **`fax.*`
+      events only** — anything else is a 422 on that member and requires `webhooks:*`. An endpoint
+      your token cannot reach answers **404**, exactly as an id that names nothing does.
   - name: Webhook deliveries
     description: |
       What we owed each endpoint, and what became of it.
 
       **Scope note.** A delivery borrows its endpoint's reach entirely, so the same narrowing
-      applies: `fax:*` reaches only the deliveries of **fax-account-scoped** endpoints, while the
-      deliveries of customer- and tenant-scoped endpoints require `webhooks:*`.
+      applies: a `fax:*` token reaches the deliveries of the endpoints it reaches, and an endpoint
+      it does not reach requires `webhooks:*`.
   - name: Number lookups
     description: |
       Who carries a phone number, what name it presents, and whether it can receive text messages.
@@ -2632,8 +2632,9 @@ paths:
         it. Every other read answers `"secret": null` — an honest statement that the platform holds
         no readable copy.
 
-        **Scope:** `fax:read` lists only **fax-account-scoped** endpoints; customer- and
-        tenant-scoped endpoints are absent from that list and require `webhooks:read`.
+        **Scope:** `fax:read` lists the endpoints its own credential reaches — its customer's for a
+        customer-scoped token, its reseller's for a tenant integrator one. `webhooks:read` is what a
+        PERSON needs to list their reseller's endpoints without a fax grant behind it.
       security:
         - bearerAuth: [webhooks:read]
         - bearerAuth: [fax:read]
@@ -2667,7 +2668,7 @@ paths:
                   - type: webhook-endpoints
                     id: 0198c4a1-8192-73b4-e5b6-708192031425
                     attributes:
-                      scopeType: fax_account
+                      scopeType: customer
                       scopeId: 0198c4a1-3c4d-7e5f-9061-2b3c4d5e6f70
                       url: https://hooks.acme-vet.example/faxes
                       events: [fax.received, fax.delivered]
@@ -2708,15 +2709,17 @@ paths:
         afterwards: the delivery history is the record of what THAT scope was told.
 
         `filter` narrows delivery BELOW that scope, matched against the body's `data` object — a
-        customer-scoped endpoint can ask for one fax account with
-        `fax_account_id:<id>`. Its SYNTAX is checked here and a 422 names the character that could
+        customer-scoped endpoint asks for one fax account with
+        `fax_account_id:<id>`, which is how a per-inbox subscription is written. Its SYNTAX is
+        checked here and a 422 names the character that could
         not be read; its FIELD NAMES are not checked against anything, so a filter naming a field
         the body does not carry is valid and matches nothing. The grammar is on the `filter`
         attribute.
 
-        **Scope:** `fax:write` may register only a `fax_account`-scoped endpoint; naming a
-        `customer` or `tenant` scope with a `fax:*` token is refused with a 422, and needs
-        `webhooks:write`.
+        **Scope:** a `fax:write` token may register an endpoint at any scope it already reaches,
+        but only for `fax.*` events — naming `message.received` or a `port_order.*` type with a
+        `fax:*` token is a 422 on that member, and needs `webhooks:write`. A scope the token does
+        not reach is refused on `scopeId`, whatever the events are.
       security:
         - bearerAuth: [webhooks:write]
         - bearerAuth: [fax:write]
@@ -2731,7 +2734,7 @@ paths:
                 type: webhook-endpoints
                 attributes:
                   url: https://hooks.acme-vet.example/faxes
-                  scopeType: fax_account
+                  scopeType: customer
                   scopeId: 0198c4a1-3c4d-7e5f-9061-2b3c4d5e6f70
                   events: [fax.received, fax.delivered]
                   filter: status:failed OR status:partial
@@ -2748,7 +2751,7 @@ paths:
                   type: webhook-endpoints
                   id: 0198c4a1-8192-73b4-e5b6-708192031425
                   attributes:
-                    scopeType: fax_account
+                    scopeType: customer
                     scopeId: 0198c4a1-3c4d-7e5f-9061-2b3c4d5e6f70
                     url: https://hooks.acme-vet.example/faxes
                     events: [fax.received, fax.delivered]
@@ -2787,9 +2790,9 @@ paths:
       description: |
         `secret` is always `null` here — see the create.
 
-        **Scope:** `fax:read` reaches only **fax-account-scoped** endpoints; a customer- or
-        tenant-scoped endpoint answers **404** to a `fax:*` token, exactly as an id that names
-        nothing does, and requires `webhooks:read`.
+        **Scope:** `fax:read` reaches the endpoints its own credential reaches; one outside that
+        reach answers **404** to a `fax:*` token, exactly as an id that names nothing does, and
+        requires `webhooks:read`.
       security:
         - bearerAuth: [webhooks:read]
         - bearerAuth: [fax:read]
@@ -2805,7 +2808,7 @@ paths:
                   type: webhook-endpoints
                   id: 0198c4a1-8192-73b4-e5b6-708192031425
                   attributes:
-                    scopeType: fax_account
+                    scopeType: customer
                     scopeId: 0198c4a1-3c4d-7e5f-9061-2b3c4d5e6f70
                     url: https://hooks.acme-vet.example/faxes
                     events: [fax.received, fax.delivered]
@@ -2834,8 +2837,10 @@ paths:
         **Sending `filter: null` clears it**, after which the endpoint hears everything its scope and
         `events` match again.
 
-        **Scope:** `fax:write` reaches only **fax-account-scoped** endpoints; a customer- or
-        tenant-scoped endpoint answers **404** to a `fax:*` token and requires `webhooks:write`.
+        **Scope:** `fax:write` reaches the endpoints its own credential reaches, and may leave them
+        subscribed to **`fax.*` events only** — an edit naming `message.received` or a `port_order.*`
+        type is a 422 on that member. An endpoint outside that reach answers **404** and requires
+        `webhooks:write`.
       security:
         - bearerAuth: [webhooks:write]
         - bearerAuth: [fax:write]
@@ -2889,8 +2894,8 @@ paths:
         what you missed. Afterwards, the record of the removal — who, when, and what the endpoint
         was subscribed to — is on your account's audit page.
 
-        **Scope:** `fax:write` reaches only **fax-account-scoped** endpoints; a customer- or
-        tenant-scoped endpoint answers **404** to a `fax:*` token and requires `webhooks:write`.
+        **Scope:** `fax:write` reaches the endpoints its own credential reaches; one outside that
+        reach answers **404** to a `fax:*` token and requires `webhooks:write`.
       security:
         - bearerAuth: [webhooks:write]
         - bearerAuth: [fax:write]
@@ -2921,9 +2926,8 @@ paths:
         window a delivery's signature header carries two `v1` values, newest first. Roll your own
         copy before the deadline.
 
-        **Scope:** `fax:write` may rotate only a **fax-account-scoped** endpoint's secret; a
-        customer- or tenant-scoped endpoint answers **404** to a `fax:*` token and requires
-        `webhooks:write`.
+        **Scope:** `fax:write` may rotate the secret of an endpoint its own credential reaches; one
+        outside that reach answers **404** to a `fax:*` token and requires `webhooks:write`.
       security:
         - bearerAuth: [webhooks:write]
         - bearerAuth: [fax:write]
@@ -2939,7 +2943,7 @@ paths:
                   type: webhook-endpoints
                   id: 0198c4a1-8192-73b4-e5b6-708192031425
                   attributes:
-                    scopeType: fax_account
+                    scopeType: customer
                     scopeId: 0198c4a1-3c4d-7e5f-9061-2b3c4d5e6f70
                     url: https://hooks.acme-vet.example/faxes
                     events: [fax.received, fax.delivered]
@@ -2986,9 +2990,9 @@ paths:
         The body we POSTed is never published here — only its `payloadSha256` digest, so an
         integrator who kept what they received can prove it is what we sent.
 
-        **Scope:** a delivery borrows its endpoint's reach, so `fax:read` lists only the deliveries
-        of **fax-account-scoped** endpoints; the deliveries of customer- and tenant-scoped endpoints
-        require `webhooks:read`.
+        **Scope:** a delivery borrows its endpoint's reach, so `fax:read` lists the deliveries of
+        the endpoints it reaches; the deliveries of an endpoint outside that reach require
+        `webhooks:read`.
       security:
         - bearerAuth: [webhooks:read]
         - bearerAuth: [fax:read]
@@ -3064,9 +3068,9 @@ paths:
       operationId: getWebhookDelivery
       summary: Read one webhook delivery
       description: |
-        **Scope:** a delivery borrows its endpoint's reach, so `fax:read` reaches only the
-        deliveries of **fax-account-scoped** endpoints; a delivery of a customer- or tenant-scoped
-        endpoint answers **404** to a `fax:*` token and requires `webhooks:read`.
+        **Scope:** a delivery borrows its endpoint's reach, so `fax:read` reaches the deliveries of
+        the endpoints it reaches; a delivery of an endpoint outside that reach answers **404** to a
+        `fax:*` token and requires `webhooks:read`.
       security:
         - bearerAuth: [webhooks:read]
         - bearerAuth: [fax:read]
@@ -6321,9 +6325,10 @@ webhooks:
         not keep the bytes, so ask your messaging provider for the file. A text message carries an
         empty `media` list rather than an absent key.
 
-        **Scope: `tenant` and `customer`, never `fax_account`.** A message belongs to a number,
-        which belongs to a customer, which belongs to you — so a tenant-scoped endpoint and a
-        customer-scoped one both hear it, and an endpoint attached to a fax account never does.
+        **Scope: `tenant` and `customer`** — which is every scope there is, so the only endpoint
+        that does not hear a message is one that did not ask for the type. A message belongs to a
+        number, which belongs to a customer, which belongs to you — so a tenant-scoped endpoint and
+        a customer-scoped one both hear it.
         `data.customer_id` is null while the number sits unassigned in your own pool, and only your
         tenant-scoped endpoints are called for that one.
 
@@ -7015,9 +7020,14 @@ components:
     WebhookScopeType:
       type: string
       description: |
-        What an endpoint hears about. All three are matched as a containment order, so a
-        reseller-wide endpoint and a per-account one both hear about the same fax.
-      enum: [tenant, customer, fax_account]
+        What an endpoint hears about. Both are matched as a containment order, so a reseller-wide
+        endpoint and a customer-scoped one both hear about the same fax.
+
+        A third value, `fax_account`, was retired on 2026-09-15 and is now refused like any other
+        unknown scope. Narrow below a customer with `filter: fax_account_id:<id>` instead — the
+        fax body already carries that field, and one expression generalizes where a per-object
+        scope did not.
+      enum: [tenant, customer]
     WebhookEventType:
       type: string
       description: |
@@ -7752,7 +7762,7 @@ components:
         scopeId:
           type: [string, 'null']
           format: uuid
-          description: The id of the tenant, customer or fax account this endpoint hears about.
+          description: The id of the tenant or customer this endpoint hears about.
         url: { type: [string, 'null'], format: uri, maxLength: 2048 }
         events:
           type: [array, 'null']
@@ -7764,9 +7774,9 @@ components:
 
             **Every name must be one this endpoint's `scopeType` can carry**, or the write is a 422
             on that member. An event reaches the scopes of the things that CONTAIN it: a fax has a
-            fax account, a customer and a reseller; `message.received` has a customer and a reseller;
-            a port order has only a reseller. So `port_order.*` on a customer-scoped endpoint is
-            refused — it would be a live subscription that can never fire.
+            customer and a reseller; `message.received` has a customer and a reseller; a port order
+            has only a reseller. So `port_order.*` on a customer-scoped endpoint is refused — it
+            would be a live subscription that can never fire.
 
             No `minItems` here, unlike the create body, and the difference is deliberate: an empty
             list still READS as "every event in scope" wherever an event is matched, so that a row
