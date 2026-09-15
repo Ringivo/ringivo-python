@@ -1000,7 +1000,7 @@ def test_every_field_a_model_reads_is_covered_by_the_read_table() -> None:
 
 
 def test_every_field_a_model_reads_exists_in_the_generated_types() -> None:
-    assert len(_READS) >= 147, f"only {len(_READS)} reads were checked — the sweep is broken"
+    assert len(_READS) == 148, f"{len(_READS)} reads were checked, not 148 — the sweep is broken"
 
     failures: list[str] = []
     for read in _READS:

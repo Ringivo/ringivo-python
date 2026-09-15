@@ -574,6 +574,9 @@ async def test_call_sends_every_optional_attribute_it_was_given(
         "caller-id": "+14075550101",
         "device": DEVICE_ID,
     }
+    # The request went out WITH the plus; the answer is what the switch was
+    # sent, which this platform stores as E.164 WITHOUT it.
+    assert placed.caller_id == "14075550101"
     assert placed.id == CALL_ID
     assert placed.device == DEVICE_ID
     assert placed.auto_answer is True

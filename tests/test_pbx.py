@@ -949,7 +949,9 @@ def test_call_sends_every_optional_attribute_it_was_given(
             json={
                 "data": _call_resource(
                     attributes={
-                        "caller-id": "+14075550101",
+                        # AS THE PLATFORM STORES IT — E.164 without the plus,
+                        # which is not the spelling the request used.
+                        "caller-id": "14075550101",
                         "auto-answer": True,
                         "device": DEVICE_ID,
                     }
@@ -959,7 +961,7 @@ def test_call_sends_every_optional_attribute_it_was_given(
     )
 
     with client:
-        client.pbx.users.call(
+        placed = client.pbx.users.call(
             USER_ID,
             destination="1002",
             caller_id="+14075550101",
@@ -975,6 +977,9 @@ def test_call_sends_every_optional_attribute_it_was_given(
         "caller-id": "+14075550101",
         "device": DEVICE_ID,
     }
+    # The request went out WITH the plus; the answer is what the switch was
+    # sent, which this platform stores as E.164 WITHOUT it.
+    assert placed.caller_id == "14075550101"
 
 
 def test_call_reads_the_202_into_the_public_dataclass(
@@ -986,7 +991,9 @@ def test_call_reads_the_202_into_the_public_dataclass(
             json={
                 "data": _call_resource(
                     attributes={
-                        "caller-id": "+14075550101",
+                        # AS THE PLATFORM STORES IT — E.164 without the plus,
+                        # which is not the spelling the request used.
+                        "caller-id": "14075550101",
                         "auto-answer": True,
                         "device": DEVICE_ID,
                     }
@@ -1006,7 +1013,9 @@ def test_call_reads_the_202_into_the_public_dataclass(
 
     assert placed.id == CALL_ID
     assert placed.destination == "+13025046250"
-    assert placed.caller_id == "+14075550101"
+    # THE ANSWER IS WHAT WAS SENT TO THE SWITCH, NOT WHAT WAS TYPED: the
+    # request's `+14075550101` comes back as `14075550101`.
+    assert placed.caller_id == "14075550101"
     assert placed.auto_answer is True
     assert placed.device == DEVICE_ID
     # The whole promise of a 202, and no more of one: the request was
@@ -1063,7 +1072,7 @@ def test_a_switch_that_refuses_the_call_arrives_as_a_502(
                         "status": "502",
                         "title": "Bad gateway",
                         "detail": "The phone system refused the call.",
-                        "meta": {"vendorStatus": 400},
+                        "meta": {"vendor_status": 400},
                     }
                 ]
             },
@@ -1074,7 +1083,7 @@ def test_a_switch_that_refuses_the_call_arrives_as_a_502(
         client.pbx.users.call(USER_ID, destination="+13025046250")
 
     assert caught.value.status_code == 502
-    assert caught.value.errors[0].meta == {"vendorStatus": 400}
+    assert caught.value.errors[0].meta == {"vendor_status": 400}
 
 
 def test_an_empty_pbx_user_id_is_refused_before_a_phone_can_ring(client: Ringivo) -> None:
