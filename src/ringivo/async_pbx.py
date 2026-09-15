@@ -237,8 +237,9 @@ class AsyncPbxCallRecords:
             covers, and with no `started_after` or `started_before`
             that is the current and the previous month. To find an
             older call, pass a range that covers when it was placed. So
-            an empty page means one of two things: the call has not
-            ended yet, or it was placed outside the range.
+            an empty page means the call has not ended yet, it was
+            placed outside the range, or the id names no call. It is
+            never an error.
 
         Needs `pbx-call-records:read`.
         """

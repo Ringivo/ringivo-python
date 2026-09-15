@@ -1058,8 +1058,8 @@ class PbxCall:
     the months your range covers, and with no `started_after` or
     `started_before` that is the current and the previous month. To find an
     older call, pass a range that covers when it was placed. So an empty
-    page means one of two things: the call has not ended yet, or it was
-    placed outside the range.
+    page means the call has not ended yet, it was placed outside the range,
+    or the id names no call. It is never an error.
 
     THE ATTRIBUTES ARE WHAT WAS SENT TO THE SWITCH, not what you typed, and
     `caller_id` is where the two differ: this platform stores every caller
