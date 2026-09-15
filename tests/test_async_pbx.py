@@ -546,7 +546,9 @@ async def test_call_sends_every_optional_attribute_it_was_given(
             json={
                 "data": _call_resource(
                     attributes={
-                        "caller-id": "+14075550101",
+                        # AS THE PLATFORM STORES IT — E.164 without the plus,
+                        # which is not the spelling the request used.
+                        "caller-id": "14075550101",
                         "auto-answer": True,
                         "device": DEVICE_ID,
                     }
@@ -625,7 +627,7 @@ async def test_a_switch_that_refuses_the_call_arrives_as_a_502(
                         "status": "502",
                         "title": "Bad gateway",
                         "detail": "The phone system refused the call.",
-                        "meta": {"vendorStatus": 400},
+                        "meta": {"vendor_status": 400},
                     }
                 ]
             },
@@ -637,7 +639,7 @@ async def test_a_switch_that_refuses_the_call_arrives_as_a_502(
             await client.pbx.users.call(USER_ID, destination="+13025046250")
 
     assert caught.value.status_code == 502
-    assert caught.value.errors[0].meta == {"vendorStatus": 400}
+    assert caught.value.errors[0].meta == {"vendor_status": 400}
 
 
 @pytest.mark.anyio

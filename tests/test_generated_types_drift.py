@@ -853,6 +853,42 @@ _READS: tuple[_Read, ...] = (
         "to-pbx-user",
         "CallRecord._from_resource",
     ),
+    # -- PbxCall._from_resource reads a PbxCallResource (id) + its ----------
+    # PbxCallAttributes. This resource has NO relationships block at all:
+    # a call request is answered before the call exists, so there is nothing
+    # yet to point at.
+    #
+    # These seven were excluded from this table until the click-to-dial
+    # action reached the spec, and a tripwire test held the exclusion honest.
+    # The action landed in rev 6882916 and the tripwire fired, which is what
+    # it was for; both it and the exclusions are gone.
+    _Read(models.PbxCall, "id", generated.PbxCallResource, "id", "PbxCall._from_resource"),
+    _Read(
+        models.PbxCall,
+        "destination",
+        generated.PbxCallAttributes,
+        "destination",
+        "PbxCall._from_resource",
+    ),
+    _Read(
+        models.PbxCall, "caller_id", generated.PbxCallAttributes, "caller-id", "PbxCall._from_resource"
+    ),
+    _Read(
+        models.PbxCall,
+        "auto_answer",
+        generated.PbxCallAttributes,
+        "auto-answer",
+        "PbxCall._from_resource",
+    ),
+    _Read(models.PbxCall, "device", generated.PbxCallAttributes, "device", "PbxCall._from_resource"),
+    _Read(models.PbxCall, "status", generated.PbxCallAttributes, "status", "PbxCall._from_resource"),
+    _Read(
+        models.PbxCall,
+        "requested_at",
+        generated.PbxCallAttributes,
+        "requested-at",
+        "PbxCall._from_resource",
+    ),
 )
 
 # Fields a model carries that no `_from_*` classmethod reads off a generated
@@ -874,23 +910,6 @@ _EXCLUDED: dict[tuple[type, str], str] = {
     (models.PbxUser, "raw"): "holds the whole source mapping this object was built from",
     (models.PbxDevice, "raw"): "holds the whole source mapping this object was built from",
     (models.CallRecord, "raw"): "holds the whole source mapping this object was built from",
-    # EVERY field of `PbxCall`, for one reason and only until it stops being
-    # true: the click-to-dial action (`POST /v1/pbx/users/{id}/calls`) is not
-    # in the vendored spec yet, so there is no generated `calls` resource to
-    # map these onto. `pbx.py` reads the attribute names from the plan's
-    # contract instead.
-    #
-    # An exclusion cannot go stale on its own — it asserts nothing — so it is
-    # paired with `test_the_click_to_dial_action_is_still_missing_from_the_spec`
-    # below, which fails the day the action lands and sends the next person
-    # here to replace these lines with reads.
-    (models.PbxCall, "id"): "the click-to-dial action is not in the vendored spec yet",
-    (models.PbxCall, "destination"): "the click-to-dial action is not in the vendored spec yet",
-    (models.PbxCall, "caller_id"): "the click-to-dial action is not in the vendored spec yet",
-    (models.PbxCall, "auto_answer"): "the click-to-dial action is not in the vendored spec yet",
-    (models.PbxCall, "device"): "the click-to-dial action is not in the vendored spec yet",
-    (models.PbxCall, "status"): "the click-to-dial action is not in the vendored spec yet",
-    (models.PbxCall, "requested_at"): "the click-to-dial action is not in the vendored spec yet",
     (models.PbxCall, "raw"): "holds the whole source mapping this object was built from",
 }
 
@@ -935,9 +954,6 @@ _MODELS: tuple[type, ...] = (
     models.PbxUser,
     models.PbxDevice,
     models.CallRecord,
-    # Swept with every field EXCLUDED rather than left out of the sweep: a
-    # model this table has never heard of and a model it has deliberately
-    # exempted look identical from here, and only one of them is a decision.
     models.PbxCall,
 )
 
@@ -984,7 +1000,7 @@ def test_every_field_a_model_reads_is_covered_by_the_read_table() -> None:
 
 
 def test_every_field_a_model_reads_exists_in_the_generated_types() -> None:
-    assert len(_READS) >= 140, f"only {len(_READS)} reads were checked — the sweep is broken"
+    assert len(_READS) >= 147, f"only {len(_READS)} reads were checked — the sweep is broken"
 
     failures: list[str] = []
     for read in _READS:
@@ -1015,48 +1031,3 @@ def test_every_deliberately_unread_key_still_exists_to_be_unread() -> None:
     ]
 
     assert stale == [], "\n".join(stale)
-
-
-def test_the_click_to_dial_action_is_still_missing_from_the_spec() -> None:
-    """The tripwire behind `PbxCall`'s exclusions, in the same spirit as
-    `_NOT_READ`: an omission that asserts nothing cannot tell you the day it
-    stops being right.
-
-    `pbx.users.call()` posts and reads a `calls` resource that the vendored
-    `spec/openapi.yaml` does not describe, so `models.PbxCall` is excluded
-    from the read table above wholesale. This FAILS the moment a regenerated
-    module carries the resource — and that failure is the instruction: delete
-    the `PbxCall` entries from `_EXCLUDED`, add the seven reads, and delete
-    this test.
-
-    Found BY ITS CONTENTS rather than by a guessed class name, for the reason
-    `_phone_number_attributes` gives, and it reports its own denominator: a
-    search that matched nothing because it was broken must not look like one
-    that matched nothing because the spec is unchanged.
-    """
-    searched = [value for value in vars(generated).values() if isinstance(value, type)]
-
-    # THE CONTROL. `'users'` is the neighbouring resource, in the same spec,
-    # named the same way — so if this search shape cannot find IT, the search
-    # is broken and a clean result below means nothing.
-    def resources_of_type(name: str) -> list[str]:
-        return [
-            value.__name__
-            for value in searched
-            # `from __future__ import annotations` in the generated module
-            # leaves every annotation a string, so this reads the source text
-            # `Literal['users']` rather than a resolved type.
-            if f"Literal[{name!r}]" in str(getattr(value, "__annotations__", {}).get("type", ""))
-        ]
-
-    assert len(searched) > 50, f"only {len(searched)} generated types were searched — search broken"
-    assert resources_of_type("users") == ["PbxUserResource"], (
-        "the control failed: this search cannot find the `users` resource that IS in the spec, "
-        "so its empty result for `calls` says nothing"
-    )
-
-    assert resources_of_type("calls") == [], (
-        "the click-to-dial action has landed in the vendored spec: replace models.PbxCall's "
-        "entries in _EXCLUDED with real reads against the generated `calls` resource, and "
-        "delete this test"
-    )

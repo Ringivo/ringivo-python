@@ -1035,21 +1035,33 @@ class PbxCall:
 
     `pbx.users.call()` returns one of these with a 202, which is the whole
     shape of the promise: the request was accepted and handed to the phone
-    system, and `status` is `requested`. Nothing here says a phone rang, a
-    person answered, or a call connected — the call record for it appears
-    on `pbx.call_records` afterwards, like any other call.
+    system, and `status` is `requested` — the only value this endpoint ever
+    publishes. Nothing here says a phone rang, a person answered, or a call
+    connected.
 
-    `id` is the id the platform minted for this request, and it is the SIP
-    call id the phone system is told to place the call under. That is what
-    makes it worth keeping: it is the one name a caller holds for a call
-    nobody can look up yet.
+    `id` IS NOT A CALL-RECORD ID. The platform mints it before the call
+    exists and hands it to the phone system as the SIP Call-ID the call is
+    placed under, so it names the call ON THE PHONE SYSTEM. A call record's
+    id is derived from the switch's own CDR row instead, and no call-record
+    field carries the SIP call id, so **there is no join to make from this
+    id in this release** — do not go looking for it on
+    `pbx.call_records.get()`. Keep it for the phone system's own logs and
+    for a support conversation; a later release may publish the call id on
+    call records so the two can be correlated.
 
-    `device` is the `devices` id the call was placed from, when one was
-    named, and None when the request let the phone system choose. It is an
-    attribute the answer echoes rather than a relationship, which is why it
-    is spelled `device` here and not `device_id`.
+    THE ATTRIBUTES ARE WHAT WAS SENT TO THE SWITCH, not what you typed, and
+    `caller_id` is where the two differ: this platform stores every caller
+    id as E.164 **without** the plus, so a request for `+14074366118` comes
+    back as `14074366118`. It is None when the request named none and the
+    subscriber's own was used.
 
-    `caller_id` and `auto_answer` echo the request the same way.
+    `device` is the `devices` id the call originates from, and None when
+    none was named. It is an attribute the answer echoes rather than a
+    relationship, which is why it is spelled `device` and not `device_id`.
+
+    There is no relationships block on this resource at all: a call request
+    is answered before the call exists, so there is nothing yet to point
+    at.
     """
 
     id: str
@@ -1065,14 +1077,11 @@ class PbxCall:
     def _from_resource(cls, resource: Mapping[str, Any]) -> PbxCall:
         """Build from the JSON:API resource object the 202 carries.
 
-        `requested_at` is read as an instant, and this package cannot yet
-        point at a spec that says so: the click-to-dial action is not in
-        the vendored `spec/openapi.yaml` (see pbx.py). The reading is that
-        it is the platform's own timestamp — minted here, not copied out
-        of the phone system — and every other timestamp the platform mints
-        is RFC 3339, which is the whole of the argument. `_parse_datetime`
-        answers None rather than a wrong instant if that turns out to be
-        false, and `raw` carries the string it was given either way.
+        `requested_at` is a real instant, and the spec now says so rather
+        than this package inferring it: `PbxCallAttributes.requested-at` is
+        `{type: string, format: date-time}`. It is the platform's own
+        timestamp, minted here — which is why it is parsed while a user's
+        and a device's are not (see `PbxUser`).
         """
         attributes = _mapping(resource, "attributes") or {}
 

@@ -116,12 +116,16 @@ class AsyncPbxUsers:
         """Ask this subscriber's phone to call somebody: click-to-dial.
 
         The awaited twin of `PbxUsers.call`, and it carries the same
-        warning: a 202 says the request was accepted, not that a phone
-        rang, and THIS IS NOT SAFE TO RETRY BLINDLY — a call is undoable by
-        nothing and the action carries no idempotency key.
+        warnings: a 202 says the request was accepted, not that a phone
+        rang; the id it hands back names the call on the PHONE SYSTEM and
+        does not join to any call record in this release; and THIS IS NOT
+        SAFE TO RETRY BLINDLY — a call is undoable by nothing and the
+        action carries no idempotency key. A 502 is the exception, and
+        `errors[0].meta["vendor_status"]` is why.
 
         `caller_id` and `device` are left off the request when you do not
-        pass one; `auto_answer` is sent on every request.
+        pass one; `auto_answer` is sent on every request. The answer echoes
+        what was SENT, so `caller_id` comes back as E.164 without the plus.
 
         Needs `pbx-calls:write`.
         """

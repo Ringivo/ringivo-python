@@ -508,25 +508,45 @@ yourself; the API derives that one for you.
     print(placed.id, placed.status)        # 0198c7f2-… requested
 ```
 
-The platform has that subscriber's phone place the call to `destination`,
-so the call goes out as them rather than as you. Needs `pbx-calls:write`.
+The phone system rings that subscriber's phone and connects it to
+`destination`, so the call goes out as them rather than as you. Needs
+`pbx-calls:write`.
 
 The answer is a 202 and says exactly that much: the request was accepted
 and handed to the phone system. Nothing here says a phone rang or anybody
-answered — the call appears on `client.pbx.call_records` afterwards like
-any other.
+answered, and `status` is `requested` — the only value this endpoint
+publishes.
+
+**The id you get back is not a call-record id.** It names the call on the
+phone system: it is the SIP call id the call is placed under. A call
+record's id comes from the switch's own call-detail row instead, and no
+call-record field carries the SIP call id, so **there is no way to look
+this call up on `client.pbx.call_records` in this release**. Keep it for
+the phone system's logs and for a support conversation; a later release
+may publish the call id on call records so the two can be joined.
 
 **Do not retry this blindly.** A call is undoable by nothing, and unlike
 `faxes.send()` it carries no idempotency key: a retry is a second phone
 call to a real person. If you never saw the answer, find out what happened
 first.
 
-Name a `caller_id` in E.164 to present a different number,
-`auto_answer=True` to ask the phone to answer without ringing, and
-`device=` to choose which of that subscriber's registrations the call is
-placed from. The device must be that subscriber's own — one that is not is
-refused with a 422, whether it belongs to somebody else or does not exist,
-because the two must not be distinguishable from outside.
+A **502** is the one refusal you can act on without checking: the phone
+system said no or could not be reached, nothing was dialled, and the
+status it answered with is in `error.errors[0].meta["vendor_status"]` — so
+a refusal and an outage can be told apart before you try again.
+
+Name a `caller_id` to present a different number — E.164 with or without
+the `+`, or a ten-digit North American number — `auto_answer=True` to ask
+the subscriber's own phone to go off-hook instead of ringing, and `device=`
+to choose which of that subscriber's registrations the call is placed from.
+The device must be that subscriber's own: one that is not is refused with a
+422 and nothing is dialled, whether it belongs to somebody else or does not
+exist, because the two must not be distinguishable from outside.
+
+The answer echoes what was actually **sent to the phone system**, which is
+not always what you typed — this platform stores every caller id as E.164
+*without* the plus, so `caller_id="+14074366118"` comes back as
+`placed.caller_id == "14074366118"`.
 
 ## The async client
 
@@ -663,7 +683,7 @@ are deliberately not wrapped.
 | `client.webhook_deliveries.get(webhook_delivery_id)` | `webhooks:read` | One `WebhookDelivery`. |
 | `client.pbx.users.list(*, customer=None, user=None, search=None, after=None, before=None, page_size=None)` | `pbx-users:read` | A `PbxUserPage`: iterable, with `next_cursor`. `user` is an EXACT extension; `search` is the directory search box. |
 | `client.pbx.users.get(pbx_user_id)` | `pbx-users:read` | One `PbxUser`. A subscriber you cannot reach is a 404, not a 403. |
-| `client.pbx.users.call(pbx_user_id, *, destination, caller_id=None, auto_answer=False, device=None)` | `pbx-calls:write` | Ring this subscriber and dial `destination`. Returns the accepted `PbxCall` — a 202, and no idempotency key. |
+| `client.pbx.users.call(pbx_user_id, *, destination, caller_id=None, auto_answer=False, device=None)` | `pbx-calls:write` | Ring this subscriber and dial `destination`. Returns the accepted `PbxCall` — a 202, no idempotency key, and an id that names the call on the phone system rather than a call record. |
 | `client.pbx.devices.list(*, customer=None, user=None, registered=None, after=None, before=None, page_size=None)` | `pbx-users:read` | A `PbxDevicePage`. `user` here is a `users` ID, not an extension. |
 | `client.pbx.devices.get(pbx_device_id)` | `pbx-users:read` | One `PbxDevice` — one registration, not one handset. |
 | `client.pbx.call_records.list(*, customer=None, started_after=None, started_before=None, direction=None, disposition=None, user=None, include_hidden=None, after=None, before=None, page_size=None)` | `pbx-call-records:read` | A `CallRecordPage`, newest first. The date range decides which months are read; no range means the current and previous one. |

@@ -159,43 +159,61 @@ class PbxUsers:
     ) -> PbxCall:
         """Ask this subscriber's phone to call somebody: click-to-dial.
 
-        The platform has THIS SUBSCRIBER's phone place the call to
+        The phone system rings THIS SUBSCRIBER's phone and connects it to
         `destination`, so the call goes out as them rather than as the
-        credential that asked for it. How the phone system arranges the two
-        legs is its own business and is not described by this API.
+        credential that asked for it.
 
         Returns as soon as the request is ACCEPTED (202), which is the
         whole of what a `PbxCall` says: it was handed to the phone system
-        and `status` is `requested`. Nothing came back to say a phone rang
-        or a person answered; the call record appears on
-        `client.pbx.call_records` afterwards like any other call.
+        and `status` is `requested`, the only value this endpoint ever
+        publishes. Nothing came back to say a phone rang or a person
+        answered.
+
+        AND THE ID IT HANDS BACK IS NOT A CALL-RECORD ID. It names the call
+        on the PHONE SYSTEM — it is the SIP Call-ID the call is placed
+        under — while a call record's id comes from the switch's CDR row.
+        No call-record field carries the SIP call id, so there is no join
+        to make from it in this release; a later one may publish the call
+        id on call records. See `PbxCall`.
 
         THIS IS NOT SAFE TO RETRY BLINDLY. A call is undoable by nothing —
         a real phone rings and a person picks it up — and this action
         carries no idempotency key, unlike `faxes.send()`. If you never saw
-        the answer, find out what happened before asking again.
+        the answer, find out what happened before asking again. A 502 is
+        the exception and says so: the phone system refused the request or
+        could not be reached, NOTHING WAS DIALLED, and the status it
+        answered with is in `errors[0].meta["vendor_status"]` — so a
+        refusal and an outage can be told apart before you try again.
 
         Args:
             pbx_user_id: The subscriber whose phone places the call. A
                 subscriber your credential cannot reach answers 404, not
                 403.
-            destination: What to dial — E.164 with the leading `+`, or an
-                extension of 2 to 7 digits on the same phone system.
-            caller_id: The number to present, in E.164. Left off the
-                request when you do not pass one, and the phone system
-                then uses the subscriber's own.
-            device: Which of that subscriber's registrations the call is
-                placed from, as a `devices` id. It MUST belong to this
-                subscriber: one that does not is refused with a 422 pointing
-                at `/data/attributes/device`, whether it is somebody else's
-                or does not exist — the two are not told apart. Left off the
-                request when you do not pass one, and the phone system
-                chooses for itself.
-            auto_answer: Ask the phone to answer the call itself rather than
-                ringing. What a given handset does with that is the phone
-                system's business and this API does not describe it. Sent on
-                every request, because it is a fact about the call rather
-                than a setting to leave alone.
+            destination: What to dial — an E.164 number with its `+`, or an
+                extension of 2 to 7 digits on that subscriber's own domain,
+                which the phone system completes itself.
+            caller_id: The number the called party sees. E.164, with or
+                without the `+`, and a ten-digit North American number is
+                accepted too and answered with its country code. A value
+                that is not a telephone number is refused rather than
+                ignored. Left off the request when you do not pass one, and
+                the subscriber's own is used.
+            device: Which of that subscriber's registered devices to call
+                from, as a `devices` id. It MUST belong to this subscriber:
+                one that does not is refused with a 422 pointing at
+                `/data/attributes/device`, whether it is somebody else's or
+                does not exist — the two are not told apart, and nothing is
+                dialled. Left off the request when you do not pass one, and
+                the phone system rings that subscriber's devices as it
+                normally would.
+            auto_answer: Ask the subscriber's own phone to go off-hook by
+                itself instead of ringing. Sent on every request, because it
+                is a fact about the call rather than a setting to leave
+                alone.
+
+        The answer echoes what was actually SENT to the phone system, which
+        is not always what you typed: `caller_id` comes back as E.164
+        WITHOUT the plus.
 
         Needs `pbx-calls:write`.
         """
