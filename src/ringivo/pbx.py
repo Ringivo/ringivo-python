@@ -159,9 +159,10 @@ class PbxUsers:
     ) -> PbxCall:
         """Ask this subscriber's phone to call somebody: click-to-dial.
 
-        The switch rings THIS SUBSCRIBER first and dials `destination` when
-        they pick up — so the call is placed as them, and it is their phone
-        that rings, not the far end's.
+        The platform has THIS SUBSCRIBER's phone place the call to
+        `destination`, so the call goes out as them rather than as the
+        credential that asked for it. How the phone system arranges the two
+        legs is its own business and is not described by this API.
 
         Returns as soon as the request is ACCEPTED (202), which is the
         whole of what a `PbxCall` says: it was handed to the phone system
@@ -183,17 +184,18 @@ class PbxUsers:
             caller_id: The number to present, in E.164. Left off the
                 request when you do not pass one, and the phone system
                 then uses the subscriber's own.
-            device: Which of that subscriber's registrations to ring, as a
-                `devices` id. It MUST belong to this subscriber: one that
-                does not is refused with a 422 pointing at
-                `/data/attributes/device`, whether it is somebody else's or
-                does not exist — the two are not told apart. Left off the
-                request when you do not pass one, and the phone system then
-                rings what it would ring anyway.
-            auto_answer: Ask the subscriber's phone to answer itself and go
-                to speakerphone instead of ringing. Sent on every request,
-                because it is a fact about the call rather than a setting
-                to leave alone.
+            device: Which of that subscriber's registrations the call is
+                placed from, as a `devices` id. It MUST belong to this
+                subscriber: one that does not is refused with a 422 pointing
+                at `/data/attributes/device`, whether it is somebody else's
+                or does not exist — the two are not told apart. Left off the
+                request when you do not pass one, and the phone system
+                chooses for itself.
+            auto_answer: Ask the phone to answer the call itself rather than
+                ringing. What a given handset does with that is the phone
+                system's business and this API does not describe it. Sent on
+                every request, because it is a fact about the call rather
+                than a setting to leave alone.
 
         Needs `pbx-calls:write`.
         """

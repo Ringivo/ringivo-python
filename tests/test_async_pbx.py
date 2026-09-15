@@ -610,6 +610,37 @@ async def test_a_device_that_is_not_this_users_is_refused_with_a_pointer(
 
 
 @pytest.mark.anyio
+async def test_a_switch_that_refuses_the_call_arrives_as_a_502(
+    respx_mock: respx.MockRouter, client: AsyncRingivo
+) -> None:
+    # The phone system's own refusal, relayed rather than translated: the
+    # platform could not carry out a request it had already accepted as
+    # well-formed, and the vendor's status is in `meta`.
+    respx_mock.post(CALLS_URL).mock(
+        return_value=httpx.Response(
+            502,
+            json={
+                "errors": [
+                    {
+                        "status": "502",
+                        "title": "Bad gateway",
+                        "detail": "The phone system refused the call.",
+                        "meta": {"vendorStatus": 400},
+                    }
+                ]
+            },
+        )
+    )
+
+    async with client:
+        with pytest.raises(ApiError) as caught:
+            await client.pbx.users.call(USER_ID, destination="+13025046250")
+
+    assert caught.value.status_code == 502
+    assert caught.value.errors[0].meta == {"vendorStatus": 400}
+
+
+@pytest.mark.anyio
 async def test_an_empty_pbx_user_id_is_refused_before_a_phone_can_ring(
     client: AsyncRingivo,
 ) -> None:

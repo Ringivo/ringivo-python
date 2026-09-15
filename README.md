@@ -508,9 +508,8 @@ yourself; the API derives that one for you.
     print(placed.id, placed.status)        # 0198c7f2-… requested
 ```
 
-The switch rings THAT SUBSCRIBER first and dials `destination` when they
-pick up, so the call is placed as them and it is their phone that rings.
-Needs `pbx-calls:write`.
+The platform has that subscriber's phone place the call to `destination`,
+so the call goes out as them rather than as you. Needs `pbx-calls:write`.
 
 The answer is a 202 and says exactly that much: the request was accepted
 and handed to the phone system. Nothing here says a phone rang or anybody
@@ -523,11 +522,11 @@ call to a real person. If you never saw the answer, find out what happened
 first.
 
 Name a `caller_id` in E.164 to present a different number,
-`auto_answer=True` to have the phone answer itself and go to speakerphone,
-and `device=` to choose which of that subscriber's registrations rings. The
-device must be that subscriber's own — one that is not is refused with a
-422, whether it belongs to somebody else or does not exist, because the two
-must not be distinguishable from outside.
+`auto_answer=True` to ask the phone to answer without ringing, and
+`device=` to choose which of that subscriber's registrations the call is
+placed from. The device must be that subscriber's own — one that is not is
+refused with a 422, whether it belongs to somebody else or does not exist,
+because the two must not be distinguishable from outside.
 
 ## The async client
 
