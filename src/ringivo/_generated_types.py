@@ -1658,6 +1658,169 @@ class SipTrunkTargetUpdateRequest(TypedDict):
     data: Data26
 
 
+CallDirection: TypeAlias = Literal['outbound', 'inbound', 'on-net']
+
+
+CallDisposition: TypeAlias = Literal['answered', 'missed']
+
+
+PbxUserAttributes = TypedDict(
+    'PbxUserAttributes',
+    {
+        'user': NotRequired[str | None],
+        'domain': NotRequired[str | None],
+        'display-name': NotRequired[str | None],
+        'first-name': NotRequired[str | None],
+        'last-name': NotRequired[str | None],
+        'email': NotRequired[str | None],
+        'scope': NotRequired[str | None],
+        'group': NotRequired[str | None],
+        'site': NotRequired[str | None],
+        'presence': NotRequired[str | None],
+        'caller-id-number': NotRequired[str | None],
+        'caller-id-name': NotRequired[str | None],
+        'time-zone': NotRequired[str | None],
+        'created-at': NotRequired[str | None],
+        'updated-at': NotRequired[str | None],
+    },
+)
+
+
+class PbxUserRelationships(TypedDict):
+    customer: NotRequired[RelationshipToOne]
+    devices: NotRequired[RelationshipToMany]
+
+
+class PbxUserResource(TypedDict):
+    type: Literal['users']
+    id: str
+    attributes: NotRequired[PbxUserAttributes]
+    relationships: NotRequired[PbxUserRelationships]
+    links: NotRequired[ResourceLinks]
+    meta: NotRequired[ResourceMeta]
+
+
+class PbxUserDocumentResponse(TypedDict):
+    data: PbxUserResource
+    links: NotRequired[ResourceLinks]
+    meta: NotRequired[DocumentMeta]
+
+
+class PbxUserCollectionDocument(TypedDict):
+    data: list[PbxUserResource]
+    links: NotRequired[CollectionLinks]
+    meta: NotRequired[DocumentMeta]
+
+
+PbxDeviceAttributes = TypedDict(
+    'PbxDeviceAttributes',
+    {
+        'aor': NotRequired[str | None],
+        'user': NotRequired[str | None],
+        'domain': NotRequired[str | None],
+        'mode': NotRequired[str | None],
+        'user-agent': NotRequired[str | None],
+        'contact': NotRequired[str | None],
+        'transport': NotRequired[str | None],
+        'received-from': NotRequired[str | None],
+        'registered-at': NotRequired[str | None],
+        'registration-expires-at': NotRequired[str | None],
+        'registered': NotRequired[bool],
+        'auto-answer': NotRequired[bool],
+        'created-at': NotRequired[str | None],
+    },
+)
+
+
+PbxDeviceRelationships = TypedDict(
+    'PbxDeviceRelationships',
+    {
+        'customer': NotRequired[RelationshipToOne],
+        'pbx-user': NotRequired[RelationshipToOne],
+    },
+)
+
+
+class PbxDeviceResource(TypedDict):
+    type: Literal['devices']
+    id: str
+    attributes: NotRequired[PbxDeviceAttributes]
+    relationships: NotRequired[PbxDeviceRelationships]
+    links: NotRequired[ResourceLinks]
+    meta: NotRequired[ResourceMeta]
+
+
+class PbxDeviceDocumentResponse(TypedDict):
+    data: PbxDeviceResource
+    links: NotRequired[ResourceLinks]
+    meta: NotRequired[DocumentMeta]
+
+
+class PbxDeviceCollectionDocument(TypedDict):
+    data: list[PbxDeviceResource]
+    links: NotRequired[CollectionLinks]
+    meta: NotRequired[DocumentMeta]
+
+
+CallRecordAttributes = TypedDict(
+    'CallRecordAttributes',
+    {
+        'direction': NotRequired[CallDirection],
+        'disposition': NotRequired[CallDisposition],
+        'vendor-type': NotRequired[int | None],
+        'domain': NotRequired[str | None],
+        'from-user': NotRequired[str | None],
+        'from-uri': NotRequired[str | None],
+        'from-name': NotRequired[str | None],
+        'to-user': NotRequired[str | None],
+        'to-uri': NotRequired[str | None],
+        'dialed': NotRequired[str | None],
+        'by-user': NotRequired[str | None],
+        'term-user': NotRequired[str | None],
+        'started-at': NotRequired[str | None],
+        'answered-at': NotRequired[str | None],
+        'released-at': NotRequired[str | None],
+        'duration': NotRequired[int | None],
+        'talk-time': NotRequired[int | None],
+        'tag': NotRequired[str | None],
+        'hidden': NotRequired[bool],
+        'has-recording': NotRequired[bool],
+        'vendor-id': NotRequired[str | None],
+    },
+)
+
+
+CallRecordRelationships = TypedDict(
+    'CallRecordRelationships',
+    {
+        'customer': NotRequired[RelationshipToOne],
+        'from-pbx-user': NotRequired[RelationshipToOne],
+        'to-pbx-user': NotRequired[RelationshipToOne],
+    },
+)
+
+
+class CallRecordResource(TypedDict):
+    type: Literal['call-records']
+    id: str
+    attributes: NotRequired[CallRecordAttributes]
+    relationships: NotRequired[CallRecordRelationships]
+    links: NotRequired[ResourceLinks]
+    meta: NotRequired[ResourceMeta]
+
+
+class CallRecordDocumentResponse(TypedDict):
+    data: CallRecordResource
+    links: NotRequired[ResourceLinks]
+    meta: NotRequired[DocumentMeta]
+
+
+class CallRecordCollectionDocument(TypedDict):
+    data: list[CallRecordResource]
+    links: NotRequired[CollectionLinks]
+    meta: NotRequired[DocumentMeta]
+
+
 class Error(TypedDict):
     status: str
     title: NotRequired[str]
