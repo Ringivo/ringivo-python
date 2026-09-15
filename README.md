@@ -338,9 +338,11 @@ endpoint and a per-account one both hear about the same fax. Neither
 the evidence of what that scope was told, so a different scope is a new
 endpoint.
 
-`events` is the list you want, and **`None` or `[]` both mean every event in
-scope**. An event name the platform does not publish is a 422 — a typo would
-otherwise subscribe you to silence.
+`events` is the list you want — **required, and it must name at least one.**
+There is no spelling left that means "every event in scope": `None` and `[]`
+are each refused before the request is built, exactly as the platform
+refuses them. An event name the platform does not publish is a 422 — a typo
+would otherwise subscribe you to silence.
 
 Registering needs `webhooks:write`, or `fax:write` for a `fax_account`-scoped
 endpoint only. Naming a customer or tenant scope with a `fax:*` token is a
@@ -364,7 +366,8 @@ switch exactly as they were:
 ```
 
 The list is REPLACED, not merged — send every event you want, not just the
-new ones. `events=None` (or `[]`) asks for every event in scope instead.
+new ones, and it must still name at least one: `[]` is refused. `None` is not
+sent as `null` here — passing it alone is the same as naming nothing.
 
 Switching an endpoint off keeps it and its events, and stops the fan-out:
 
@@ -675,8 +678,8 @@ are deliberately not wrapped.
 | `client.fax_account_users.delete(fax_account_user_id)` | `fax-accounts:write` | Withdraw the grant. The only way to undo one — there is no update route. |
 | `client.webhook_endpoints.list(*, scope_type=None, scope_id=None, active=None, after=None, before=None, page_size=None)` | `webhooks:read` | A `WebhookEndpointPage`: iterable, with `next_cursor`. A `fax:read` token sees fax-account-scoped rows only. |
 | `client.webhook_endpoints.get(webhook_endpoint_id)` | `webhooks:read` | One `WebhookEndpoint`. `secret` is always None here. |
-| `client.webhook_endpoints.create(*, url, scope_type, scope_id, events=…, active=…)` | `webhooks:write` | Register an endpoint. The only answer that carries the signing secret — store it. `fax:write` for a `fax_account` scope. |
-| `client.webhook_endpoints.update(webhook_endpoint_id, *, url=…, events=…, active=…)` | `webhooks:write` | A sparse PATCH: only what you pass. The scope cannot change. |
+| `client.webhook_endpoints.create(*, url, scope_type, scope_id, events, active=…)` | `webhooks:write` | Register an endpoint. `events` is required and must name at least one type. The only answer that carries the signing secret — store it. `fax:write` for a `fax_account` scope. |
+| `client.webhook_endpoints.update(webhook_endpoint_id, *, url=…, events=…, active=…)` | `webhooks:write` | A sparse PATCH: only what you pass. The event list replaces the old one and must still name at least one type; `None` is never sent. The scope cannot change. |
 | `client.webhook_endpoints.delete(webhook_endpoint_id)` | `webhooks:write` | Remove it. The fan-out stops; the deliveries stay. |
 | `client.webhook_endpoints.rotate_secret(webhook_endpoint_id)` | `webhooks:write` | Mint a new secret and start the 24-hour grace window. |
 | `client.webhook_deliveries.list(*, endpoint=None, event_type=None, status=None, after=None, before=None, page_size=None)` | `webhooks:read` | A `WebhookDeliveryPage` of what is still owed or was given up on. `status="dead"` is the one to ask after an outage. |
@@ -701,7 +704,7 @@ this release reaches you without a new SDK.
 `NOT_GIVEN` is the sentinel the `create()` and `update()` calls on
 `fax_accounts` and `webhook_endpoints` default every optional argument to.
 You never need to pass it; it exists so that `None` can mean "clear this
-field", or "every event in scope", rather than "I said nothing".
+field" on `fax_accounts`, rather than "I said nothing".
 
 ### Reaching an endpoint this client does not wrap
 

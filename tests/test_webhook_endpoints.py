@@ -13,10 +13,13 @@ wrong:
 - THE SECRET. It is readable exactly once per secret — in the answer to the
   create or the rotate that minted it — so a client that dropped it off the
   returned object would lose the only copy, silently, with a 201 in hand.
-- `events`. `None` and `[]` both mean "every event in scope" and the API
-  publishes the list back verbatim, so the three states (`[]`, `null`,
-  absent) are asserted separately. Collapsing any two of them would change
-  what a caller subscribed to.
+- `events`. A WRITE requires a non-empty list now — `None` and `[]` are each
+  refused locally, before a request exists, on both `create()` and
+  `update()` — but a READ can still answer `null` or `[]`, from an endpoint
+  registered before the platform tightened this on 2026-09-14. So the write
+  guards and the three read states each get their own tests: the read side
+  did not change, and collapsing any of its three states would change what a
+  caller believes an endpoint hears.
 """
 
 from __future__ import annotations
@@ -219,11 +222,12 @@ def test_get_reads_a_jsonapi_document_into_the_public_dataclass(
 def test_a_null_event_list_is_every_event_rather_than_an_empty_one(
     respx_mock: respx.MockRouter, client: Ringivo
 ) -> None:
-    # `null` and `[]` both mean "every event in scope", and the API publishes
-    # back whichever was written. They stay distinguishable here — None for
-    # the null, `()` for the empty list — because a caller comparing what
-    # they wrote with what came back is the reason the API does not
-    # normalise them.
+    # A WRITE must name at least one event type now, but a READ can still
+    # answer either spelling — from a row registered before the platform
+    # tightened this, on 2026-09-14 — and the platform treats both as "every
+    # event in scope". They stay distinguishable here — None for the null,
+    # `()` for the empty list — so `raw` carries the exact shape the read
+    # returned rather than this client guessing which one it meant.
     respx_mock.get(ENDPOINT_URL).mock(
         side_effect=[
             httpx.Response(200, json={"data": _endpoint_resource(events=None)}),
@@ -329,72 +333,108 @@ def test_create_posts_a_jsonapi_document_and_hands_back_the_secret(
     assert endpoint.id == ENDPOINT_ID
 
 
-def test_create_leaves_out_a_member_nobody_named(
+def test_create_leaves_out_active_when_nobody_named_it(
     respx_mock: respx.MockRouter, client: Ringivo
 ) -> None:
-    # ABSENT, not null. `events: null` means "every event in scope", so a
-    # client that sent null for an argument nobody passed would be
-    # subscribing the endpoint to everything while looking like it asked for
-    # nothing.
+    # `active` is the only member left that can be omitted: `events` is
+    # required now, so this test names it and checks the member that is
+    # still optional.
     route = respx_mock.post(ENDPOINTS_URL).mock(
         return_value=httpx.Response(201, json={"data": _endpoint_resource(secret=SECRET)})
     )
 
     with client:
         client.webhook_endpoints.create(
-            url=HOOK_URL, scope_type="fax_account", scope_id=ACCOUNT_ID
+            url=HOOK_URL,
+            scope_type="fax_account",
+            scope_id=ACCOUNT_ID,
+            events=["fax.received"],
         )
 
     attributes = jsonlib.loads(route.calls.last.request.content)["data"]["attributes"]
 
-    assert attributes == {"url": HOOK_URL, "scopeType": "fax_account", "scopeId": ACCOUNT_ID}
-    assert "events" not in attributes
+    assert attributes == {
+        "url": HOOK_URL,
+        "scopeType": "fax_account",
+        "scopeId": ACCOUNT_ID,
+        "events": ["fax.received"],
+    }
     assert "active" not in attributes
 
 
-def test_create_sends_an_empty_event_list_as_an_empty_list(
+def test_create_requires_events(client: Ringivo) -> None:
+    # No default: a caller who names every OTHER argument but this one meets
+    # Python's own refusal, before this client's code runs at all.
+    with pytest.raises(TypeError, match="events"):
+        client.webhook_endpoints.create(  # type: ignore[call-arg]
+            url=HOOK_URL, scope_type="fax_account", scope_id=ACCOUNT_ID
+        )
+
+
+def test_create_refuses_an_empty_event_list_before_sending_anything(
     respx_mock: respx.MockRouter, client: Ringivo
 ) -> None:
-    # `[]` is a VALUE — every event in scope — and the API publishes it back
-    # verbatim so a client can see its write was understood. Dropping it or
-    # turning it into `null` would both be lies about what was asked for.
+    # `[]` used to mean "every event in scope"; the platform refuses it now,
+    # so this client refuses it locally rather than spending a round trip on
+    # the 422.
     route = respx_mock.post(ENDPOINTS_URL).mock(
-        return_value=httpx.Response(201, json={"data": _endpoint_resource(events=[], secret=SECRET)})
+        return_value=httpx.Response(201, json={"data": _endpoint_resource(secret=SECRET)})
     )
 
-    with client:
-        endpoint = client.webhook_endpoints.create(
+    with client, pytest.raises(ValueError, match="at least one event type"):
+        client.webhook_endpoints.create(
             url=HOOK_URL, scope_type="fax_account", scope_id=ACCOUNT_ID, events=[]
         )
 
-    attributes = jsonlib.loads(route.calls.last.request.content)["data"]["attributes"]
-
-    assert attributes["events"] == []
-    assert endpoint.events == ()
+    assert route.call_count == 0
+    assert respx_mock.calls.call_count == 0, "an empty event list reached the wire"
 
 
-def test_create_sends_null_for_an_event_list_the_caller_cleared(
+def test_create_refuses_a_null_event_list_before_sending_anything(
     respx_mock: respx.MockRouter, client: Ringivo
 ) -> None:
-    # The other half of the same contract, and the reason the sentinel
-    # exists: `None` reaches the wire as `null` rather than being dropped
-    # with the arguments nobody passed.
+    # The other spelling that used to mean "every event in scope". Refused
+    # the same way, with the same message, as `[]` above.
     route = respx_mock.post(ENDPOINTS_URL).mock(
-        return_value=httpx.Response(
-            201, json={"data": _endpoint_resource(events=None, secret=SECRET)}
-        )
+        return_value=httpx.Response(201, json={"data": _endpoint_resource(secret=SECRET)})
     )
 
-    with client:
-        endpoint = client.webhook_endpoints.create(
-            url=HOOK_URL, scope_type="fax_account", scope_id=ACCOUNT_ID, events=None, active=False
+    with client, pytest.raises(ValueError, match="at least one event type"):
+        client.webhook_endpoints.create(
+            url=HOOK_URL,
+            scope_type="fax_account",
+            scope_id=ACCOUNT_ID,
+            events=None,  # type: ignore[arg-type]
+            active=False,
         )
 
-    attributes = jsonlib.loads(route.calls.last.request.content)["data"]["attributes"]
+    assert route.call_count == 0
+    assert respx_mock.calls.call_count == 0, "a null event list reached the wire"
 
-    assert attributes["events"] is None
-    assert attributes["active"] is False
-    assert endpoint.events is None
+
+def test_create_refuses_an_empty_generator_of_events(
+    respx_mock: respx.MockRouter, client: Ringivo
+) -> None:
+    # A one-shot iterator (a generator here) is ALWAYS truthy, whatever it
+    # would yield: `not events` on the argument itself cannot tell an empty
+    # one from a full one, and would let `create(events=(e for e in []))`
+    # sail through to `list(events)` and put `"events": []` on the wire —
+    # exactly the value this guard exists to refuse. The list has to be
+    # built first, and the emptiness check run on THAT.
+    route = respx_mock.post(ENDPOINTS_URL).mock(
+        return_value=httpx.Response(201, json={"data": _endpoint_resource(secret=SECRET)})
+    )
+
+    with client, pytest.raises(ValueError, match="at least one event type"):
+        client.webhook_endpoints.create(
+            url=HOOK_URL,
+            scope_type="fax_account",
+            scope_id=ACCOUNT_ID,
+            events=(e for e in ()),  # type: ignore[arg-type]
+        )
+
+    assert route.call_count == 0
+    assert respx_mock.calls.call_count == 0, "an empty generator of events reached the wire"
 
 
 def test_a_scope_a_fax_token_may_not_register_is_a_typed_422(
@@ -423,7 +463,7 @@ def test_a_scope_a_fax_token_may_not_register_is_a_typed_422(
 
     with client, pytest.raises(ApiError) as caught:
         client.webhook_endpoints.create(
-            url=HOOK_URL, scope_type="tenant", scope_id=TENANT
+            url=HOOK_URL, scope_type="tenant", scope_id=TENANT, events=["fax.received"]
         )
 
     assert caught.value.status_code == 422
@@ -490,20 +530,55 @@ def test_update_switches_an_endpoint_off_without_touching_its_events(
     assert endpoint.active is False
 
 
-def test_update_sends_null_to_ask_for_every_event_in_scope(
+def test_update_never_sends_null_events_whatever_an_untyped_caller_passes(
     respx_mock: respx.MockRouter, client: Ringivo
 ) -> None:
+    # `null` USED TO BE A VALUE on this member — "every event in scope" —
+    # and the platform answers 422 to it now. The type hint stops a caller
+    # who reads it; this is what a caller who does not meets: the key is
+    # dropped rather than sent, and a bare `events=None` with nothing else
+    # named is the same as naming nothing at all.
     route = respx_mock.patch(ENDPOINT_URL).mock(
-        return_value=httpx.Response(200, json={"data": _endpoint_resource(events=None)})
+        return_value=httpx.Response(200, json={"data": _endpoint_resource(active=False)})
     )
 
+    # BOTH calls happen inside ONE `with`: leaving the block closes the
+    # client for good.
     with client:
-        endpoint = client.webhook_endpoints.update(ENDPOINT_ID, events=None)
+        with pytest.raises(ValueError, match="at least one member to change"):
+            client.webhook_endpoints.update(ENDPOINT_ID, events=None)  # type: ignore[arg-type]
+
+        assert respx_mock.calls.call_count == 0, "a null event list reached the wire"
+
+        # Beside a member that IS sendable, the patch goes out without
+        # `events`.
+        endpoint = client.webhook_endpoints.update(
+            ENDPOINT_ID, events=None, active=False  # type: ignore[arg-type]
+        )
 
     attributes = jsonlib.loads(route.calls.last.request.content)["data"]["attributes"]
 
-    assert attributes == {"events": None}
-    assert endpoint.events is None
+    assert attributes == {"active": False}
+    assert "events" not in attributes
+    assert endpoint.active is False
+
+
+def test_update_refuses_an_empty_event_list_before_sending_anything(
+    respx_mock: respx.MockRouter, client: Ringivo
+) -> None:
+    # `[]` REPLACES the list with nothing, which would reach — one request
+    # later — the every-event state a registration refuses. Refused here,
+    # unlike `None`, because `[]` is unambiguously a caller asking to change
+    # `events` rather than a value that collapses into "not given".
+    route = respx_mock.patch(ENDPOINT_URL).mock(
+        return_value=httpx.Response(200, json={"data": _endpoint_resource()})
+    )
+
+    with client, pytest.raises(ValueError, match="at least one event type"):
+        client.webhook_endpoints.update(ENDPOINT_ID, events=[])
+
+    assert route.call_count == 0
+    assert respx_mock.calls.call_count == 0, "an empty event list reached the wire"
 
 
 def test_update_refuses_a_change_that_changes_nothing(

@@ -3,9 +3,9 @@
 The mirror of tests/test_webhook_endpoints.py. `AsyncWebhookEndpoints` is a
 sibling of `WebhookEndpoints` rather than a wrapper around it, so the
 documents it builds and the query strings it writes are its own code and get
-their own assertions — the three `events` states and the once-only secret
-included, because those are the two places where being wrong costs a caller
-something they cannot get back.
+their own assertions — `events` required and never null on a write, the
+three read-side states, and the once-only secret included, because those are
+the places where being wrong costs a caller something they cannot get back.
 """
 
 from __future__ import annotations
@@ -167,41 +167,60 @@ async def test_create_posts_a_jsonapi_document_and_hands_back_the_secret(
 
 
 @pytest.mark.anyio
-async def test_create_keeps_the_three_event_states_apart(
+async def test_create_requires_events(client: AsyncRingivo) -> None:
+    # No default: a caller who names every OTHER argument but this one meets
+    # Python's own refusal, before this client's code runs at all.
+    async with client:
+        with pytest.raises(TypeError, match="events"):
+            await client.webhook_endpoints.create(  # type: ignore[call-arg]
+                url=HOOK_URL, scope_type="fax_account", scope_id=ACCOUNT_ID
+            )
+
+
+@pytest.mark.anyio
+async def test_create_refuses_a_null_or_empty_event_list_before_sending_anything(
     respx_mock: respx.MockRouter, client: AsyncRingivo
 ) -> None:
-    # Absent, `[]` and `null` are three different requests: leave it to the
-    # platform, every event in scope written as an empty list, every event in
-    # scope written as null. BOTH calls happen inside ONE `async with`:
-    # leaving the block closes the client for good.
-    route = respx_mock.post(ENDPOINTS_URL).mock(
-        side_effect=[
-            httpx.Response(201, json={"data": _endpoint_resource(secret=SECRET)}),
-            httpx.Response(201, json={"data": _endpoint_resource(events=[], secret=SECRET)}),
-            httpx.Response(201, json={"data": _endpoint_resource(events=None, secret=SECRET)}),
-        ]
-    )
-
+    # `None` and `[]` each used to mean "every event in scope"; the platform
+    # refuses both now, so this client refuses them locally rather than
+    # spending a round trip on the 422. BOTH calls happen inside ONE
+    # `async with`: leaving the block closes the client for good.
     async with client:
-        await client.webhook_endpoints.create(
-            url=HOOK_URL, scope_type="fax_account", scope_id=ACCOUNT_ID
-        )
-        empty = await client.webhook_endpoints.create(
-            url=HOOK_URL, scope_type="fax_account", scope_id=ACCOUNT_ID, events=[]
-        )
-        cleared = await client.webhook_endpoints.create(
-            url=HOOK_URL, scope_type="fax_account", scope_id=ACCOUNT_ID, events=None
-        )
+        with pytest.raises(ValueError, match="at least one event type"):
+            await client.webhook_endpoints.create(
+                url=HOOK_URL, scope_type="fax_account", scope_id=ACCOUNT_ID, events=[]
+            )
+        with pytest.raises(ValueError, match="at least one event type"):
+            await client.webhook_endpoints.create(
+                url=HOOK_URL,
+                scope_type="fax_account",
+                scope_id=ACCOUNT_ID,
+                events=None,  # type: ignore[arg-type]
+            )
 
-    unnamed, listed, nulled = (
-        jsonlib.loads(call.request.content)["data"]["attributes"] for call in route.calls
-    )
+    assert respx_mock.calls.call_count == 0, "an empty or null event list reached the wire"
 
-    assert "events" not in unnamed
-    assert listed["events"] == []
-    assert nulled["events"] is None
-    assert empty.events == ()
-    assert cleared.events is None
+
+@pytest.mark.anyio
+async def test_create_refuses_an_empty_generator_of_events(
+    respx_mock: respx.MockRouter, client: AsyncRingivo
+) -> None:
+    # A one-shot iterator (a generator here) is ALWAYS truthy, whatever it
+    # would yield: a `not events` check on the argument itself cannot tell
+    # an empty one from a full one, and would let
+    # `create(events=(e for e in []))` sail through to `list(events)` and
+    # put `"events": []` on the wire. The list has to be built first, and
+    # the emptiness check run on THAT.
+    async with client:
+        with pytest.raises(ValueError, match="at least one event type"):
+            await client.webhook_endpoints.create(
+                url=HOOK_URL,
+                scope_type="fax_account",
+                scope_id=ACCOUNT_ID,
+                events=(e for e in ()),  # type: ignore[arg-type]
+            )
+
+    assert respx_mock.calls.call_count == 0, "an empty generator of events reached the wire"
 
 
 @pytest.mark.anyio
@@ -238,14 +257,56 @@ async def test_update_refuses_a_change_that_changes_nothing(
 
 
 @pytest.mark.anyio
+async def test_update_never_sends_null_events_whatever_an_untyped_caller_passes(
+    respx_mock: respx.MockRouter, client: AsyncRingivo
+) -> None:
+    # `null` used to mean "every event in scope"; the platform refuses it
+    # now, so a bare `events=None` is dropped rather than sent, and — named
+    # alongside nothing else — meets the empty-PATCH refusal above. BOTH
+    # calls happen inside ONE `async with`: leaving the block closes the
+    # client for good.
+    route = respx_mock.patch(ENDPOINT_URL).mock(
+        return_value=httpx.Response(200, json={"data": _endpoint_resource(active=False)})
+    )
+
+    async with client:
+        with pytest.raises(ValueError, match="at least one member to change"):
+            await client.webhook_endpoints.update(ENDPOINT_ID, events=None)  # type: ignore[arg-type]
+
+        assert respx_mock.calls.call_count == 0, "a null event list reached the wire"
+
+        endpoint = await client.webhook_endpoints.update(
+            ENDPOINT_ID, events=None, active=False  # type: ignore[arg-type]
+        )
+
+    attributes = jsonlib.loads(route.calls.last.request.content)["data"]["attributes"]
+
+    assert attributes == {"active": False}
+    assert "events" not in attributes
+    assert endpoint.active is False
+
+
+@pytest.mark.anyio
+async def test_update_refuses_an_empty_event_list_before_sending_anything(
+    respx_mock: respx.MockRouter, client: AsyncRingivo
+) -> None:
+    async with client:
+        with pytest.raises(ValueError, match="at least one event type"):
+            await client.webhook_endpoints.update(ENDPOINT_ID, events=[])
+
+    assert respx_mock.calls.call_count == 0, "an empty event list reached the wire"
+
+
+@pytest.mark.anyio
 async def test_both_writes_refuse_one_bare_string_of_events_before_sending_anything(
     respx_mock: respx.MockRouter, client: AsyncRingivo
 ) -> None:
     # `events="fax.received"` type-checks and would ask for twelve
-    # one-character event names. The guard lives in `_events`, which this
-    # class imports rather than copies, so both writes inherit it — asserted
-    # here rather than assumed, because a shared helper reached through two
-    # call sites is two chances to have wired it up wrongly.
+    # one-character event names. The guard lives in `_events_for_create` and
+    # `_events_for_update`, which this class imports rather than copies, so
+    # both writes inherit it — asserted here rather than assumed, because a
+    # shared helper reached through two call sites is two chances to have
+    # wired it up wrongly.
     #
     # BOTH calls happen inside ONE `async with`: leaving the block closes the
     # client for good.
