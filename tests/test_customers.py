@@ -94,16 +94,24 @@ def test_list_builds_the_filter_and_page_query(
 
     with client:
         client.customers.list(code="jpz3k", after="0198c4a1", page_size=50)
+        client.customers.list(before="0198c4a0")
 
-    request = route.calls.last.request
-    params = request.url.params
+    forward, backward = (call.request for call in route.calls)
+    params = forward.url.params
 
-    assert request.url.path == "/v1/customers"
+    assert forward.url.path == "/v1/customers"
     assert params["filter[code]"] == "jpz3k"
     assert params["page[after]"] == "0198c4a1"
     assert params["page[size]"] == "50"
     assert "page[before]" not in params
-    assert request.headers["accept"] == JSONAPI
+    # This release sends no filter by id, beside a code or without one.
+    assert not any(key.startswith("filter[id]") for key in params.keys())
+    assert forward.headers["accept"] == JSONAPI
+
+    # BOTH cursor directions, each on its own request: a walk that lost
+    # either key would serve the first page again and never end.
+    assert backward.url.params["page[before]"] == "0198c4a0"
+    assert "page[after]" not in backward.url.params
 
 
 def test_list_with_no_arguments_sends_no_query_at_all(
@@ -230,6 +238,30 @@ def test_a_customer_without_a_phone_system_reads_none_for_the_five_phone_system_
     assert customer.call_limit_external is None
     assert customer.transports is None
     assert customer.provisioning_state is None
+
+
+def test_values_outside_the_spec_vocabulary_pass_through_unchanged(
+    respx_mock: respx.MockRouter, client: Ringivo
+) -> None:
+    # The three enum-like fields are passed through as text, not checked
+    # against a copy of today's vocabulary. A value the platform adds later
+    # must arrive as sent — and `transports` keeps its order, because the
+    # order is the DNS preference.
+    resource = _customer_resource(
+        attributes={
+            "regionPreference": "euw1",
+            "transports": ["wss", "tls"],
+            "provisioningState": "some_future_state",
+        }
+    )
+    respx_mock.get(CUSTOMER_URL).mock(return_value=httpx.Response(200, json={"data": resource}))
+
+    with client:
+        customer = client.customers.get(CUSTOMER_ID)
+
+    assert customer.region_preference == "euw1"
+    assert customer.transports == ("wss", "tls")
+    assert customer.provisioning_state == "some_future_state"
 
 
 def test_a_customer_id_stays_inside_its_own_path_segment(

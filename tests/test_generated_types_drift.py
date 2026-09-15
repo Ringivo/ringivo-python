@@ -1071,14 +1071,12 @@ _NOT_READ: dict[tuple[type, str], str] = {
     ),
 }
 
-# The five page models — `FaxPage`, `FaxAccountPage`, `FaxAccountUserPage`,
-# `WebhookEndpointPage` and `WebhookDeliveryPage` — are deliberately not
-# covered: unlike the models above, none has a `_from_*` classmethod of its
-# own. `faxes.py`, `fax_accounts.py`, `fax_account_users.py`,
-# `webhook_endpoints.py` and `webhook_deliveries.py` build them directly,
-# reading `meta.page.nextCursor` and `links.next` with their own module-level
-# helpers, not a method models.py owns. This test's scope is "what models.py
-# reads"; a drift lock for those modules' own reads would be a second test.
+# The page models are deliberately not covered: unlike the models above, none
+# has a `_from_*` classmethod of its own. Each namespace module builds its
+# page directly, reading `meta.page.nextCursor` and `links.next` with its own
+# module-level helpers, not a method models.py owns. This test's scope is
+# "what models.py reads"; a drift lock for those modules' own reads would be a
+# second test.
 _MODELS: tuple[type, ...] = (
     models.FaxDocument,
     models.Fax,

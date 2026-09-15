@@ -78,8 +78,9 @@ async def test_list_builds_the_filter_and_page_query(
 
     async with client:
         page = await client.customers.list(code="jpz3k", before="0198c4a1", page_size=10)
+        await client.customers.list(after="0198c4a2")
 
-    request = route.calls.last.request
+    request, forward = (call.request for call in route.calls)
     params = request.url.params
 
     assert isinstance(page, CustomerPage)
@@ -91,6 +92,9 @@ async def test_list_builds_the_filter_and_page_query(
     assert params["page[size]"] == "10"
     assert "page[after]" not in params
     assert not any(key.startswith("filter[id]") for key in params.keys())
+    # BOTH cursor directions, each on its own request.
+    assert forward.url.params["page[after]"] == "0198c4a2"
+    assert "page[before]" not in forward.url.params
 
 
 @pytest.mark.anyio
