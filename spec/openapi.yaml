@@ -2854,8 +2854,18 @@ paths:
       operationId: deleteWebhookEndpoint
       summary: Remove a webhook endpoint
       description: |
-        The fan-out stops at once. **The delivery history survives** — "why did our integration stop
-        hearing about faxes?" is answered by the deliveries of the endpoint somebody removed.
+        The fan-out stops at once, and **this cannot be undone**. The endpoint is deleted outright
+        and its delivery rows go with it — the ones still being retried and the ones that
+        dead-lettered. A delivery that landed never wrote a row, so nothing that describes a
+        SUCCESSFUL delivery is lost; what goes is work owed to a URL you have just unregistered.
+
+        The secret goes too, and it is not recoverable: it is shown once at registration and once at
+        each rotation. Registering the same URL again means minting a new one and deploying it on
+        the receiving server.
+
+        **Read `GET /v1/webhook-deliveries?filter[status]=dead` first** if you still need to know
+        what you missed. Afterwards, the record of the removal — who, when, and what the endpoint
+        was subscribed to — is on your account's audit page.
 
         **Scope:** `fax:write` reaches only **fax-account-scoped** endpoints; a customer- or
         tenant-scoped endpoint answers **404** to a `fax:*` token and requires `webhooks:write`.
@@ -2944,6 +2954,9 @@ paths:
         hearing about it; this is where you learn what you missed after an outage. `pending` is
         everything still on the ladder. Any other status value — `delivered` included, which this
         collection used to publish — is refused with a 400 rather than ignored.
+
+        **Removing an endpoint deletes its rows here too**, in the same request. Read what you
+        missed BEFORE you remove it.
 
         For proof that a specific event arrived, use your own receipt: every POST carries
         `Ringivo-Event-Id`, and the resource itself can be refetched.
@@ -6602,7 +6615,9 @@ components:
       enum: [tenant, customer, fax_account]
     WebhookEventType:
       type: string
-      description: Every event name a subscriber may ask for.
+      description: |
+        Every event name a subscriber may ask for. Which of them a given endpoint may ask for also
+        depends on its `scopeType` — see `events` on the endpoint resource.
       enum:
         - fax.received
         - fax.queued
@@ -7342,6 +7357,12 @@ components:
             `[]` are refused on create and on update. Endpoints registered before 2026-09-14 that
             named none were given the catalog as it stood that day.
 
+            **Every name must be one this endpoint's `scopeType` can carry**, or the write is a 422
+            on that member. An event reaches the scopes of the things that CONTAIN it: a fax has a
+            fax account, a customer and a reseller; `message.received` has a customer and a reseller;
+            a port order has only a reseller. So `port_order.*` on a customer-scoped endpoint is
+            refused — it would be a live subscription that can never fire.
+
             No `minItems` here, unlike the create body, and the difference is deliberate: an empty
             list still READS as "every event in scope" wherever an event is matched, so that a row
             this rule never reached keeps receiving rather than going silently dark. This schema
@@ -7471,7 +7492,9 @@ components:
                   maxItems: 64
                   description: |
                     Name at least one event type. An endpoint that named none would receive every
-                    event type this platform ever adds, so `null` and `[]` are each a 422.
+                    event type this platform ever adds, so `null` and `[]` are each a 422. Each name
+                    must also be one the `scopeType` you chose can carry — see `events` on the
+                    endpoint resource.
                   items:
                     $ref: '#/components/schemas/WebhookEventType'
                 filter:
