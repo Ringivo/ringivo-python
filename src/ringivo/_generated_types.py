@@ -169,6 +169,8 @@ WebhookEventType: TypeAlias = Literal[
     'message.received',
     'port_order.bill_extraction_settled',
     'port_order.status_changed',
+    'pbx_change.confirmed',
+    'pbx_change.stalled',
 ]
 
 
@@ -677,6 +679,23 @@ class FaxEvent(WebhookEventEnvelope):
 
 class FaxReceivedEvent(WebhookEventEnvelope):
     data: FaxReceivedEventData
+
+
+class PbxChangeEventData(TypedDict):
+    intent_id: NotRequired[str]
+    tenant_id: NotRequired[str]
+    target_id: NotRequired[str]
+    table: NotRequired[str]
+    fields: NotRequired[list[str]]
+    submitted_at: NotRequired[str]
+
+
+class PbxChangeConfirmedEvent(WebhookEventEnvelope):
+    data: PbxChangeEventData
+
+
+class PbxChangeStalledEvent(WebhookEventEnvelope):
+    data: PbxChangeEventData
 
 
 class NumberLookupRequest(TypedDict, closed=True):
