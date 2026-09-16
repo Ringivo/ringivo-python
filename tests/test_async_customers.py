@@ -12,7 +12,7 @@ import httpx
 import pytest
 import respx
 
-from ringivo import AsyncRingivo, Customer, CustomerPage
+from ringivo import ApiError, AsyncRingivo, Customer, CustomerPage
 
 BASE_URL = "https://api.yourprovider.example"
 TOKEN_URL = f"{BASE_URL}/oauth/token"
@@ -100,6 +100,20 @@ async def test_list_builds_the_filter_and_page_query(
 
 
 @pytest.mark.anyio
+async def test_list_with_no_arguments_sends_no_query_at_all(
+    respx_mock: respx.MockRouter, client: AsyncRingivo
+) -> None:
+    # No filter by id in particular: `ids` was not given, so nothing about
+    # it reaches the wire.
+    route = respx_mock.get(CUSTOMERS_URL).mock(return_value=httpx.Response(200, json={"data": []}))
+
+    async with client:
+        await client.customers.list()
+
+    assert list(route.calls.last.request.url.params.keys()) == []
+
+
+@pytest.mark.anyio
 async def test_list_writes_one_bracketed_pair_per_id_in_the_order_given(
     respx_mock: respx.MockRouter, client: AsyncRingivo
 ) -> None:
@@ -169,6 +183,24 @@ async def test_a_generator_and_a_tuple_of_ids_reach_the_wire_intact(
 
 
 @pytest.mark.anyio
+async def test_the_last_page_has_no_cursor_to_follow(
+    respx_mock: respx.MockRouter, client: AsyncRingivo
+) -> None:
+    respx_mock.get(CUSTOMERS_URL).mock(
+        return_value=httpx.Response(
+            200, json={"data": [], "meta": {"page": {"size": 25, "nextCursor": None, "total": 0}}}
+        )
+    )
+
+    async with client:
+        page = await client.customers.list()
+
+    assert len(page) == 0
+    assert page.next_cursor is None
+    assert page.next_url is None
+
+
+@pytest.mark.anyio
 async def test_get_reads_a_jsonapi_document_into_the_public_dataclass(
     respx_mock: respx.MockRouter, client: AsyncRingivo
 ) -> None:
@@ -205,3 +237,26 @@ async def test_an_empty_customer_id_is_refused_by_its_own_name(client: AsyncRing
     async with client:
         with pytest.raises(ValueError, match="a customer id is required"):
             await client.customers.get("")
+
+
+@pytest.mark.anyio
+async def test_a_customer_not_on_your_account_raises_a_typed_404(
+    respx_mock: respx.MockRouter, client: AsyncRingivo
+) -> None:
+    respx_mock.get(CUSTOMER_URL).mock(
+        return_value=httpx.Response(
+            404,
+            json={
+                "errors": [
+                    {"status": "404", "code": "not_found", "title": "Not found", "detail": "No."}
+                ]
+            },
+        )
+    )
+
+    async with client:
+        with pytest.raises(ApiError) as caught:
+            await client.customers.get(CUSTOMER_ID)
+
+    assert caught.value.status_code == 404
+    assert caught.value.code == "not_found"
