@@ -365,6 +365,8 @@ class MediaLink(TypedDict):
 class FaxAccountAttributes(TypedDict):
     name: NotRequired[str]
     headerText: NotRequired[str | None]
+    headerTemplate: NotRequired[str | None]
+    headerTimezone: NotRequired[str | None]
     defaultFromE164: NotRequired[str | None]
     retentionDays: NotRequired[int | None]
     retentionPages: NotRequired[int | None]
@@ -406,6 +408,8 @@ class FaxAccountCollectionDocument(TypedDict):
 class FaxAccountWritableAttributes(TypedDict):
     name: NotRequired[str]
     headerText: NotRequired[str | None]
+    headerTemplate: NotRequired[str | None]
+    headerTimezone: NotRequired[str | None]
     defaultFromE164: NotRequired[str | None]
     retentionDays: NotRequired[int | None]
     retentionPages: NotRequired[int | None]
@@ -415,6 +419,8 @@ class FaxAccountWritableAttributes(TypedDict):
 class FaxAccountCreateAttributes(TypedDict):
     name: str
     headerText: NotRequired[str | None]
+    headerTemplate: NotRequired[str | None]
+    headerTimezone: NotRequired[str | None]
     defaultFromE164: NotRequired[str | None]
     retentionDays: NotRequired[int | None]
     retentionPages: NotRequired[int | None]
