@@ -172,6 +172,7 @@ WebhookEventType: TypeAlias = Literal[
     'pbx_change.confirmed',
     'pbx_change.stalled',
     'call-recording.available',
+    'call-transcript.available',
 ]
 
 
@@ -703,6 +704,20 @@ class CallRecordingAvailableEventData(TypedDict):
 
 class CallRecordingAvailableEvent(WebhookEventEnvelope):
     data: CallRecordingAvailableEventData
+
+
+class CallTranscriptAvailableEventData(TypedDict):
+    id: NotRequired[str]
+    recording_id: NotRequired[str]
+    customer_id: NotRequired[str | None]
+    call_id: NotRequired[str]
+    ccc_id: NotRequired[str]
+    language: NotRequired[str]
+    duration_seconds: NotRequired[int | None]
+
+
+class CallTranscriptAvailableEvent(WebhookEventEnvelope):
+    data: CallTranscriptAvailableEventData
 
 
 class PbxChangeEventData(TypedDict):
