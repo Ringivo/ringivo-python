@@ -171,6 +171,7 @@ WebhookEventType: TypeAlias = Literal[
     'port_order.status_changed',
     'pbx_change.confirmed',
     'pbx_change.stalled',
+    'call-recording.available',
 ]
 
 
@@ -679,6 +680,23 @@ class FaxEvent(WebhookEventEnvelope):
 
 class FaxReceivedEvent(WebhookEventEnvelope):
     data: FaxReceivedEventData
+
+
+class CallRecordingAvailableEventData(TypedDict):
+    id: NotRequired[str]
+    customer_id: NotRequired[str | None]
+    call_id: NotRequired[str]
+    ccc_id: NotRequired[str]
+    duration_seconds: NotRequired[int | None]
+    byte_size: NotRequired[int]
+    sha256: NotRequired[str]
+    superseded: NotRequired[bool]
+    recorded_at: NotRequired[str | None]
+    ended_at: NotRequired[str | None]
+
+
+class CallRecordingAvailableEvent(WebhookEventEnvelope):
+    data: CallRecordingAvailableEventData
 
 
 class PbxChangeEventData(TypedDict):
