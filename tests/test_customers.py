@@ -187,6 +187,54 @@ def test_an_empty_id_list_sends_no_id_parameter_at_all(
     assert list(request.url.params.keys()) == ["filter[code]"]
 
 
+def test_one_bare_string_of_ids_is_refused_before_any_request_is_sent(
+    respx_mock: respx.MockRouter, client: Ringivo
+) -> None:
+    route = respx_mock.get(CUSTOMERS_URL).mock(return_value=httpx.Response(200, json={"data": []}))
+
+    # A str IS a `Sequence[str]`, so this type-checks and would otherwise
+    # ask for the 36 one-character ids the id is spelled with.
+    with client, pytest.raises(ValueError, match="not one string"):
+        client.customers.list(ids=CUSTOMER_ID)  # type: ignore[arg-type]
+
+    # BEFORE any request: not the list call, and not even the token mint
+    # that would have paid for it.
+    assert route.call_count == 0
+    assert not respx_mock.calls
+
+
+def test_a_generator_of_ids_is_read_once_and_still_sends_both_pairs(
+    respx_mock: respx.MockRouter, client: Ringivo
+) -> None:
+    route = respx_mock.get(CUSTOMERS_URL).mock(return_value=httpx.Response(200, json={"data": []}))
+
+    with client:
+        client.customers.list(
+            ids=(value for value in (CUSTOMER_ID, OTHER_ID)),  # type: ignore[arg-type]
+        )
+
+    # A one-shot iterable is materialised once, so it survives to the wire
+    # in order rather than arriving as the repr of a spent generator.
+    assert [
+        value
+        for key, value in route.calls.last.request.url.params.multi_items()
+        if key == "filter[id][]"
+    ] == [CUSTOMER_ID, OTHER_ID]
+
+
+def test_a_tuple_of_ids_sends_what_a_list_of_the_same_ids_sends(
+    respx_mock: respx.MockRouter, client: Ringivo
+) -> None:
+    route = respx_mock.get(CUSTOMERS_URL).mock(return_value=httpx.Response(200, json={"data": []}))
+
+    with client:
+        client.customers.list(ids=(CUSTOMER_ID, OTHER_ID))
+        client.customers.list(ids=[CUSTOMER_ID, OTHER_ID])
+
+    from_tuple, from_list = (call.request.url.query.decode() for call in route.calls)
+    assert from_tuple == from_list
+
+
 def test_list_reads_the_customers_and_the_next_cursor_from_page_meta(
     respx_mock: respx.MockRouter, client: Ringivo
 ) -> None:

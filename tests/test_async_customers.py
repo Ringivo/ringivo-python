@@ -131,6 +131,44 @@ async def test_list_writes_one_bracketed_pair_per_id_in_the_order_given(
 
 
 @pytest.mark.anyio
+async def test_one_bare_string_of_ids_is_refused_before_any_request_is_sent(
+    respx_mock: respx.MockRouter, client: AsyncRingivo
+) -> None:
+    route = respx_mock.get(CUSTOMERS_URL).mock(return_value=httpx.Response(200, json={"data": []}))
+
+    async with client:
+        with pytest.raises(ValueError, match="not one string"):
+            await client.customers.list(ids=CUSTOMER_ID)  # type: ignore[arg-type]
+
+    # The awaited twin refuses the same shape, in the same words, and before
+    # any request — the list call and the token mint alike.
+    assert route.call_count == 0
+    assert not respx_mock.calls
+
+
+@pytest.mark.anyio
+async def test_a_generator_and_a_tuple_of_ids_reach_the_wire_intact(
+    respx_mock: respx.MockRouter, client: AsyncRingivo
+) -> None:
+    route = respx_mock.get(CUSTOMERS_URL).mock(return_value=httpx.Response(200, json={"data": []}))
+
+    async with client:
+        await client.customers.list(
+            ids=(value for value in (CUSTOMER_ID, OTHER_ID)),  # type: ignore[arg-type]
+        )
+        await client.customers.list(ids=(CUSTOMER_ID, OTHER_ID))
+
+    from_generator, from_tuple = (call.request for call in route.calls)
+
+    # A one-shot iterable is materialised once, so it survives in order
+    # rather than arriving as the repr of a spent generator.
+    assert [
+        value for key, value in from_generator.url.params.multi_items() if key == "filter[id][]"
+    ] == [CUSTOMER_ID, OTHER_ID]
+    assert from_tuple.url.query.decode() == from_generator.url.query.decode()
+
+
+@pytest.mark.anyio
 async def test_get_reads_a_jsonapi_document_into_the_public_dataclass(
     respx_mock: respx.MockRouter, client: AsyncRingivo
 ) -> None:

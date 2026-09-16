@@ -16,7 +16,7 @@ from __future__ import annotations
 from collections.abc import Sequence
 from typing import TYPE_CHECKING, Any
 
-from .customers import _NOUN, _page
+from .customers import _NOUN, _id_filter, _page
 from .faxes import _data_object, _path_segment
 from .models import Customer, CustomerPage
 
@@ -48,6 +48,10 @@ class AsyncCustomers:
         request and combines with `code`, `code` is an exact match, and
         `after` and `before` are mutually exclusive.
 
+        Raises:
+            ValueError: `ids` was one string rather than a list of ids,
+                refused by the same `_id_filter` the sync twin calls.
+
         Needs `customers:read`.
         """
         params: dict[str, Any] = {
@@ -55,10 +59,10 @@ class AsyncCustomers:
             "page[before]": before,
             "page[size]": page_size,
             # One `filter[id][]=<id>` pair per id, and an empty sequence
-            # writes no pair at all. customers.py says why that bracketed
-            # key is the only shape the platform reads as a list; keeping
-            # the reason in one place is why this comment is a pointer.
-            "filter[id][]": ids,
+            # asks for nothing. `_id_filter` is imported rather than
+            # copied, so the bare-string refusal and the reason behind the
+            # bracketed key both keep a single home in customers.py.
+            "filter[id][]": _id_filter(ids),
             "filter[code]": code,
         }
         response = await self._client.request("GET", "/v1/customers", params=params)
