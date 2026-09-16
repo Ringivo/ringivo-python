@@ -1,11 +1,13 @@
 """The customers surface, asserted on the WIRE.
 
 Two reads, and what is worth asserting differs between them. For `list()`
-it is the QUERY, which is not observable from the return value: the one
-filter it takes, the cursor paging, and the filter by id it deliberately
-does NOT send. For `get()` it is the READING: every attribute the spec
-documents, the order of `transports`, and the five phone-system fields that
-are null for a customer with no phone system.
+it is the QUERY, which is not observable from the return value: the two
+filters it takes, the cursor paging, and the one shape the platform reads a
+list of ids in — a separate `filter[id][]` pair for every id, never a
+comma-joined value and never the bracketless key. For `get()` it is the
+READING: every attribute the spec documents, the order of `transports`, and
+the five phone-system fields that are null for a customer with no phone
+system.
 """
 
 from __future__ import annotations
@@ -23,6 +25,7 @@ TOKEN_URL = f"{BASE_URL}/oauth/token"
 CUSTOMERS_URL = f"{BASE_URL}/v1/customers"
 CUSTOMER_ID = "0198c4a1-7a10-7c3e-9d21-4f5a6b7c8d9e"
 CUSTOMER_URL = f"{CUSTOMERS_URL}/{CUSTOMER_ID}"
+OTHER_ID = "0198c4a1-9b21-7d4f-8e32-5a6b7c8d9e0f"
 TENANT = "0198c4a1-3d4e-7f50-a1b2-c3d4e5f6a7b8"
 JSONAPI = "application/vnd.api+json"
 
@@ -104,7 +107,8 @@ def test_list_builds_the_filter_and_page_query(
     assert params["page[after]"] == "0198c4a1"
     assert params["page[size]"] == "50"
     assert "page[before]" not in params
-    # This release sends no filter by id, beside a code or without one.
+    # A call that names no ids sends no id parameter, beside a code or
+    # without one: `ids` is opt-in and leaks into nothing.
     assert not any(key.startswith("filter[id]") for key in params.keys())
     assert forward.headers["accept"] == JSONAPI
 
@@ -117,15 +121,70 @@ def test_list_builds_the_filter_and_page_query(
 def test_list_with_no_arguments_sends_no_query_at_all(
     respx_mock: respx.MockRouter, client: Ringivo
 ) -> None:
-    # No filter by id in particular: this release does not send one, because
-    # the spec's plain-array form is not the bracket form the platform reads
-    # as a list (customers.py says why).
+    # No filter by id in particular: `ids` was not given, so nothing about
+    # it reaches the wire.
     route = respx_mock.get(CUSTOMERS_URL).mock(return_value=httpx.Response(200, json={"data": []}))
 
     with client:
         client.customers.list()
 
     assert list(route.calls.last.request.url.params.keys()) == []
+
+
+def test_one_id_is_one_bracketed_filter_id_pair(
+    respx_mock: respx.MockRouter, client: Ringivo
+) -> None:
+    route = respx_mock.get(CUSTOMERS_URL).mock(return_value=httpx.Response(200, json={"data": []}))
+
+    with client:
+        client.customers.list(ids=[CUSTOMER_ID])
+
+    request = route.calls.last.request
+    # The BRACKETED key, and only it: one id is still `filter[id][]=<id>`.
+    assert list(request.url.params.multi_items()) == [("filter[id][]", CUSTOMER_ID)]
+    # Sent bracketless, the platform refuses the call with a 400.
+    assert "filter%5Bid%5D=" not in request.url.query.decode()
+
+
+def test_two_ids_are_two_pairs_in_the_order_given_and_never_comma_joined(
+    respx_mock: respx.MockRouter, client: Ringivo
+) -> None:
+    route = respx_mock.get(CUSTOMERS_URL).mock(return_value=httpx.Response(200, json={"data": []}))
+
+    with client:
+        client.customers.list(ids=[CUSTOMER_ID, OTHER_ID], code="jpz3k")
+
+    request = route.calls.last.request
+    query = request.url.query.decode()
+
+    # One pair per id, in the order the caller gave them.
+    assert [value for key, value in request.url.params.multi_items() if key == "filter[id][]"] == [
+        CUSTOMER_ID,
+        OTHER_ID,
+    ]
+    # NOT one comma-joined value: that is a single id nothing matches.
+    assert f"{CUSTOMER_ID}%2C{OTHER_ID}" not in query
+    # NOT the bracketless key: PHP keeps only the last of repeated
+    # `filter[id]=` pairs, as one string, and the filter does not read a
+    # string as a list.
+    assert "filter%5Bid%5D=" not in query
+    # It narrows alongside `code` rather than replacing it.
+    assert request.url.params["filter[code]"] == "jpz3k"
+
+
+def test_an_empty_id_list_sends_no_id_parameter_at_all(
+    respx_mock: respx.MockRouter, client: Ringivo
+) -> None:
+    route = respx_mock.get(CUSTOMERS_URL).mock(return_value=httpx.Response(200, json={"data": []}))
+
+    with client:
+        client.customers.list(ids=[], code="jpz3k")
+
+    request = route.calls.last.request
+    # `ids=[]` asks for nothing, exactly as `ids=None` does — and in
+    # particular not an empty `filter[id][]=`, which is a value.
+    assert not any(key.startswith("filter[id]") for key in request.url.params.keys())
+    assert list(request.url.params.keys()) == ["filter[code]"]
 
 
 def test_list_reads_the_customers_and_the_next_cursor_from_page_meta(

@@ -19,6 +19,7 @@ TOKEN_URL = f"{BASE_URL}/oauth/token"
 CUSTOMERS_URL = f"{BASE_URL}/v1/customers"
 CUSTOMER_ID = "0198c4a1-7a10-7c3e-9d21-4f5a6b7c8d9e"
 CUSTOMER_URL = f"{CUSTOMERS_URL}/{CUSTOMER_ID}"
+OTHER_ID = "0198c4a1-9b21-7d4f-8e32-5a6b7c8d9e0f"
 TENANT = "0198c4a1-3d4e-7f50-a1b2-c3d4e5f6a7b8"
 
 SCOPES = ["customers:read"]
@@ -91,10 +92,42 @@ async def test_list_builds_the_filter_and_page_query(
     assert params["page[before]"] == "0198c4a1"
     assert params["page[size]"] == "10"
     assert "page[after]" not in params
+    # A call that names no ids sends no id parameter: `ids` is opt-in.
     assert not any(key.startswith("filter[id]") for key in params.keys())
     # BOTH cursor directions, each on its own request.
     assert forward.url.params["page[after]"] == "0198c4a2"
     assert "page[before]" not in forward.url.params
+
+
+@pytest.mark.anyio
+async def test_list_writes_one_bracketed_pair_per_id_in_the_order_given(
+    respx_mock: respx.MockRouter, client: AsyncRingivo
+) -> None:
+    route = respx_mock.get(CUSTOMERS_URL).mock(return_value=httpx.Response(200, json={"data": []}))
+
+    async with client:
+        await client.customers.list(ids=[CUSTOMER_ID])
+        await client.customers.list(ids=[CUSTOMER_ID, OTHER_ID], code="jpz3k")
+        await client.customers.list(ids=[], code="jpz3k")
+
+    one, two, none = (call.request for call in route.calls)
+
+    # One id is still the bracketed pair, never the bracketless key.
+    assert list(one.url.params.multi_items()) == [("filter[id][]", CUSTOMER_ID)]
+    assert "filter%5Bid%5D=" not in one.url.query.decode()
+
+    # Two ids are two pairs, in the order given — not one comma-joined
+    # value, which PHP reads as a single id nothing matches.
+    assert [value for key, value in two.url.params.multi_items() if key == "filter[id][]"] == [
+        CUSTOMER_ID,
+        OTHER_ID,
+    ]
+    assert f"{CUSTOMER_ID}%2C{OTHER_ID}" not in two.url.query.decode()
+    assert "filter%5Bid%5D=" not in two.url.query.decode()
+    assert two.url.params["filter[code]"] == "jpz3k"
+
+    # An empty list asks for nothing, exactly as `None` does.
+    assert list(none.url.params.keys()) == ["filter[code]"]
 
 
 @pytest.mark.anyio
