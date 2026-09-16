@@ -1928,6 +1928,30 @@ class CallRecordResource(TypedDict):
     meta: NotRequired[ResourceMeta]
 
 
+RecordingAttributes = TypedDict(
+    'RecordingAttributes',
+    {
+        'ccc-id': NotRequired[str],
+        'duration': NotRequired[int | None],
+        'byte-size': NotRequired[int],
+        'sha256': NotRequired[str],
+        'superseded': NotRequired[bool],
+        'content-url': NotRequired[str],
+        'expires-at': NotRequired[str],
+    },
+)
+
+
+class RecordingResource(TypedDict):
+    type: Literal['recordings']
+    id: str
+    attributes: NotRequired[RecordingAttributes]
+
+
+class RecordingCollectionDocument(TypedDict):
+    data: list[RecordingResource]
+
+
 class CallRecordDocumentResponse(TypedDict):
     data: CallRecordResource
     links: NotRequired[ResourceLinks]
