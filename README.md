@@ -449,9 +449,10 @@ never carries it.
 ```
 
 The list is newest first. It walks by cursor, like every other list here.
-`code=` finds the one customer whose code is exactly that value. A customer
-that is not on your account answers 404 on `get()`, the same as an id that
-names nothing.
+`code=` finds the one customer whose code is exactly that value, and `ids=`
+reads several customers by id in one request — the ids `list()` and `get()`
+hand back. The two combine. A customer that is not on your account answers
+404 on `get()`, the same as an id that names nothing.
 
 When `customer.pbx` is False, the five phone-system fields —
 `residential`, `call_limit`, `call_limit_external`, `transports` and
@@ -739,7 +740,7 @@ are deliberately not wrapped.
 | `client.webhook_endpoints.rotate_secret(webhook_endpoint_id)` | `webhooks:write` | Mint a new secret and start the 24-hour grace window. |
 | `client.webhook_deliveries.list(*, endpoint=None, event_type=None, status=None, after=None, before=None, page_size=None)` | `webhooks:read` | A `WebhookDeliveryPage` of what is still owed or was given up on. `status="dead"` is the one to ask after an outage. |
 | `client.webhook_deliveries.get(webhook_delivery_id)` | `webhooks:read` | One `WebhookDelivery`. |
-| `client.customers.list(*, code=None, after=None, before=None, page_size=None)` | `customers:read` | A `CustomerPage`, newest first: iterable, with `next_cursor`. A customer's `id` is what `client.pbx.*.list(customer=...)` takes. |
+| `client.customers.list(*, ids=None, code=None, after=None, before=None, page_size=None)` | `customers:read` | A `CustomerPage`, newest first: iterable, with `next_cursor`. `ids=` reads several customers by id in one request — the ids `list()` and `get()` hand back — and combines with `code=`. A customer's `id` is what `client.pbx.*.list(customer=...)` takes. |
 | `client.customers.get(customer_id)` | `customers:read` | One `Customer`. A customer that is not on your account is a 404, not a 403. |
 | `client.pbx.users.list(*, customer=None, user=None, search=None, after=None, before=None, page_size=None)` | `pbx-users:read` | A `PbxUserPage`: iterable, with `next_cursor`. `user` is an EXACT extension; `search` is the directory search box. |
 | `client.pbx.users.get(pbx_user_id)` | `pbx-users:read` | One `PbxUser`. A subscriber you cannot reach is a 404, not a 403. |

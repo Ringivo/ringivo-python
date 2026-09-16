@@ -16,15 +16,11 @@ A customer's `id` is the value `customer=` takes on `pbx.users.list()`,
 calls. Reading it here is how an integration that knows a customer by name
 or by code finds the id those calls need.
 
--- ONE FILTER, AND NO sort ------------------------------------------------------
-`list()` takes `code`, and the cursor paging every other list here takes. The
-API also documents a filter by id, and this release leaves it out on
-purpose: the spec declares it as a plain array, which goes on the wire as
-repeated `filter[id]=` pairs, while the platform reads the filter as a list
-only in the bracket form `filter[id][]=`. PHP keeps only the last of the
-repeated pairs, as one string, and the platform's filter does not read a
-string as a list. Adding the filter later changes no existing call. Use
-`get()` for one customer by id.
+-- TWO FILTERS, AND NO sort -----------------------------------------------------
+`list()` takes `ids` and `code`, and the cursor paging every other list here
+takes. `ids` reads several customers by id in one request — the ids `list()`
+and `get()` themselves hand back — and it combines with `code`. Use `get()`
+when you want one customer and already hold its id.
 
 The list is newest first. Like every other list in this package, it takes
 no sort argument.
@@ -32,7 +28,7 @@ no sort argument.
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from typing import TYPE_CHECKING, Any
 
 from .faxes import _data_object, _next_cursor, _next_link, _path_segment
@@ -46,6 +42,15 @@ __all__ = ["Customers"]
 #: What `_path_segment` calls this resource in its refusal.
 _NOUN = "customer"
 
+#: The refusal one bare string of ids earns, in the shape client.py and
+#: webhook_endpoints.py refuse their own `Sequence[str]` arguments with.
+_BARE_STRING_IDS = (
+    "ids must be a list of customer ids, not one string: a str is read "
+    'one character at a time, so ids="0198c4a1-7a10-7c3e-9d21-4f5a6b7c8d9e" '
+    "asks for the thirty-six one-character ids that id is spelled with and "
+    'the platform matches none of them. Pass ids=["0198c4a1-7a10-7c3e-9d21-4f5a6b7c8d9e"].'
+)
+
 
 class Customers:
     """The `client.customers` namespace."""
@@ -56,6 +61,7 @@ class Customers:
     def list(
         self,
         *,
+        ids: Sequence[str] | None = None,
         code: str | None = None,
         after: str | None = None,
         before: str | None = None,
@@ -64,6 +70,10 @@ class Customers:
         """One page of your customers, newest first.
 
         Args:
+            ids: Several customers by id in one request, as a LIST —
+                the ids `list()` and `get()` hand back. It combines with
+                `code`. An empty sequence asks for nothing and is left
+                off, exactly as `None` is.
             code: Only the customer whose `code` is exactly this value —
                 the five-character code the platform assigns, which never
                 changes.
@@ -74,12 +84,25 @@ class Customers:
             page_size: Rows per page. The default is 25 and the ceiling is
                 100.
 
+        Raises:
+            ValueError: `ids` was one string rather than a list of ids. A
+                str is a `Sequence[str]`, so it would be read one character
+                at a time — the refusal `_id_filter` explains.
+
         Needs `customers:read`.
         """
         params: dict[str, Any] = {
             "page[after]": after,
             "page[before]": before,
             "page[size]": page_size,
+            # ONE `filter[id][]=<id>` PAIR PER ID, which is the only
+            # shape the platform reads as a list: a comma-joined value
+            # arrives as one id nothing matches, and the bracketless
+            # `filter[id]=a&filter[id]=b` is kept by PHP as the single
+            # string "b", which the filter then refuses. httpx writes the
+            # repeated key for a tuple and nothing at all for None —
+            # `_id_filter` is what makes sure it gets one or the other.
+            "filter[id][]": _id_filter(ids),
             "filter[code]": code,
         }
         document = self._client.request("GET", "/v1/customers", params=params).json()
@@ -98,6 +121,43 @@ class Customers:
             f"/v1/customers/{_path_segment(customer_id, noun=_NOUN)}",
         )
         return Customer._from_resource(_data_object(response.json()))
+
+
+def _id_filter(ids: Sequence[str] | None) -> tuple[str, ...] | None:
+    """The `filter[id][]` value: one id per pair, or the parameter left off.
+
+    ONE BARE STRING IS REFUSED, for the reason client.py refuses
+    `scopes="fax:read"` and webhook_endpoints.py refuses
+    `events="fax.received"`: a str IS a `Sequence[str]`, so `ids="<an id>"`
+    type-checks, and the tuple below reads it one character at a time. An id
+    is thirty-six characters, so thirty-six one-character `filter[id][]`
+    pairs reach the wire — measured with the guard removed, not assumed. The
+    platform matches none of them and answers an empty page, which is a
+    puzzle rather than a sentence, so the SHAPE is checked here instead.
+
+    THE TUPLE IS BUILT BEFORE THE EMPTINESS CHECK, not `if not ids:` on the
+    argument itself. A one-shot iterable — a generator, `map()`, a bare
+    iterator — has no truthiness that means "empty", and handed to httpx
+    unread it serialises as its own REPR: one pair reading `<generator
+    object ...>`, measured the same way. Building the tuple first reads the
+    argument exactly once and then checks what was actually read. This is
+    the order `_events_for_create` already uses.
+
+    An empty sequence returns None, so `_clean_params` drops the parameter
+    before httpx ever sees it. That buys no new behaviour today and the
+    claim is measured, not assumed: httpx writes nothing for an empty list
+    or tuple either, so the wire is the same both ways. What it buys is
+    ownership — "an empty list asks for nothing" becomes this package's
+    guarantee rather than a dependency's handling of an empty value.
+
+    Raises:
+        ValueError: `ids` was one string rather than a list of ids.
+    """
+    if isinstance(ids, str):
+        raise ValueError(_BARE_STRING_IDS)
+    if ids is None:
+        return None
+    return tuple(ids) or None
 
 
 def _page(document: Any) -> CustomerPage:

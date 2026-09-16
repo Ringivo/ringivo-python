@@ -8,14 +8,15 @@ they are pure functions of their arguments, they touch no client, and one
 of them is a security control.
 
 Read customers.py for the whys: why only an account-wide credential can
-call this, and why the list takes `code` but no filter by id.
+call this, and what the list's `ids` and `code` each ask for.
 """
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from typing import TYPE_CHECKING, Any
 
-from .customers import _NOUN, _page
+from .customers import _NOUN, _id_filter, _page
 from .faxes import _data_object, _path_segment
 from .models import Customer, CustomerPage
 
@@ -34,6 +35,7 @@ class AsyncCustomers:
     async def list(
         self,
         *,
+        ids: Sequence[str] | None = None,
         code: str | None = None,
         after: str | None = None,
         before: str | None = None,
@@ -42,8 +44,13 @@ class AsyncCustomers:
         """One page of your customers, newest first.
 
         The awaited twin of `Customers.list`, and the same arguments mean
-        the same things: `code` is an exact match, and `after` and
-        `before` are mutually exclusive.
+        the same things: `ids` reads several customers by id in one
+        request and combines with `code`, `code` is an exact match, and
+        `after` and `before` are mutually exclusive.
+
+        Raises:
+            ValueError: `ids` was one string rather than a list of ids,
+                refused by the same `_id_filter` the sync twin calls.
 
         Needs `customers:read`.
         """
@@ -51,6 +58,11 @@ class AsyncCustomers:
             "page[after]": after,
             "page[before]": before,
             "page[size]": page_size,
+            # One `filter[id][]=<id>` pair per id, and an empty sequence
+            # asks for nothing. `_id_filter` is imported rather than
+            # copied, so the bare-string refusal and the reason behind the
+            # bracketed key both keep a single home in customers.py.
+            "filter[id][]": _id_filter(ids),
             "filter[code]": code,
         }
         response = await self._client.request("GET", "/v1/customers", params=params)
