@@ -112,6 +112,8 @@ ErrorCode: TypeAlias = Literal[
     'forbidden',
     'internal_error',
     'sip_trunk_refused',
+    'transcript_pending',
+    'transcript_failed',
 ]
 
 
@@ -173,6 +175,7 @@ WebhookEventType: TypeAlias = Literal[
     'pbx_change.stalled',
     'call-recording.available',
     'call-transcript.available',
+    'webhook.heartbeat',
 ]
 
 
@@ -716,6 +719,18 @@ class CallTranscriptAvailableEventData(TypedDict):
     duration_seconds: NotRequired[int | None]
 
 
+class WebhookHeartbeatEventData(TypedDict):
+    region: NotRequired[str]
+    emitted_at: NotRequired[str]
+    sequence: NotRequired[int]
+    nonce: NotRequired[str]
+    origin: NotRequired[Literal['scheduler', 'api']]
+
+
+class WebhookHeartbeatEvent(WebhookEventEnvelope):
+    data: WebhookHeartbeatEventData
+
+
 class CallTranscriptAvailableEvent(WebhookEventEnvelope):
     data: CallTranscriptAvailableEventData
 
@@ -929,7 +944,7 @@ class MessagingEnablementCreateRequest(TypedDict):
 
 
 HostedMessagingOrderStatus: TypeAlias = Literal[
-    'claimed', 'awaiting_signature', 'submitted'
+    'claimed', 'awaiting_signature', 'submitted', 'failed'
 ]
 
 
@@ -1971,6 +1986,66 @@ class RecordingResource(TypedDict):
 
 class RecordingCollectionDocument(TypedDict):
     data: list[RecordingResource]
+
+
+class TranscriptSegment(TypedDict):
+    speaker: str
+    start: float
+    end: float
+    text: str
+
+
+TranscriptAttributes = TypedDict(
+    'TranscriptAttributes',
+    {
+        'ccc-id': NotRequired[str],
+        'status': NotRequired[Literal['ready', 'pending']],
+        'language': NotRequired[str | None],
+        'duration': NotRequired[int | None],
+        'byte-size': NotRequired[int | None],
+        'sha256': NotRequired[str | None],
+        'provider': NotRequired[str | None],
+        'model': NotRequired[str | None],
+        'content-url': NotRequired[str | None],
+        'expires-at': NotRequired[str | None],
+    },
+)
+
+
+class TranscriptResource(TypedDict):
+    type: Literal['transcripts']
+    id: str
+    attributes: NotRequired[TranscriptAttributes]
+
+
+Attributes9 = TypedDict(
+    'Attributes9',
+    {
+        'ccc-id': NotRequired[str],
+        'status': NotRequired[Literal['ready', 'pending']],
+        'language': NotRequired[str | None],
+        'duration': NotRequired[int | None],
+        'byte-size': NotRequired[int | None],
+        'sha256': NotRequired[str | None],
+        'provider': NotRequired[str | None],
+        'model': NotRequired[str | None],
+        'content-url': NotRequired[str | None],
+        'expires-at': NotRequired[str | None],
+        'segments': NotRequired[list[TranscriptSegment]],
+    },
+)
+
+
+class TranscriptWithSegmentsResource(TranscriptResource):
+    attributes: NotRequired[Attributes9]
+
+
+class TranscriptCollectionDocument(TypedDict):
+    data: list[TranscriptResource]
+
+
+class TranscriptDocumentResponse(TypedDict):
+    data: TranscriptWithSegmentsResource
 
 
 class CallRecordDocumentResponse(TypedDict):
