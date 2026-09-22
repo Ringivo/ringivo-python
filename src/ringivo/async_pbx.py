@@ -16,6 +16,7 @@ range on `call_records` decides which months are read at all.
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from typing import TYPE_CHECKING, Any
 
 from .fax_accounts import _JSONAPI
@@ -36,6 +37,7 @@ from .pbx import (
     _call_document,
     _call_record_page,
     _device_page,
+    _fields_param,
     _user_page,
 )
 
@@ -208,7 +210,8 @@ class AsyncPbxCallRecords:
         customer: str | None = None,
         started_after: str | None = None,
         started_before: str | None = None,
-        direction: str | None = None,
+        type: str | None = None,
+        fields: Sequence[str] | None = None,
         user: str | None = None,
         call_id: str | None = None,
         include_hidden: bool | None = None,
@@ -225,7 +228,14 @@ class AsyncPbxCallRecords:
 
         Hidden records are left out unless `include_hidden=True`.
 
-        There is no filter on disposition.
+        `type` is `inbound`, `outbound` or `onNet`, passed through rather
+        than validated locally. There is no filter on disposition.
+
+        `fields` asks for the EXTENDED tier — the phone system's own raw
+        values — as a list of the API's own camelCase names, e.g.
+        `["type", "startedAt", "origCallId"]`. It is a sparse fieldset, so
+        it NARROWS: name every field you want, standard ones included, or
+        leave it off for the standard tier alone.
 
         call_id: The records of ONE click-to-dial call. Pass the `id`
             that `users.call()` returned. The call record appears once
@@ -248,9 +258,10 @@ class AsyncPbxCallRecords:
             "page[before]": before,
             "page[size]": page_size,
             "filter[customer]": customer,
-            "filter[started-after]": started_after,
-            "filter[started-before]": started_before,
-            "filter[direction]": direction,
+            "filter[startedAfter]": started_after,
+            "filter[startedBefore]": started_before,
+            "filter[type]": type,
+            "fields[call-records]": _fields_param(fields),
             "filter[user]": user,
             "filter[call-id]": call_id,
             "filter[include-hidden]": include_hidden,

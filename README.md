@@ -491,16 +491,23 @@ relationship sharing the name of the `user` attribute beside it.
 
 ### The call log, one date range at a time
 
+**0.10.0 rebuilt this resource with no backward compatibility.** The console
+owns the decision (one clean shape mattered more than a migration path), so
+`0.9.x`'s `direction`, `vendor_type`, `from_user`, `from_uri`, `to_user`,
+`to_uri`, `dialed`, `by_user`, `term_user` and `tag` are all gone rather than
+deprecated. There is no argument or attribute standing in for them: reach
+for the extended tier below for the raw material they used to carry.
+
 ```python
     page = client.pbx.call_records.list(
         customer="0198c4a1-4d5e-7f60-a172-3c4d5e6f7081",
         started_after="2026-09-01T00:00:00Z",
         started_before="2026-09-30T23:59:59Z",
-        direction="inbound",
+        type="inbound",
     )
 
     for call in page:
-        print(call.started_at, call.from_number, call.to_number, call.duration)
+        print(call.started_at, call.from_number, call.to_number, call.duration_seconds)
 ```
 
 **The date range decides which months are read.** The phone system keeps
@@ -517,26 +524,55 @@ with `include_hidden=True`, or read one by id:
     call = client.pbx.call_records.get(call_id)      # served even if hidden
 ```
 
-`call.direction` is `inbound`, `outbound` or `on-net`, and
-`call.disposition` is `answered` or `missed`. The list filters on
-`direction` but not on disposition: read `call.disposition` on each record
-instead. The phone system records ONE integer carrying both,
-and it is published as `call.vendor_type` for a support conversation. An
-integer this API has no word for arrives as its own digits in `direction`
-rather than as null, so match on the values you know and let the rest fall
-through — the set is not closed.
+`call.type` is `inbound`, `outbound` or `onNet`, and `call.disposition` is
+`answered` or `missed` — only `inbound` can be either. The list filters on
+`type` but not on disposition: read `call.disposition` on each record
+instead. The phone system records ONE integer carrying both, and an integer
+this API has no word for arrives as its own digits in `type` rather than as
+null, so match on the values you know and let the rest fall through — the
+set is not closed.
 
 `call.has_recording` says a recording is held, not that you can fetch it:
 the endpoint that hands the audio back is a later release.
 
-**Use `call.from_number` and `call.to_number` for display.** They answer
-"who called whom" on every `direction` — E.164 (`+14075550101`) for a North
-American number, and passed through unchanged when the party is not a
-telephone number at all, such as an extension (`101`) or a dial code
-(`08113`). `from_number` is the external party on an inbound call and the
-caller id sent on an outbound one; `to_number` is the party actually
-dialled. `from_user`, `from_uri`, `to_user`, `to_uri` and `dialed` are
-unchanged — the switch's own columns, exactly as it wrote them.
+**A `*_number` field is E.164 or nothing.** `call.from_number`,
+`call.to_number` and `call.dialed_number` carry `+14075550101` or `None` —
+never an extension, a dial code or a star code; the console normalises and
+then checks, so this client has nothing left to reshape. `from_number` is
+the external party on an inbound call and the caller id sent on an outbound
+one; `to_number` is the party actually dialled; `dialed_number` is what was
+typed before the dial plan rewrote it. An extension is in
+`call.from_extension`, `call.routed_by_extension` or
+`call.answering_extension` instead.
+
+#### Two tiers: standard, and extended behind a sparse fieldset
+
+Every `list()` and `get()` response carries the **standard** tier — the
+fields above, plus `tenant_id`, `domain`, `territory`, `release_code`,
+`release_text` and `hidden`. The **extended** tier is the phone system's own
+raw material, served only when you name it in `fields=`:
+
+```python
+    page = client.pbx.call_records.list(
+        fields=["type", "startedAt", "origCallId", "terminatedTo"],
+    )
+```
+
+`fields=` is a JSON:API sparse fieldset, so it **narrows** rather than
+adds: name every field you want, standard ones included, in the API's own
+camelCase spelling — not this client's snake_case attribute names. Leave it
+off and you get the standard tier alone; every extended attribute then
+reads back `None`.
+
+| Tier | Attributes |
+|---|---|
+| Standard (always served) | `type`, `disposition`, `tenant_id`, `domain`, `territory`, `from_number`, `from_extension`, `from_name`, `to_number`, `dialed_number`, `routed_by_extension`, `answering_extension`, `started_at`, `answered_at`, `released_at`, `duration_seconds`, `talk_seconds`, `release_code`, `release_text`, `has_recording`, `hidden` |
+| Extended (needs `fields=`) | `vendor_id`, `orig_call_id`, `term_call_id`, `by_action`, `terminated_to`, `codec`, `hostname`, `raw_from_uri`, `raw_from_user`, `raw_to_user`, `raw_request_user` |
+
+`call.customer_id`, `call.from_pbx_user_id` and `call.to_pbx_user_id` come
+off the `customer`, `fromPbxUser` and `toPbxUser` relationships — read-only
+in every tier, and each `None` on a leg with no subscriber to point at, such
+as an outside caller on an inbound call.
 
 ### Two kinds of timestamp, and why
 
@@ -577,7 +613,7 @@ call-record list:
     # Later, once the call has ended. With no range, only the current and
     # the previous month are searched.
     for record in client.pbx.call_records.list(call_id=placed.id):
-        print(record.id, record.disposition, record.duration)
+        print(record.id, record.disposition, record.duration_seconds)
 ```
 
 The call record appears once the call has ended.
@@ -756,7 +792,7 @@ are deliberately not wrapped.
 | `client.pbx.users.call(pbx_user_id, *, destination, caller_id=None, auto_answer=False, device=None)` | `pbx-calls:write` | Ring this subscriber and dial `destination`. Returns the accepted `PbxCall` — a 202, no idempotency key, and an id that names the call on the phone system rather than a call record. Pass that id to `call_records.list(call_id=...)` once the call has ended. |
 | `client.pbx.devices.list(*, customer=None, user=None, registered=None, after=None, before=None, page_size=None)` | `pbx-users:read` | A `PbxDevicePage`. `user` here is a `users` ID, not an extension. |
 | `client.pbx.devices.get(pbx_device_id)` | `pbx-users:read` | One `PbxDevice` — one registration, not one handset. |
-| `client.pbx.call_records.list(*, customer=None, started_after=None, started_before=None, direction=None, user=None, call_id=None, include_hidden=None, after=None, before=None, page_size=None)` | `pbx-call-records:read` | A `CallRecordPage`, newest first. The date range decides which months are read; no range means the current and previous one. `call_id` finds the records of one `users.call()`, matched only inside the range's months. |
+| `client.pbx.call_records.list(*, customer=None, started_after=None, started_before=None, type=None, fields=None, user=None, call_id=None, include_hidden=None, after=None, before=None, page_size=None)` | `pbx-call-records:read` | A `CallRecordPage`, newest first. The date range decides which months are read; no range means the current and previous one. `fields=` asks for the extended tier — a sparse fieldset, so it narrows rather than adds. `call_id` finds the records of one `users.call()`, matched only inside the range's months. |
 | `client.pbx.call_records.get(call_record_id)` | `pbx-call-records:read` | One `CallRecord`. A hidden record IS served here. |
 | `webhooks.verify(payload, header, secret, *, tolerance=300)` | — | Raises unless the body is genuine and fresh. |
 

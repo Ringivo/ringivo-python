@@ -905,27 +905,52 @@ class PbxDevicePage:
 class CallRecord:
     """One call, as the phone system recorded it.
 
-    -- THE THREE INSTANTS ARE REAL DATETIMES ------------------------------
+    THIS SHAPE HAS NO BACKWARD COMPATIBILITY WITH `ringivo` BEFORE 0.10.0.
+    The console rebuilt `GET /v1/pbx/call-records` as one clean camelCase
+    surface — the owner's ruling was that a correct shape matters more than
+    a migration path — and every field below is new: `direction` is gone in
+    favour of `type`, `vendor_type` is gone with nothing standing in for it,
+    and `from_user`/`from_uri`/`to_user`/`to_uri`/`dialed`/`by_user`/
+    `term_user`/`tag` are gone. Reach for the extended tier (below) for the
+    raw material those used to carry.
+
+    -- TWO TIERS -----------------------------------------------------------
+    Everything from `type` through `hidden` is the STANDARD set and is on
+    every response. `vendor_id` onward through `raw_request_user` is the
+    EXTENDED tier — the phone system's own raw values — and each of those
+    fields is None unless you named it in `fields=` on `list()`. A sparse
+    fieldset NARROWS rather than adds, so asking for one extended field
+    without also naming the standard ones you want leaves the rest of this
+    object at their defaults too; see `PbxCallRecords.list`.
+
+    -- THE THREE INSTANTS ARE REAL DATETIMES --------------------------------
     Unlike `PbxUser` and `PbxDevice`, whose timestamps stay strings,
     `started_at`, `answered_at` and `released_at` are parsed: the switch
     stores them as Unix epochs and the API publishes them as RFC 3339 in
     UTC, which is the one timestamp shape that carries no zone ambiguity.
     `answered_at` is None when nobody answered.
 
-    -- direction, disposition AND vendor_type ARE ONE INTEGER -------------
+    -- type AND disposition ARE ONE INTEGER, SPLIT IN TWO -------------------
     The phone system records a single number carrying both which way the
-    call went and whether anybody picked it up. The API splits it into two
-    words and publishes the number itself as `vendor_type` — so quote
-    `vendor_type` in a support conversation, and branch on the words.
+    call went and whether anybody picked it up. `type` is `inbound`,
+    `outbound` or `onNet`; `disposition` is `answered` or `missed`, and
+    `inbound` is the only `type` that can be either. A number this API has
+    no word for is published as ITS OWN DIGITS in `type` rather than as
+    null, so a vocabulary that grows at the switch's end never erases a
+    call from your reading of it. Match on the values you know and let the
+    rest fall through; do not assume the set is closed.
 
-    A number this API has no word for is published as ITS OWN DIGITS in
-    `direction` rather than as null, so a vocabulary that grows at the
-    switch's end never erases a call from your reading of it. Match on the
-    values you know and let the rest fall through; do not assume the set is
-    closed.
+    -- A `*_number` FIELD IS E.164 OR NOTHING -------------------------------
+    `from_number`, `to_number` and `dialed_number` carry `+14075550101` or
+    None — never an extension, a dial code or a star code. An extension is
+    in `from_extension`, `routed_by_extension` or `answering_extension`
+    instead; the raw value the switch wrote is in the extended tier
+    (`raw_from_user`, `raw_to_user`, `raw_request_user`). So you can group,
+    join and de-duplicate on the three `*_number` fields without checking
+    their shape first.
 
-    `duration` is the call end to end and `talk_time` is how much of it
-    anybody was talking, both in seconds.
+    `duration_seconds` is the call end to end and `talk_seconds` is how
+    much of it anybody was talking.
 
     `has_recording` says a recording is HELD, not that you can fetch it:
     the media endpoint that hands the audio back is a later release. There
@@ -936,50 +961,49 @@ class CallRecord:
     of `list()` unless you ask for them with `include_hidden=True`, and a
     direct `get()` serves one either way.
 
-    `from_pbx_user_id` and `to_pbx_user_id` are the `users` resources for
-    the two legs when the extensions resolve on that domain, and null when
-    they do not — an outside caller has no subscriber to point at. Both are
-    None as well when the server answered the relationship with links alone
-    (see `_relationship_id`), which is a statement about the response
-    rather than about the call.
-
-    -- from_number AND to_number ARE WHO CALLED WHOM -----------------------
-    Use these two for display: they answer the same question on every
-    `direction`, in E.164 for a North American number (`+14075550101`) and
-    passed through unchanged when the party is not a telephone number at
-    all — an extension (`101`), a dial code (`08113`) or a star code stay
-    exactly as the phone system wrote them. `from_number` is the external
-    party on an inbound call and the caller id sent on an outbound one;
-    `to_number` is the party actually dialled. Both are derived server-side
-    from the same raw columns `from_user`, `from_uri`, `to_user`, `to_uri`
-    and `dialed` publish untransformed — those five are unchanged and stay
-    the escape hatch for what the switch literally recorded.
+    `customer_id`, `from_pbx_user_id` and `to_pbx_user_id` come off the
+    relationship linkages (`customer`, `fromPbxUser`, `toPbxUser`), so each
+    is None when the server answered that relationship with links alone
+    (see `_relationship_id`) — a statement about the response, never about
+    the call. An outside caller has no subscriber to point at, so
+    `from_pbx_user_id` is None on every inbound call from off the phone
+    system.
     """
 
     id: str
-    direction: str | None = None
+    type: str | None = None
     disposition: str | None = None
-    vendor_type: int | None = None
+    tenant_id: str | None = None
     domain: str | None = None
+    territory: str | None = None
     from_number: str | None = None
-    to_number: str | None = None
-    from_user: str | None = None
-    from_uri: str | None = None
+    from_extension: str | None = None
     from_name: str | None = None
-    to_user: str | None = None
-    to_uri: str | None = None
-    dialed: str | None = None
-    by_user: str | None = None
-    term_user: str | None = None
+    to_number: str | None = None
+    dialed_number: str | None = None
+    routed_by_extension: str | None = None
+    answering_extension: str | None = None
     started_at: datetime | None = None
     answered_at: datetime | None = None
     released_at: datetime | None = None
-    duration: int | None = None
-    talk_time: int | None = None
-    tag: str | None = None
-    hidden: bool | None = None
+    duration_seconds: int | None = None
+    talk_seconds: int | None = None
+    release_code: str | None = None
+    release_text: str | None = None
     has_recording: bool | None = None
+    hidden: bool | None = None
+    # -- EXTENDED: served only when named in fields= on list() ------------
     vendor_id: str | None = None
+    orig_call_id: str | None = None
+    term_call_id: str | None = None
+    by_action: str | None = None
+    terminated_to: str | None = None
+    codec: str | None = None
+    hostname: str | None = None
+    raw_from_uri: str | None = None
+    raw_from_user: str | None = None
+    raw_to_user: str | None = None
+    raw_request_user: str | None = None
     customer_id: str | None = None
     from_pbx_user_id: str | None = None
     to_pbx_user_id: str | None = None
@@ -992,32 +1016,41 @@ class CallRecord:
 
         return cls(
             id=_text(resource, "id") or "",
-            direction=_text(attributes, "direction"),
+            type=_text(attributes, "type"),
             disposition=_text(attributes, "disposition"),
-            vendor_type=_integer(attributes, "vendor-type"),
+            tenant_id=_text(attributes, "tenantId"),
             domain=_text(attributes, "domain"),
-            from_number=_text(attributes, "from-number"),
-            to_number=_text(attributes, "to-number"),
-            from_user=_text(attributes, "from-user"),
-            from_uri=_text(attributes, "from-uri"),
-            from_name=_text(attributes, "from-name"),
-            to_user=_text(attributes, "to-user"),
-            to_uri=_text(attributes, "to-uri"),
-            dialed=_text(attributes, "dialed"),
-            by_user=_text(attributes, "by-user"),
-            term_user=_text(attributes, "term-user"),
-            started_at=_parse_datetime(attributes.get("started-at")),
-            answered_at=_parse_datetime(attributes.get("answered-at")),
-            released_at=_parse_datetime(attributes.get("released-at")),
-            duration=_integer(attributes, "duration"),
-            talk_time=_integer(attributes, "talk-time"),
-            tag=_text(attributes, "tag"),
+            territory=_text(attributes, "territory"),
+            from_number=_text(attributes, "fromNumber"),
+            from_extension=_text(attributes, "fromExtension"),
+            from_name=_text(attributes, "fromName"),
+            to_number=_text(attributes, "toNumber"),
+            dialed_number=_text(attributes, "dialedNumber"),
+            routed_by_extension=_text(attributes, "routedByExtension"),
+            answering_extension=_text(attributes, "answeringExtension"),
+            started_at=_parse_datetime(attributes.get("startedAt")),
+            answered_at=_parse_datetime(attributes.get("answeredAt")),
+            released_at=_parse_datetime(attributes.get("releasedAt")),
+            duration_seconds=_integer(attributes, "durationSeconds"),
+            talk_seconds=_integer(attributes, "talkSeconds"),
+            release_code=_text(attributes, "releaseCode"),
+            release_text=_text(attributes, "releaseText"),
+            has_recording=_boolean(attributes, "hasRecording"),
             hidden=_boolean(attributes, "hidden"),
-            has_recording=_boolean(attributes, "has-recording"),
-            vendor_id=_text(attributes, "vendor-id"),
+            vendor_id=_text(attributes, "vendorId"),
+            orig_call_id=_text(attributes, "origCallId"),
+            term_call_id=_text(attributes, "termCallId"),
+            by_action=_text(attributes, "byAction"),
+            terminated_to=_text(attributes, "terminatedTo"),
+            codec=_text(attributes, "codec"),
+            hostname=_text(attributes, "hostname"),
+            raw_from_uri=_text(attributes, "rawFromUri"),
+            raw_from_user=_text(attributes, "rawFromUser"),
+            raw_to_user=_text(attributes, "rawToUser"),
+            raw_request_user=_text(attributes, "rawRequestUser"),
             customer_id=_relationship_id(resource, "customer"),
-            from_pbx_user_id=_relationship_id(resource, "from-pbx-user"),
-            to_pbx_user_id=_relationship_id(resource, "to-pbx-user"),
+            from_pbx_user_id=_relationship_id(resource, "fromPbxUser"),
+            to_pbx_user_id=_relationship_id(resource, "toPbxUser"),
             raw=resource,
         )
 

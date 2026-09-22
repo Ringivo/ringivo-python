@@ -143,30 +143,32 @@ def _device_resource(*, attributes: dict[str, object] | None = None) -> dict[str
 
 
 def _call_record_resource(*, attributes: dict[str, object] | None = None) -> dict[str, object]:
+    """One resource object, STANDARD TIER ONLY — no extended member present
+    at all, the way the real API omits them when `fields[call-records]` was
+    never sent.
+    """
     merged: dict[str, object] = {
-        "direction": "outbound",
+        "type": "outbound",
         "disposition": "answered",
-        "vendor-type": 0,
+        "tenantId": TENANT,
         "domain": "acme.example",
-        "from-number": "+14075550101",
-        "to-number": "+13025556789",
-        "from-user": "101",
-        "from-uri": "sip:101@acme.example",
-        "from-name": "Ann Perkins",
-        "to-user": "",
-        "to-uri": "sip:+13025556789@carrier.example",
-        "dialed": "+13025556789",
-        "by-user": "",
-        "term-user": "",
-        "started-at": "2026-09-12T14:00:00+00:00",
-        "answered-at": "2026-09-12T14:00:04+00:00",
-        "released-at": "2026-09-12T14:01:04+00:00",
-        "duration": 64,
-        "talk-time": 60,
-        "tag": "clinic",
+        "territory": "telimatic",
+        "fromNumber": "+14075550101",
+        "fromExtension": "101",
+        "fromName": "Ann Perkins",
+        "toNumber": "+13025556789",
+        "dialedNumber": "+13025556789",
+        "routedByExtension": None,
+        "answeringExtension": None,
+        "startedAt": "2026-09-12T14:00:00Z",
+        "answeredAt": "2026-09-12T14:00:04Z",
+        "releasedAt": "2026-09-12T14:01:04Z",
+        "durationSeconds": 64,
+        "talkSeconds": 60,
+        "releaseCode": "end",
+        "releaseText": "Orig: Bye",
+        "hasRecording": False,
         "hidden": False,
-        "has-recording": False,
-        "vendor-id": "20260912000000000001c0ffee0123456789abcdef",
     }
     merged.update(attributes or {})
     return {
@@ -175,10 +177,28 @@ def _call_record_resource(*, attributes: dict[str, object] | None = None) -> dic
         "attributes": merged,
         "relationships": {
             "customer": {"data": {"type": "customers", "id": CUSTOMER_ID}},
-            "from-pbx-user": {"data": {"type": "users", "id": USER_ID}},
-            "to-pbx-user": {"data": None},
+            "fromPbxUser": {"data": {"type": "users", "id": USER_ID}},
+            "toPbxUser": {"data": None},
         },
     }
+
+
+#: The EXTENDED tier's own values, layered onto `_call_record_resource()`'s
+#: `attributes=` to simulate a response that named every one of them in
+#: `fields[call-records]`.
+_EXTENDED_ATTRIBUTES: dict[str, object] = {
+    "vendorId": "20260912000000000001c0ffee0123456789abcdef",
+    "origCallId": "orig-call-id-0001",
+    "termCallId": "term-call-id-0001",
+    "byAction": "ForwardNoAns",
+    "terminatedTo": "sip:106@acme.example",
+    "codec": "PCMU",
+    "hostname": "sw-use1-03",
+    "rawFromUri": "sip:101@acme.example",
+    "rawFromUser": "101",
+    "rawToUser": "13025556789",
+    "rawRequestUser": "13025556789",
+}
 
 
 def _call_resource(*, attributes: dict[str, object] | None = None) -> dict[str, object]:
@@ -407,7 +427,8 @@ async def test_call_records_list_builds_every_filter_and_the_page_query(
             customer=CUSTOMER_ID,
             started_after="2026-09-01T00:00:00Z",
             started_before="2026-09-30T23:59:59Z",
-            direction="outbound",
+            type="outbound",
+            fields=["type", "startedAt", "vendorId"],
             user=USER_ID,
             call_id=CALL_ID,
             include_hidden=True,
@@ -421,15 +442,23 @@ async def test_call_records_list_builds_every_filter_and_the_page_query(
     assert isinstance(page, CallRecordPage)
     assert request.url.path == "/v1/pbx/call-records"
     assert params["filter[customer]"] == CUSTOMER_ID
-    assert params["filter[started-after]"] == "2026-09-01T00:00:00Z"
-    assert params["filter[started-before]"] == "2026-09-30T23:59:59Z"
-    assert params["filter[direction]"] == "outbound"
+    assert params["filter[startedAfter]"] == "2026-09-01T00:00:00Z"
+    assert params["filter[startedBefore]"] == "2026-09-30T23:59:59Z"
+    assert params["filter[type]"] == "outbound"
+    assert params["fields[call-records]"] == "type,startedAt,vendorId"
     assert params["filter[user]"] == USER_ID
     assert params["filter[call-id]"] == CALL_ID
     assert params["filter[include-hidden]"] == "true"
     assert params["page[after]"] == "0198c4a1"
     assert params["page[size]"] == "100"
     assert "page[before]" not in params
+
+
+@pytest.mark.anyio
+async def test_call_records_list_refuses_a_bare_string_of_fields(client: AsyncRingivo) -> None:
+    async with client:
+        with pytest.raises(ValueError, match="fields must be a list of field names"):
+            await cast(Any, client.pbx.call_records).list(fields="type")
 
 
 @pytest.mark.anyio
@@ -470,7 +499,7 @@ async def test_call_records_list_sends_include_hidden_false_rather_than_dropping
 
 
 @pytest.mark.anyio
-async def test_call_records_get_reads_the_three_instants_as_real_datetimes(
+async def test_call_records_get_reads_the_standard_tier_and_the_three_instants(
     respx_mock: respx.MockRouter, client: AsyncRingivo
 ) -> None:
     respx_mock.get(CALL_RECORD_URL).mock(
@@ -482,12 +511,13 @@ async def test_call_records_get_reads_the_three_instants_as_real_datetimes(
 
     assert isinstance(record, CallRecord)
     assert record.id == CALL_RECORD_ID
-    assert record.direction == "outbound"
-    assert record.vendor_type == 0
+    assert record.type == "outbound"
+    assert record.disposition == "answered"
+    assert record.tenant_id == TENANT
     assert record.from_number == "+14075550101"
     assert record.to_number == "+13025556789"
-    assert record.duration == 64
-    assert record.talk_time == 60
+    assert record.duration_seconds == 64
+    assert record.talk_seconds == 60
     assert record.has_recording is False
     assert record.started_at == datetime(2026, 9, 12, 14, 0, 0, tzinfo=timezone.utc)
     assert record.answered_at == datetime(2026, 9, 12, 14, 0, 4, tzinfo=timezone.utc)
@@ -495,10 +525,70 @@ async def test_call_records_get_reads_the_three_instants_as_real_datetimes(
     # The outbound leg resolves to a subscriber; the far end does not.
     assert record.from_pbx_user_id == USER_ID
     assert record.to_pbx_user_id is None
+    # No `fields[call-records]` was sent, so the extended tier is untouched.
+    assert record.vendor_id is None
+    assert record.orig_call_id is None
 
 
 @pytest.mark.anyio
-async def test_from_number_and_to_number_pass_through_extensions_and_dial_codes_unchanged(
+async def test_call_records_get_reads_every_extended_field_when_the_server_sent_them(
+    respx_mock: respx.MockRouter, client: AsyncRingivo
+) -> None:
+    respx_mock.get(CALL_RECORD_URL).mock(
+        return_value=httpx.Response(
+            200, json={"data": _call_record_resource(attributes=_EXTENDED_ATTRIBUTES)}
+        )
+    )
+
+    async with client:
+        record = await client.pbx.call_records.get(CALL_RECORD_ID)
+
+    assert record.vendor_id == "20260912000000000001c0ffee0123456789abcdef"
+    assert record.orig_call_id == "orig-call-id-0001"
+    assert record.term_call_id == "term-call-id-0001"
+    assert record.by_action == "ForwardNoAns"
+    assert record.terminated_to == "sip:106@acme.example"
+    assert record.codec == "PCMU"
+    assert record.hostname == "sw-use1-03"
+    assert record.raw_from_uri == "sip:101@acme.example"
+    assert record.raw_from_user == "101"
+    assert record.raw_to_user == "13025556789"
+    assert record.raw_request_user == "13025556789"
+
+
+@pytest.mark.parametrize(
+    ("call_type", "disposition"),
+    [
+        ("inbound", "answered"),
+        ("inbound", "missed"),
+        ("outbound", "answered"),
+        ("onNet", "answered"),
+    ],
+)
+@pytest.mark.anyio
+async def test_every_type_and_its_disposition_round_trip(
+    respx_mock: respx.MockRouter, client: AsyncRingivo, call_type: str, disposition: str
+) -> None:
+    respx_mock.get(CALL_RECORD_URL).mock(
+        return_value=httpx.Response(
+            200,
+            json={
+                "data": _call_record_resource(
+                    attributes={"type": call_type, "disposition": disposition}
+                )
+            },
+        )
+    )
+
+    async with client:
+        record = await client.pbx.call_records.get(CALL_RECORD_ID)
+
+    assert record.type == call_type
+    assert record.disposition == disposition
+
+
+@pytest.mark.anyio
+async def test_a_number_field_is_e164_or_null_never_an_extension_or_a_dial_code(
     respx_mock: respx.MockRouter, client: AsyncRingivo
 ) -> None:
     # The async client's own version of the sync suite's assertion — a
@@ -508,7 +598,13 @@ async def test_from_number_and_to_number_pass_through_extensions_and_dial_codes_
             200,
             json={
                 "data": _call_record_resource(
-                    attributes={"direction": "on-net", "from-number": "300", "to-number": "08113"}
+                    attributes={
+                        "type": "onNet",
+                        "fromNumber": None,
+                        "fromExtension": "300",
+                        "toNumber": None,
+                        "dialedNumber": None,
+                    }
                 )
             },
         )
@@ -517,8 +613,10 @@ async def test_from_number_and_to_number_pass_through_extensions_and_dial_codes_
     async with client:
         record = await client.pbx.call_records.get(CALL_RECORD_ID)
 
-    assert record.from_number == "300"
-    assert record.to_number == "08113"
+    assert record.from_number is None
+    assert record.to_number is None
+    assert record.dialed_number is None
+    assert record.from_extension == "300"
 
 
 @pytest.mark.anyio
