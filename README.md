@@ -500,7 +500,7 @@ relationship sharing the name of the `user` attribute beside it.
     )
 
     for call in page:
-        print(call.started_at, call.from_uri, call.to_user, call.duration)
+        print(call.started_at, call.from_number, call.to_number, call.duration)
 ```
 
 **The date range decides which months are read.** The phone system keeps
@@ -528,6 +528,15 @@ through — the set is not closed.
 
 `call.has_recording` says a recording is held, not that you can fetch it:
 the endpoint that hands the audio back is a later release.
+
+**Use `call.from_number` and `call.to_number` for display.** They answer
+"who called whom" on every `direction` — E.164 (`+14075550101`) for a North
+American number, and passed through unchanged when the party is not a
+telephone number at all, such as an extension (`101`) or a dial code
+(`08113`). `from_number` is the external party on an inbound call and the
+caller id sent on an outbound one; `to_number` is the party actually
+dialled. `from_user`, `from_uri`, `to_user`, `to_uri` and `dialed` are
+unchanged — the switch's own columns, exactly as it wrote them.
 
 ### Two kinds of timestamp, and why
 

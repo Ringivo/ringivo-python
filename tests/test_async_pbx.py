@@ -148,6 +148,8 @@ def _call_record_resource(*, attributes: dict[str, object] | None = None) -> dic
         "disposition": "answered",
         "vendor-type": 0,
         "domain": "acme.example",
+        "from-number": "+14075550101",
+        "to-number": "+13025556789",
         "from-user": "101",
         "from-uri": "sip:101@acme.example",
         "from-name": "Ann Perkins",
@@ -482,6 +484,8 @@ async def test_call_records_get_reads_the_three_instants_as_real_datetimes(
     assert record.id == CALL_RECORD_ID
     assert record.direction == "outbound"
     assert record.vendor_type == 0
+    assert record.from_number == "+14075550101"
+    assert record.to_number == "+13025556789"
     assert record.duration == 64
     assert record.talk_time == 60
     assert record.has_recording is False
@@ -491,6 +495,30 @@ async def test_call_records_get_reads_the_three_instants_as_real_datetimes(
     # The outbound leg resolves to a subscriber; the far end does not.
     assert record.from_pbx_user_id == USER_ID
     assert record.to_pbx_user_id is None
+
+
+@pytest.mark.anyio
+async def test_from_number_and_to_number_pass_through_extensions_and_dial_codes_unchanged(
+    respx_mock: respx.MockRouter, client: AsyncRingivo
+) -> None:
+    # The async client's own version of the sync suite's assertion — a
+    # sibling implementation rather than a wrapper, so it gets its own case.
+    respx_mock.get(CALL_RECORD_URL).mock(
+        return_value=httpx.Response(
+            200,
+            json={
+                "data": _call_record_resource(
+                    attributes={"direction": "on-net", "from-number": "300", "to-number": "08113"}
+                )
+            },
+        )
+    )
+
+    async with client:
+        record = await client.pbx.call_records.get(CALL_RECORD_ID)
+
+    assert record.from_number == "300"
+    assert record.to_number == "08113"
 
 
 @pytest.mark.anyio

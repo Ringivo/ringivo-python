@@ -717,6 +717,10 @@ _READS: tuple[_Read, ...] = (
         "domain",
         "CallRecord._from_resource",
     ),
+    # from_number and to_number are NOT here. spec/openapi.yaml has not synced
+    # the console API's `from-number`/`to-number` attributes yet, so they are
+    # excluded below with a tripwire — the same shape as PbxCall's fields
+    # before click-to-dial reached the spec.
     _Read(
         models.CallRecord,
         "from_user",
@@ -1046,6 +1050,16 @@ _EXCLUDED: dict[tuple[type, str], str] = {
     (models.PbxUser, "raw"): "holds the whole source mapping this object was built from",
     (models.PbxDevice, "raw"): "holds the whole source mapping this object was built from",
     (models.CallRecord, "raw"): "holds the whole source mapping this object was built from",
+    (models.CallRecord, "from_number"): (
+        "ahead of the generated types: spec/openapi.yaml has not synced the console API's "
+        "from-number attribute yet — see test_the_call_record_from_number_and_to_number_are_"
+        "still_missing_from_the_spec below"
+    ),
+    (models.CallRecord, "to_number"): (
+        "ahead of the generated types: spec/openapi.yaml has not synced the console API's "
+        "to-number attribute yet — see test_the_call_record_from_number_and_to_number_are_"
+        "still_missing_from_the_spec below"
+    ),
     (models.PbxCall, "raw"): "holds the whole source mapping this object was built from",
     (models.Customer, "raw"): "holds the whole source mapping this object was built from",
 }
@@ -1167,3 +1181,29 @@ def test_every_deliberately_unread_key_still_exists_to_be_unread() -> None:
     ]
 
     assert stale == [], "\n".join(stale)
+
+
+def test_the_call_record_from_number_and_to_number_are_still_missing_from_the_spec() -> None:
+    """The other half of the `_EXCLUDED` entries above. `CallRecord.from_number`
+    and `.to_number` were added to models.py ahead of `spec/openapi.yaml`
+    syncing the console API's `from-number`/`to-number` attributes — the same
+    situation `PbxCall` was in before click-to-dial reached the spec, and
+    resolved the same way: exclude the fields, and pin the exclusion with a
+    tripwire so it cannot go stale silently.
+
+    THIS FAILS the day `scripts/generate.sh` regenerates `_generated_types`
+    with those two keys. The fix, when it does: move
+    `(models.CallRecord, "from_number")` and `(models.CallRecord,
+    "to_number")` out of `_EXCLUDED` and into `_READS` (mirroring
+    `from_user`/`to_user` immediately above them), bump `_READS`' count by
+    two, and delete this test.
+    """
+    keys = _generated_keys(generated.CallRecordAttributes)
+    assert "from-number" not in keys, (
+        "CallRecordAttributes now carries 'from-number' — move "
+        "(models.CallRecord, 'from_number') from _EXCLUDED into _READS and delete this tripwire"
+    )
+    assert "to-number" not in keys, (
+        "CallRecordAttributes now carries 'to-number' — move "
+        "(models.CallRecord, 'to_number') from _EXCLUDED into _READS and delete this tripwire"
+    )

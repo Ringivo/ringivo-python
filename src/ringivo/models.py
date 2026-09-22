@@ -942,6 +942,18 @@ class CallRecord:
     None as well when the server answered the relationship with links alone
     (see `_relationship_id`), which is a statement about the response
     rather than about the call.
+
+    -- from_number AND to_number ARE WHO CALLED WHOM -----------------------
+    Use these two for display: they answer the same question on every
+    `direction`, in E.164 for a North American number (`+14075550101`) and
+    passed through unchanged when the party is not a telephone number at
+    all — an extension (`101`), a dial code (`08113`) or a star code stay
+    exactly as the phone system wrote them. `from_number` is the external
+    party on an inbound call and the caller id sent on an outbound one;
+    `to_number` is the party actually dialled. Both are derived server-side
+    from the same raw columns `from_user`, `from_uri`, `to_user`, `to_uri`
+    and `dialed` publish untransformed — those five are unchanged and stay
+    the escape hatch for what the switch literally recorded.
     """
 
     id: str
@@ -949,6 +961,8 @@ class CallRecord:
     disposition: str | None = None
     vendor_type: int | None = None
     domain: str | None = None
+    from_number: str | None = None
+    to_number: str | None = None
     from_user: str | None = None
     from_uri: str | None = None
     from_name: str | None = None
@@ -982,6 +996,8 @@ class CallRecord:
             disposition=_text(attributes, "disposition"),
             vendor_type=_integer(attributes, "vendor-type"),
             domain=_text(attributes, "domain"),
+            from_number=_text(attributes, "from-number"),
+            to_number=_text(attributes, "to-number"),
             from_user=_text(attributes, "from-user"),
             from_uri=_text(attributes, "from-uri"),
             from_name=_text(attributes, "from-name"),

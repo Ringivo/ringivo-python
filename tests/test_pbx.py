@@ -187,6 +187,8 @@ def _call_record_resource(
         "disposition": "answered",
         "vendor-type": 1,
         "domain": "acme.example",
+        "from-number": "+13025556789",
+        "to-number": "+14075550101",
         "from-user": "",
         "from-uri": "sip:+13025556789@carrier.example",
         "from-name": "Dr Bell",
@@ -805,6 +807,8 @@ def test_call_records_get_reads_a_jsonapi_document_into_the_public_dataclass(
     assert record.disposition == "answered"
     assert record.vendor_type == 1
     assert record.domain == "acme.example"
+    assert record.from_number == "+13025556789"
+    assert record.to_number == "+14075550101"
     assert record.from_user == ""
     assert record.from_uri == "sip:+13025556789@carrier.example"
     assert record.from_name == "Dr Bell"
@@ -895,6 +899,31 @@ def test_a_vendor_type_with_no_word_for_it_arrives_as_its_own_digits(
     assert record.direction == "9"
     assert record.disposition is None
     assert record.vendor_type == 9
+
+
+def test_from_number_and_to_number_pass_through_extensions_and_dial_codes_unchanged(
+    respx_mock: respx.MockRouter, client: Ringivo
+) -> None:
+    # The API normalises a North American number to E.164 but passes an
+    # extension, a dial code or a star code through byte for byte — this
+    # client reads whichever spelling arrives, the same as every other
+    # field here, rather than reshaping either one.
+    respx_mock.get(CALL_RECORD_URL).mock(
+        return_value=httpx.Response(
+            200,
+            json={
+                "data": _call_record_resource(
+                    attributes={"direction": "on-net", "from-number": "300", "to-number": "08113"}
+                )
+            },
+        )
+    )
+
+    with client:
+        record = client.pbx.call_records.get(CALL_RECORD_ID)
+
+    assert record.from_number == "300"
+    assert record.to_number == "08113"
 
 
 def test_a_hidden_record_is_served_on_a_direct_read(
