@@ -285,7 +285,7 @@ tags:
       read scopes do not imply it — the act has a cost and a caller ID attached. It answers **202**,
       never 201: the phone system takes the command onto its own bus and the call has not happened
       yet, which is why `status` reports the REQUEST's state, not the call's. Once the call ends, find
-      its records by sending its `id` as `filter[call-id]` on `/v1/pbx/call-records`.
+      its records by sending its `id` as `filter[callId]` on `/v1/pbx/call-records`.
   - name: Call records
     description: |
       Your customers' call log.
@@ -1811,6 +1811,10 @@ paths:
         The account may be one the caller does not themselves hold: administering an account is
         permission-gated, while reading its content is grant-gated, so somebody has to be able to
         add the first member.
+
+        The user must be one of the account's customer's own users. A grant is the customer-staff
+        door, so naming anybody else — one of your own staff, or another customer's user — is
+        refused with a 422.
       security:
         - bearerAuth: [fax-accounts:write]
       requestBody:
@@ -5935,13 +5939,13 @@ paths:
           in: query
           required: false
           description: |
-            `user` (the default) or `display-name`, either reversible with a leading `-`. The id is
+            `user` (the default) or `displayName`, either reversible with a leading `-`. The id is
             appended as a tiebreaker, so the order is always total and a page boundary cannot fall
             inside a tie.
           schema:
             type: string
-            enum: [user, -user, display-name, -display-name]
-          example: display-name
+            enum: [user, -user, displayName, -displayName]
+          example: displayName
         - name: filter[customer]
           in: query
           required: false
@@ -5975,19 +5979,19 @@ paths:
                     attributes:
                       user: '101'
                       domain: acme.example
-                      display-name: Ann Perkins
-                      first-name: Ann
-                      last-name: Perkins
+                      displayName: Ann Perkins
+                      firstName: Ann
+                      lastName: Perkins
                       email: ann@acme.example
                       scope: Basic User
                       group: sales
                       site: HQ
                       presence: open
-                      caller-id-number: '+14075550101'
-                      caller-id-name: Ann Perkins
-                      time-zone: US/Eastern
-                      created-at: '2026-01-02 03:04:05'
-                      updated-at: '2026-09-01 10:00:00'
+                      callerIdNumber: '+14075550101'
+                      callerIdName: Ann Perkins
+                      timeZone: US/Eastern
+                      createdAt: '2026-01-02 03:04:05'
+                      updatedAt: '2026-09-01 10:00:00'
                     relationships:
                       customer:
                         data: { type: customers, id: 0198c4a1-2b3c-7d4e-8f50-1a2b3c4d5e6f }
@@ -6044,10 +6048,10 @@ paths:
         else about the call is knowable at this point, which is why `status` is always `requested`.
 
         **Find the call's records with this id.** A call record's own id comes from the phone
-        system's CDR row, so the two ids differ: send this one as `filter[call-id]` on
+        system's CDR row, so the two ids differ: send this one as `filter[callId]` on
         `GET /v1/pbx/call-records` once the call ends. One call writes two records; the phone system
         records the leg that rang the user as hidden, so the list answers the outbound leg alone
-        unless you add `filter[include-hidden]=true`.
+        unless you add `filter[includeHidden]=true`.
 
         **`device` must belong to `{user}`.** A device id that names a registration owned by
         somebody else — including a user of the same name on another domain — is refused with a
@@ -6140,19 +6144,19 @@ paths:
                       user: '101'
                       domain: acme.example
                       mode: register
-                      user-agent: Polycom/6.4.2
+                      userAgent: Polycom/6.4.2
                       contact: sip:101@198.51.100.7:5060
                       transport: udp
-                      received-from: 198.51.100.7:5060
-                      registered-at: '2026-09-14 08:00:00'
-                      registration-expires-at: '2026-09-14 09:00:00'
+                      receivedFrom: 198.51.100.7:5060
+                      registeredAt: '2026-09-14 08:00:00'
+                      registrationExpiresAt: '2026-09-14 09:00:00'
                       registered: true
-                      auto-answer: false
-                      created-at: '2026-01-02 03:04:05'
+                      autoAnswer: false
+                      createdAt: '2026-01-02 03:04:05'
                     relationships:
                       customer:
                         data: { type: customers, id: 0198c4a1-2b3c-7d4e-8f50-1a2b3c4d5e6f }
-                      pbx-user:
+                      pbxUser:
                         data: { type: users, id: 6f98cc5d-5248-5100-9967-8606e2993077 }
                 meta:
                   page:
@@ -6202,7 +6206,7 @@ paths:
         with a 400 carrying `meta: {filter: {maxMonths: 13}}`.
 
         **Hidden records are left out of this list** and served on a direct read, which is what the
-        phone system's own portal does. `filter[include-hidden]=true` puts them back.
+        phone system's own portal does. `filter[includeHidden]=true` puts them back.
       security:
         - bearerAuth: [pbx-call-records:read]
       parameters:
@@ -6233,14 +6237,14 @@ paths:
           description: Calls that started at or before this moment, RFC 3339.
           schema: { type: string, format: date-time }
           example: '2026-09-30T23:59:59Z'
-        - name: filter[type]
+        - name: filter[direction]
           in: query
           required: false
           description: |
             A word outside this list is refused with a 400, never answered with an empty page.
             `inbound` selects both answered and missed inbound calls.
           schema:
-            $ref: '#/components/schemas/CallType'
+            $ref: '#/components/schemas/CallDirection'
         - name: fields[call-records]
           in: query
           required: false
@@ -6249,7 +6253,7 @@ paths:
             every response, and an extended set of the phone system's own raw values, which you get
             only by naming them:
 
-            `?fields[call-records]=type,startedAt,origCallId,terminatedTo`
+            `?fields[call-records]=direction,startedAt,origCallId,terminatedTo`
 
             This is the JSON:API sparse-fieldset parameter, so it **narrows** rather than adds: the
             response carries exactly the fields you name and nothing else. List every field you want,
@@ -6259,14 +6263,14 @@ paths:
             `terminatedTo`, `codec`, `hostname`, `rawFromUri`, `rawFromUser`, `rawToUser` and
             `rawRequestUser`. Naming a field that does not exist is a 400.
           schema: { type: string }
-          example: type,startedAt,vendorId,terminatedTo
+          example: direction,startedAt,vendorId,terminatedTo
         - name: filter[user]
           in: query
           required: false
           description: |
             Calls with this PBX **user id** on either leg — placed by them or taken by them.
           schema: { type: string, format: uuid }
-        - name: filter[call-id]
+        - name: filter[callId]
           in: query
           required: false
           description: |
@@ -6275,7 +6279,7 @@ paths:
 
             **One call writes two records.** The phone system rings the user first and then dials
             out, and it records each leg once the call ends. It records the leg that rang the user as
-            hidden, so this list answers the outbound leg alone; add `filter[include-hidden]=true` for
+            hidden, so this list answers the outbound leg alone; add `filter[includeHidden]=true` for
             both.
 
             **The date range still applies.** Only the months in the range are searched — this month
@@ -6285,7 +6289,7 @@ paths:
             An id that names no call answers an empty page, not an error.
           schema: { type: string, format: uuid }
           example: 01a0a62e-bd9e-73a1-89ec-127a80d6dd4c
-        - name: filter[include-hidden]
+        - name: filter[includeHidden]
           in: query
           required: false
           description: '`true` also returns records the phone system marks hidden.'
@@ -6302,7 +6306,7 @@ paths:
                   - type: call-records
                     id: e4837703-48c1-5c9e-8699-bbaafb17bb84
                     attributes:
-                      type: inbound
+                      direction: inbound
                       disposition: answered
                       tenantId: 0198c4a1-1111-7222-8333-444455556666
                       domain: acme.example
@@ -6375,7 +6379,7 @@ paths:
       description: |
         One call can be captured more than once — the phone system keys a recording by
         `(call id, capture id)`, and a call record names BOTH of its legs' call ids — so this
-        answers a **collection**, not a single link. Use it whenever `has-recording` is true on the
+        answers a **collection**, not a single link. Use it whenever `hasRecording` is true on the
         call record.
 
         **Each item carries its own `content-url`**, a time-limited link on your own API host.
@@ -6486,6 +6490,217 @@ paths:
             and `sha256` recorded for the audio, which is metadata; this endpoint answers for the
             bytes. Retry the list, and treat a repeat as "the recording is not available" rather
             than as a transport failure.
+          content:
+            application/vnd.api+json:
+              schema:
+                $ref: '#/components/schemas/ErrorDocument'
+
+  /v1/pbx/call-records/{callRecord}/transcripts:
+    get:
+      tags: [Call records]
+      operationId: listCallRecordTranscripts
+      summary: List a call record's transcripts, each with a download link
+      description: |
+        What was said on a recorded call. One call can be captured more than once — the phone system
+        keys a recording by `(call id, capture id)` — so this answers a **collection**, with one item
+        per capture rather than one item per transcript.
+
+        **`status` is the member to branch on.** `ready` means we hold the words and the item carries
+        them; `pending` means that capture has no transcript yet and every other member is null.
+        Transcription runs after the audio has finished uploading, so a call recorded a moment ago is
+        normally `pending` for a few minutes.
+
+        **The words themselves are not here.** Ask
+        `GET /v1/pbx/call-records/{callRecord}/transcripts/{recording}` for one transcript with its
+        `segments`, or follow `content-url` for the raw provider JSON. Deriving turns costs a read of
+        the stored document per capture, which is why the list does not do it for captures you did
+        not ask about.
+
+        **`byte-size` and `sha256` describe the DOCUMENT behind `content-url`**, not the audio. They
+        are not comparable with the same members on the recordings list, which describe the audio.
+
+        **Every call mints fresh links and writes one audit entry per transcript**, naming who asked.
+        Do not cache a URL past its `expires-at` or share it: anyone holding one reads that call with
+        no further authorization.
+
+        **This collection is not paged.** It is the captures of one call, not a walk over a growing
+        table, so there are no `page[...]` parameters and no `meta.page`.
+      security:
+        - bearerAuth: [pbx-call-records:read, pbx-transcripts:read]
+      parameters:
+        - $ref: '#/components/parameters/CallRecordId'
+      responses:
+        '200':
+          description: |
+            The call's transcripts, in vendor key order `(call_id, ccc_id)` — NOT chronological
+            across legs. An EMPTY `data` array is a normal answer: a call that was not recorded has
+            no captures to transcribe.
+          content:
+            application/vnd.api+json:
+              schema:
+                $ref: '#/components/schemas/TranscriptCollectionDocument'
+              example:
+                data:
+                  - type: transcripts
+                    id: 6f98cc5d-5248-5100-9967-8606e2993077
+                    attributes:
+                      ccc-id: 00b1
+                      status: ready
+                      language: en-US
+                      duration: 97
+                      byte-size: 18422
+                      sha256: abababababababababababababababababababababababababababababababab
+                      provider: deepgram
+                      model: nova-3
+                      content-url: https://api.yourprovider.example/v1/pbx/transcripts/6f98cc5d-5248-5100-9967-8606e2993077/content?expires=1789557037&signature=...
+                      expires-at: '2026-09-17T11:07:31+00:00'
+                  - type: transcripts
+                    id: 7a09dd6e-6359-5211-aa78-9717f3aa4188
+                    attributes:
+                      ccc-id: 00b2
+                      status: pending
+                      language: null
+                      duration: null
+                      byte-size: null
+                      sha256: null
+                      provider: null
+                      model: null
+                      content-url: null
+                      expires-at: null
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          description: |
+            No call record of yours has that id (`code: not_found`). A call belonging to another
+            account answers the same way as one that does not exist — its existence is itself
+            information.
+          content:
+            application/vnd.api+json:
+              schema:
+                $ref: '#/components/schemas/ErrorDocument'
+  /v1/pbx/call-records/{callRecord}/transcripts/{recording}:
+    get:
+      tags: [Call records]
+      operationId: getCallRecordTranscript
+      summary: Read one transcript, with its speaker turns
+      description: |
+        One capture's transcript, with `segments` — the turns of the conversation, each carrying a
+        speaker label, its bounds in seconds and what was said.
+
+        **It is nested under the call record on purpose.** A transcript is reachable only through a
+        call you may already read, which is what makes another account's transcript answer 404 rather
+        than 403. Pass the recording id from an item of the list above; an id that is not one of this
+        call's captures answers 404.
+
+        **A 404 here is not always "no such thing".** `transcript_pending` means the capture is real
+        and its transcript has not been written yet — ask again in a few minutes.
+        `transcript_failed` means transcription was tried and permanently gave up, so there is
+        nothing to wait for.
+      security:
+        - bearerAuth: [pbx-call-records:read, pbx-transcripts:read]
+      parameters:
+        - $ref: '#/components/parameters/CallRecordId'
+        - $ref: '#/components/parameters/TranscriptRecordingId'
+      responses:
+        '200':
+          description: The transcript, with its turns.
+          content:
+            application/vnd.api+json:
+              schema:
+                $ref: '#/components/schemas/TranscriptDocumentResponse'
+              example:
+                data:
+                  type: transcripts
+                  id: 6f98cc5d-5248-5100-9967-8606e2993077
+                  attributes:
+                    ccc-id: 00b1
+                    status: ready
+                    language: en-US
+                    duration: 97
+                    byte-size: 18422
+                    sha256: abababababababababababababababababababababababababababababababab
+                    provider: deepgram
+                    model: nova-3
+                    content-url: https://api.yourprovider.example/v1/pbx/transcripts/6f98cc5d-5248-5100-9967-8606e2993077/content?expires=1789557037&signature=...
+                    expires-at: '2026-09-17T11:07:31+00:00'
+                    segments:
+                      - speaker: Speaker 1
+                        start: 0.08
+                        end: 2.4
+                        text: Acme Dental, how can I help?
+                      - speaker: Speaker 2
+                        start: 2.6
+                        end: 5.1
+                        text: I need to move my appointment.
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          description: |
+            Nothing to serve, and the `code` says which kind of nothing: `not_found` (no call record
+            of yours has that id, or no capture of it has that recording id),
+            `transcript_pending` (the capture is real and its transcript is not written yet) or
+            `transcript_failed` (transcription gave up, and no further attempt will be made).
+          content:
+            application/vnd.api+json:
+              schema:
+                $ref: '#/components/schemas/ErrorDocument'
+  /v1/pbx/transcripts/{recording}/content:
+    get:
+      tags: [Call records]
+      operationId: downloadTranscript
+      summary: Download a transcript's source document (the URL the transcripts list names)
+      description: |
+        **You do not build this URL — you follow it.** Each `ready` item of
+        `GET /v1/pbx/call-records/{callRecord}/transcripts` carries a `content-url`, and this is
+        where it points. Treat it as opaque: the signature covers the whole address, so editing the
+        path, the host or any query parameter invalidates it.
+
+        Send **no `Authorization` header**. The signature is the authorization here, which is why
+        this operation publishes no security scheme — the entitlement was checked when the link was
+        minted, by the request that held your token. The link stops working at the `expires-at` the
+        list reported.
+
+        **What you get is the speech-to-text provider's own response, gzipped and unmodified.** It is
+        the lossless copy we keep, so it carries more than `segments` does — word timings and
+        confidences among them — and its shape is the provider's rather than ours. If you want a
+        stable shape, read `segments` on the transcript instead.
+      security: []
+      parameters:
+        - $ref: '#/components/parameters/TranscriptRecordingId'
+        - name: expires
+          in: query
+          required: true
+          description: Part of the signature, minted for you. Do not edit it.
+          schema: { type: integer, format: int64 }
+        - name: signature
+          in: query
+          required: true
+          description: Part of the signature, minted for you. Do not edit it.
+          schema: { type: string }
+      responses:
+        '200':
+          description: The provider's response document, gzipped.
+          content:
+            application/gzip:
+              schema: { type: string, format: binary }
+        '403':
+          description: |
+            The signature did not verify, or the link has expired (`Invalid signature.`). Ask the
+            transcripts list for a fresh one — a link cannot be repaired or extended.
+          content:
+            application/vnd.api+json:
+              schema:
+                $ref: '#/components/schemas/ErrorDocument'
+        '404':
+          description: |
+            There is no such document to serve (`code: not_found`). Every miss answers the same way
+            on purpose — a transcript we have never held, one whose retention window has closed and
+            one whose stored document is gone are deliberately indistinguishable, because this route
+            takes no credential.
           content:
             application/vnd.api+json:
               schema:
@@ -7078,6 +7293,62 @@ webhooks:
         '2XX':
           description: Any 2XX means you accepted it.
 
+  webhook.heartbeat:
+    post:
+      tags: [Webhook endpoints]
+      operationId: onWebhookHeartbeat
+      summary: A keepalive proving the webhook path from one of our regions is working
+      description: |
+        Sent every five minutes, from each of our regions, to every endpoint that asks for it by
+        name. It reports nothing about your data: it exists so that you — and we — can tell the
+        difference between "nothing happened" and "something between us is broken".
+
+        **You have to ask for it explicitly.** This is the one event an endpoint subscribed to
+        everything does NOT receive: leaving `events` empty means every event about your faxes,
+        messages, port orders and calls, and never this one. Name `webhook.heartbeat` in `events`
+        to start receiving it, and remove it to stop. That is deliberate — nobody should be signed
+        up for 288 deliveries a day by omission.
+
+        **What a gap means.** A beat that does not arrive means one of the links between the event
+        happening and your endpoint being called is down, and that a real event raised in that
+        window may not have reached you either. Nothing is queued up for later: we expire a beat
+        rather than bank it, so after an outage you get the NEXT beat, not a burst of old ones. A
+        beat's `emitted_at` is therefore always recent, and a gap in the `sequence` you have seen
+        is the record of the outage.
+
+        **`sequence` counts within one region** and increases by one per beat. It is what tells you
+        a beat is genuinely new. A sequence that repeats or goes backwards is a fault on our side
+        and worth telling us about.
+
+        **Each region beats independently.** You will see a `region` you did not choose and cannot
+        change; treat each region's `sequence` as its own series. A region we do not deliver
+        webhooks from does not beat at all.
+
+        **Scope: `tenant` only.** A heartbeat is about our platform rather than about anything of
+        one customer's, so a customer-scoped endpoint cannot subscribe to it.
+
+        `occurred_at` equals `data.emitted_at`, and neither is the moment we reached you.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/WebhookHeartbeatEvent'
+            example:
+              event_id: 28bd5a88-2196-5e5d-ae52-54687a788ce3
+              type: webhook.heartbeat
+              occurred_at: '2026-09-18T14:05:00+00:00'
+              data:
+                region: usw1
+                emitted_at: '2026-09-18T14:05:00+00:00'
+                sequence: 40213
+                nonce: 0199c1f0-1111-7000-8000-00000000000a
+                origin: scheduler
+      responses:
+        '2XX':
+          description: Any 2XX means you accepted it.
+
   pbx_change.confirmed:
     post:
       tags: [Webhook endpoints]
@@ -7281,6 +7552,16 @@ components:
         The recording's id, from an item of `GET /v1/pbx/call-records/{callRecord}/recordings`. It
         is derived from the phone system's own `(call id, capture id)`, so it is the same id in
         every region and a supersede reuses it.
+      schema: { type: string, format: uuid }
+    TranscriptRecordingId:
+      name: recording
+      in: path
+      required: true
+      description: |
+        The recording's id, from an item of
+        `GET /v1/pbx/call-records/{callRecord}/transcripts`. A transcript is keyed by its recording
+        — one transcript per capture — so this is the same id the recordings list publishes, and the
+        same id in every region.
       schema: { type: string, format: uuid }
     PageSize:
       name: page[size]
@@ -7705,6 +7986,8 @@ components:
         - forbidden
         - internal_error
         - sip_trunk_refused
+        - transcript_pending
+        - transcript_failed
     ErrorDocument:
       type: object
       required: [errors]
@@ -7788,6 +8071,7 @@ components:
         - pbx_change.stalled
         - call-recording.available
         - call-transcript.available
+        - webhook.heartbeat
     WebhookDeliveryStatus:
       type: string
       description: |
@@ -9154,6 +9438,50 @@ components:
           description: |
             How long the transcribed audio runs, rounded up to whole seconds. Null when the
             transcription reported no duration.
+    WebhookHeartbeatEventData:
+      type: object
+      description: |
+        Which region beat, when, and which beat it was. There is nothing of yours in this body.
+      properties:
+        region:
+          type: string
+          description: |
+            The region that emitted this beat. Each region counts its own `sequence`, so read the
+            two together.
+          example: usw1
+        emitted_at:
+          type: string
+          format: date-time
+          description: |
+            When we published the beat — not when we reached you. A beat we could not deliver
+            promptly is discarded rather than sent late, so this is always recent.
+        sequence:
+          type: integer
+          description: |
+            Counts up by one per beat within `region`, and never resets. A gap is an outage window;
+            a repeat or a rewind is a fault on our side.
+          example: 40213
+        nonce:
+          type: string
+          description: |
+            Unique to this beat and to you. It is what makes two beats two events — you do not need
+            to read it, and `event_id` is what you dedupe on.
+          example: 0199c1f0-1111-7000-8000-00000000000a
+        origin:
+          type: string
+          enum: [scheduler, api]
+          description: |
+            What produced the beat. `scheduler` is our five-minute timer, which is the only thing
+            that produces one today; `api` is reserved for a beat requested on demand.
+          example: scheduler
+    WebhookHeartbeatEvent:
+      allOf:
+        - $ref: '#/components/schemas/WebhookEventEnvelope'
+        - type: object
+          required: [data]
+          properties:
+            data:
+              $ref: '#/components/schemas/WebhookHeartbeatEventData'
     CallTranscriptAvailableEvent:
       allOf:
         - $ref: '#/components/schemas/WebhookEventEnvelope'
@@ -9669,18 +9997,25 @@ components:
                       $ref: '#/components/schemas/ResourceIdentifier'
     HostedMessagingOrderStatus:
       type: string
-      enum: [claimed, awaiting_signature, submitted]
+      enum: [claimed, awaiting_signature, submitted, failed]
       description: |
         How far the order got.
 
         `claimed` the number was already text-enabled where it lives and we recorded it ·
         `awaiting_signature` the authorization is out and your end user has not signed it yet ·
-        `submitted` the signed request reached the provider.
+        `submitted` the signed request reached the provider · `failed` the order was abandoned and
+        will never be fulfilled.
 
         `claimed` is FINAL the moment the order exists: nothing was ordered, nothing was signed and
         nothing is owed. `submitted` will not move either — what is still outstanding is outstanding
         on the request, and `messagingEnablement` is what you follow for it. This is deliberately not
         a second progress meter.
+
+        `failed` is also FINAL, and it is not the same fact as a failed `messagingEnablement`. One
+        failed request is one attempt that ended; this says nobody will submit for this number again
+        under this order, the authorization ceremony is shut and its link no longer opens. It is
+        written only by a deliberate act of ours, never by a provider's answer, so an integrator
+        reading it back can treat it as settled.
     HostedMessagingMechanism:
       type: string
       enum: [claimed, enabled]
@@ -11327,7 +11662,7 @@ components:
             id: { type: string, format: uuid }
             attributes:
               $ref: '#/components/schemas/SipTrunkTargetWritableAttributes'
-    CallType:
+    CallDirection:
       type: [string, 'null']
       description: |
         Which way the call went. `inbound` covers both an answered and a missed inbound call — read
@@ -11339,7 +11674,7 @@ components:
       enum: [inbound, outbound, onNet]
     CallDisposition:
       type: [string, 'null']
-      description: Whether anybody answered. Derived from the same integer as `type`.
+      description: Whether anybody answered. Derived from the same integer as `direction`.
       enum: [answered, missed]
     # -- Click-to-dial (POST /v1/pbx/users/{user}/calls) -------------------------------------------
     PbxCallRequest:
@@ -11363,7 +11698,7 @@ components:
             Who to call: an E.164 number with its `+`, or an extension of 2 to 7 digits on the
             user's own domain. The phone system completes an extension against that domain itself.
           examples: ['+13025046250', '2002']
-        caller-id:
+        callerId:
           type: [string, 'null']
           description: |
             The number the called party sees. E.164, with or without the `+`; a ten-digit North
@@ -11371,7 +11706,7 @@ components:
             platform stores every caller ID as E.164 **without** the plus. A value that is not a
             telephone number is refused rather than ignored. Omit it to use the user's own caller ID.
           examples: ['+14074366118', '4074366118']
-        auto-answer:
+        autoAnswer:
           type: boolean
           default: false
           description: Ask the user's own phone to go off-hook by itself instead of ringing.
@@ -11386,14 +11721,14 @@ components:
       type: object
       description: |
         The call as it was requested. Every value is what was actually sent to the phone system,
-        which is not always what was typed: `caller-id` comes back in the spelling the called party
+        which is not always what was typed: `callerId` comes back in the spelling the called party
         will see.
       properties:
         destination: { type: string, description: 'Who was called, as sent.' }
-        caller-id:
+        callerId:
           type: [string, 'null']
           description: 'The number presented, E.164 without the `+`. Null when the user''s own was used.'
-        auto-answer: { type: boolean }
+        autoAnswer: { type: boolean }
         device:
           type: [string, 'null']
           description: 'The `devices` id the call originates from, as sent. Null when none was named.'
@@ -11403,8 +11738,8 @@ components:
           description: |
             Always `requested` from this endpoint: it is the REQUEST's state, not the call's, because
             the phone system has taken the command and nothing about the call is knowable yet. Find
-            the call's records with `filter[call-id]` on `/v1/pbx/call-records`.
-        requested-at: { type: string, format: date-time }
+            the call's records with `filter[callId]` on `/v1/pbx/call-records`.
+        requestedAt: { type: string, format: date-time }
     PbxCallResource:
       type: object
       required: [type, id]
@@ -11416,7 +11751,7 @@ components:
           description: |
             Minted by this API before the call was placed, and handed to the phone system as the SIP
             Call-ID it places the call under. It names the call on the PHONE SYSTEM, and
-            `filter[call-id]` on `/v1/pbx/call-records` finds the records the call wrote — whose own
+            `filter[callId]` on `/v1/pbx/call-records` finds the records the call wrote — whose own
             ids come from the CDR row instead.
         attributes:
           $ref: '#/components/schemas/PbxCallAttributes'
@@ -11434,9 +11769,9 @@ components:
       properties:
         user: { type: [string, 'null'], description: 'The extension.' }
         domain: { type: [string, 'null'], description: 'The customer''s PBX domain.' }
-        display-name: { type: [string, 'null'] }
-        first-name: { type: [string, 'null'] }
-        last-name: { type: [string, 'null'] }
+        displayName: { type: [string, 'null'] }
+        firstName: { type: [string, 'null'] }
+        lastName: { type: [string, 'null'] }
         email: { type: [string, 'null'] }
         scope: { type: [string, 'null'], description: 'The phone system''s own permission tier for this person.' }
         group: { type: [string, 'null'] }
@@ -11447,15 +11782,15 @@ components:
             The phone system's own presence word, verbatim. There is deliberately no derived
             `online` flag: the vocabulary is longer than two states and which words mean "available"
             is yours to decide, not ours to freeze into this contract.
-        caller-id-number: { type: [string, 'null'] }
-        caller-id-name: { type: [string, 'null'] }
-        time-zone: { type: [string, 'null'] }
-        created-at:
+        callerIdNumber: { type: [string, 'null'] }
+        callerIdName: { type: [string, 'null'] }
+        timeZone: { type: [string, 'null'] }
+        createdAt:
           type: [string, 'null']
           description: |
             As the phone system stores it — TEXT, not RFC 3339. It is served unparsed because the
             switch has never published the format, and a mis-parse would be silent.
-        updated-at: { type: [string, 'null'], description: 'As the phone system stores it.' }
+        updatedAt: { type: [string, 'null'], description: 'As the phone system stores it.' }
     PbxUserRelationships:
       type: object
       properties:
@@ -11515,23 +11850,23 @@ components:
         user: { type: [string, 'null'], description: 'The subscriber''s extension.' }
         domain: { type: [string, 'null'] }
         mode: { type: [string, 'null'] }
-        user-agent: { type: [string, 'null'], description: 'What the phone said it is.' }
+        userAgent: { type: [string, 'null'], description: 'What the phone said it is.' }
         contact: { type: [string, 'null'] }
         transport: { type: [string, 'null'] }
-        received-from: { type: [string, 'null'], description: 'The address the registration arrived from.' }
-        registered-at: { type: [string, 'null'], description: 'As the phone system stores it — text, not RFC 3339.' }
-        registration-expires-at: { type: [string, 'null'], description: 'As the phone system stores it.' }
+        receivedFrom: { type: [string, 'null'], description: 'The address the registration arrived from.' }
+        registeredAt: { type: [string, 'null'], description: 'As the phone system stores it — text, not RFC 3339.' }
+        registrationExpiresAt: { type: [string, 'null'], description: 'As the phone system stores it.' }
         registered:
           type: boolean
-          description: Derived — is `registration-expires-at` still in the future?
-        auto-answer: { type: boolean }
-        created-at: { type: [string, 'null'], description: 'As the phone system stores it.' }
+          description: Derived — is `registrationExpiresAt` still in the future?
+        autoAnswer: { type: boolean }
+        createdAt: { type: [string, 'null'], description: 'As the phone system stores it.' }
     PbxDeviceRelationships:
       type: object
       properties:
         customer:
           $ref: '#/components/schemas/RelationshipToOne'
-        pbx-user:
+        pbxUser:
           $ref: '#/components/schemas/RelationshipToOne'
     PbxDeviceResource:
       type: object
@@ -11591,8 +11926,8 @@ components:
         is in the extended tier. So you can group, join and de-duplicate on these three without
         checking their shape first.
       properties:
-        type:
-          $ref: '#/components/schemas/CallType'
+        direction:
+          $ref: '#/components/schemas/CallDirection'
         disposition:
           $ref: '#/components/schemas/CallDisposition'
         tenantId:
@@ -11604,7 +11939,7 @@ components:
         fromNumber:
           type: [string, 'null']
           description: |
-            **Who called**, in E.164. Read `type` to know what it names:
+            **Who called**, in E.164. Read `direction` to know what it names:
 
             - `inbound` — the **outside caller's** number.
             - `outbound` and `onNet` — the **caller ID your customer sent**.
@@ -11817,6 +12152,146 @@ components:
             parameters and no `meta.page`.
           items:
             $ref: '#/components/schemas/RecordingResource'
+    TranscriptSegment:
+      type: object
+      required: [speaker, start, end, text]
+      properties:
+        speaker:
+          type: string
+          description: |
+            Who was speaking, as a label rather than an identity: `Speaker 1`, `Speaker 2`, and so
+            on. It comes from the speech-to-text provider's own separation of voices (or of the two
+            sides of a stereo capture), so it is stable WITHIN one transcript and means nothing
+            across two — `Speaker 1` on one call is not `Speaker 1` on another.
+          example: Speaker 1
+        start:
+          type: number
+          format: double
+          description: When this turn begins, in seconds from the start of the recording.
+        end:
+          type: number
+          format: double
+          description: When this turn ends, in seconds from the start of the recording.
+        text:
+          type: string
+          description: What was said in this turn.
+    TranscriptAttributes:
+      type: object
+      # NOT A CLOSED SET, and the one member that proves it is `segments`: the single-transcript
+      # endpoint composes this schema with it (`TranscriptWithSegmentsResource`), so a validator that
+      # treated these ten as the whole of a transcript's attributes would reject that endpoint's own
+      # response. Redocly's example check is such a validator.
+      unevaluatedProperties: true
+      properties:
+        ccc-id:
+          type: string
+          description: Which capture of the call this transcript is of — the phone system's own capture id.
+          example: 00b1
+        status:
+          type: string
+          enum: [ready, pending]
+          description: |
+            `ready` when we hold the words, `pending` when that capture has no transcript yet — in
+            which case every member below is null. Transcription runs after the audio has finished
+            uploading, so a call recorded a moment ago is normally `pending` for a few minutes. There
+            is no `failed` here: telling a permanent failure from a wait costs a lookup, so only the
+            single-transcript endpoint pays for it, and it reports it as a 404 with
+            `code: transcript_failed`.
+        language:
+          type: [string, 'null']
+          description: The language the audio was transcribed as. Null while `status` is `pending`.
+          example: en-US
+        duration:
+          type: [integer, 'null']
+          description: |
+            How long the AUDIO runs, in seconds — not how long the text is. Null while `status` is
+            `pending`, and null when the phone system never reported a duration for the capture.
+        byte-size:
+          type: [integer, 'null']
+          description: |
+            The size of the document behind `content-url`, which is the speech-to-text provider's
+            gzipped response — NOT the audio. Not comparable with `byte-size` on the recordings list.
+            Null while `status` is `pending`.
+        sha256:
+          type: [string, 'null']
+          description: |
+            The SHA-256 of that same document, so you can check a download against what we stored.
+            Null while `status` is `pending`.
+        provider:
+          type: [string, 'null']
+          description: Which speech-to-text service produced this transcript. Null while `status` is `pending`.
+          example: deepgram
+        model:
+          type: [string, 'null']
+          description: Which of that service's models produced it. Null while `status` is `pending`.
+          example: nova-3
+        content-url:
+          type: [string, 'null']
+          format: uri
+          description: |
+            A time-limited download URL on your own API host for the provider's own response
+            document. Fetch it with a plain `GET` and no `Authorization` header — the signature it
+            carries is the authorization. Opaque: the signature covers the whole address, so any edit
+            invalidates it. Short-lived — do not cache it past `expires-at` or share it. Null while
+            `status` is `pending`.
+        expires-at:
+          type: [string, 'null']
+          format: date-time
+          description: When `content-url` stops working. Ask for the list again to mint a fresh one.
+    TranscriptResource:
+      type: object
+      required: [type, id]
+      properties:
+        type: { type: string, enum: [transcripts] }
+        id:
+          type: string
+          format: uuid
+          description: |
+            The RECORDING's id — a transcript is keyed by the capture it is of, one to one — so it is
+            the same id the recordings list publishes and the same id in every region.
+        attributes:
+          $ref: '#/components/schemas/TranscriptAttributes'
+    TranscriptWithSegmentsResource:
+      description: |
+        A transcript as the single-transcript endpoint serves it: everything the list carries, plus
+        the turns. `segments` is the one member the list leaves out, because deriving the turns means
+        reading the stored document and the list would pay that per capture.
+      allOf:
+        - $ref: '#/components/schemas/TranscriptResource'
+        - type: object
+          properties:
+            attributes:
+              allOf:
+                - $ref: '#/components/schemas/TranscriptAttributes'
+                - type: object
+                  properties:
+                    segments:
+                      type: array
+                      description: |
+                        The turns of the conversation, in the order they were spoken. An EMPTY array
+                        is a real answer: nobody spoke, or the provider heard nothing it could
+                        separate into turns.
+                      items:
+                        $ref: '#/components/schemas/TranscriptSegment'
+    TranscriptCollectionDocument:
+      type: object
+      required: [data]
+      properties:
+        data:
+          type: array
+          description: |
+            One item per capture of the call, in vendor key order `(call_id, ccc_id)` — the phone
+            system's own primary key, which is total, and NOT chronological across legs. NOT PAGED —
+            this is the captures of one call rather than a walk over a table, so there are no page
+            parameters and no `meta.page`.
+          items:
+            $ref: '#/components/schemas/TranscriptResource'
+    TranscriptDocumentResponse:
+      type: object
+      required: [data]
+      properties:
+        data:
+          $ref: '#/components/schemas/TranscriptWithSegmentsResource'
     CallRecordDocumentResponse:
       type: object
       required: [data]

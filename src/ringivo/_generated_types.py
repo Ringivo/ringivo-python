@@ -112,6 +112,8 @@ ErrorCode: TypeAlias = Literal[
     'forbidden',
     'internal_error',
     'sip_trunk_refused',
+    'transcript_pending',
+    'transcript_failed',
 ]
 
 
@@ -173,6 +175,7 @@ WebhookEventType: TypeAlias = Literal[
     'pbx_change.stalled',
     'call-recording.available',
     'call-transcript.available',
+    'webhook.heartbeat',
 ]
 
 
@@ -716,6 +719,18 @@ class CallTranscriptAvailableEventData(TypedDict):
     duration_seconds: NotRequired[int | None]
 
 
+class WebhookHeartbeatEventData(TypedDict):
+    region: NotRequired[str]
+    emitted_at: NotRequired[str]
+    sequence: NotRequired[int]
+    nonce: NotRequired[str]
+    origin: NotRequired[Literal['scheduler', 'api']]
+
+
+class WebhookHeartbeatEvent(WebhookEventEnvelope):
+    data: WebhookHeartbeatEventData
+
+
 class CallTranscriptAvailableEvent(WebhookEventEnvelope):
     data: CallTranscriptAvailableEventData
 
@@ -929,7 +944,7 @@ class MessagingEnablementCreateRequest(TypedDict):
 
 
 HostedMessagingOrderStatus: TypeAlias = Literal[
-    'claimed', 'awaiting_signature', 'submitted'
+    'claimed', 'awaiting_signature', 'submitted', 'failed'
 ]
 
 
@@ -1764,34 +1779,26 @@ class SipTrunkTargetUpdateRequest(TypedDict):
     data: Data26
 
 
-CallType: TypeAlias = Literal['inbound', 'outbound', 'onNet']
+CallDirection: TypeAlias = Literal['inbound', 'outbound', 'onNet']
 
 
 CallDisposition: TypeAlias = Literal['answered', 'missed']
 
 
-PbxCallRequestAttributes = TypedDict(
-    'PbxCallRequestAttributes',
-    {
-        'destination': str,
-        'caller-id': NotRequired[str | None],
-        'auto-answer': NotRequired[bool],
-        'device': NotRequired[str | None],
-    },
-)
+class PbxCallRequestAttributes(TypedDict):
+    destination: str
+    callerId: NotRequired[str | None]
+    autoAnswer: NotRequired[bool]
+    device: NotRequired[str | None]
 
 
-PbxCallAttributes = TypedDict(
-    'PbxCallAttributes',
-    {
-        'destination': NotRequired[str],
-        'caller-id': NotRequired[str | None],
-        'auto-answer': NotRequired[bool],
-        'device': NotRequired[str | None],
-        'status': NotRequired[Literal['requested']],
-        'requested-at': NotRequired[str],
-    },
-)
+class PbxCallAttributes(TypedDict):
+    destination: NotRequired[str]
+    callerId: NotRequired[str | None]
+    autoAnswer: NotRequired[bool]
+    device: NotRequired[str | None]
+    status: NotRequired[Literal['requested']]
+    requestedAt: NotRequired[str]
 
 
 class PbxCallResource(TypedDict):
@@ -1804,26 +1811,22 @@ class PbxCallDocumentResponse(TypedDict):
     data: PbxCallResource
 
 
-PbxUserAttributes = TypedDict(
-    'PbxUserAttributes',
-    {
-        'user': NotRequired[str | None],
-        'domain': NotRequired[str | None],
-        'display-name': NotRequired[str | None],
-        'first-name': NotRequired[str | None],
-        'last-name': NotRequired[str | None],
-        'email': NotRequired[str | None],
-        'scope': NotRequired[str | None],
-        'group': NotRequired[str | None],
-        'site': NotRequired[str | None],
-        'presence': NotRequired[str | None],
-        'caller-id-number': NotRequired[str | None],
-        'caller-id-name': NotRequired[str | None],
-        'time-zone': NotRequired[str | None],
-        'created-at': NotRequired[str | None],
-        'updated-at': NotRequired[str | None],
-    },
-)
+class PbxUserAttributes(TypedDict):
+    user: NotRequired[str | None]
+    domain: NotRequired[str | None]
+    displayName: NotRequired[str | None]
+    firstName: NotRequired[str | None]
+    lastName: NotRequired[str | None]
+    email: NotRequired[str | None]
+    scope: NotRequired[str | None]
+    group: NotRequired[str | None]
+    site: NotRequired[str | None]
+    presence: NotRequired[str | None]
+    callerIdNumber: NotRequired[str | None]
+    callerIdName: NotRequired[str | None]
+    timeZone: NotRequired[str | None]
+    createdAt: NotRequired[str | None]
+    updatedAt: NotRequired[str | None]
 
 
 class PbxUserRelationships(TypedDict):
@@ -1852,33 +1855,25 @@ class PbxUserCollectionDocument(TypedDict):
     meta: NotRequired[DocumentMeta]
 
 
-PbxDeviceAttributes = TypedDict(
-    'PbxDeviceAttributes',
-    {
-        'aor': NotRequired[str | None],
-        'user': NotRequired[str | None],
-        'domain': NotRequired[str | None],
-        'mode': NotRequired[str | None],
-        'user-agent': NotRequired[str | None],
-        'contact': NotRequired[str | None],
-        'transport': NotRequired[str | None],
-        'received-from': NotRequired[str | None],
-        'registered-at': NotRequired[str | None],
-        'registration-expires-at': NotRequired[str | None],
-        'registered': NotRequired[bool],
-        'auto-answer': NotRequired[bool],
-        'created-at': NotRequired[str | None],
-    },
-)
+class PbxDeviceAttributes(TypedDict):
+    aor: NotRequired[str | None]
+    user: NotRequired[str | None]
+    domain: NotRequired[str | None]
+    mode: NotRequired[str | None]
+    userAgent: NotRequired[str | None]
+    contact: NotRequired[str | None]
+    transport: NotRequired[str | None]
+    receivedFrom: NotRequired[str | None]
+    registeredAt: NotRequired[str | None]
+    registrationExpiresAt: NotRequired[str | None]
+    registered: NotRequired[bool]
+    autoAnswer: NotRequired[bool]
+    createdAt: NotRequired[str | None]
 
 
-PbxDeviceRelationships = TypedDict(
-    'PbxDeviceRelationships',
-    {
-        'customer': NotRequired[RelationshipToOne],
-        'pbx-user': NotRequired[RelationshipToOne],
-    },
-)
+class PbxDeviceRelationships(TypedDict):
+    customer: NotRequired[RelationshipToOne]
+    pbxUser: NotRequired[RelationshipToOne]
 
 
 class PbxDeviceResource(TypedDict):
@@ -1903,7 +1898,7 @@ class PbxDeviceCollectionDocument(TypedDict):
 
 
 class CallRecordAttributes(TypedDict):
-    type: NotRequired[CallType]
+    direction: NotRequired[CallDirection]
     disposition: NotRequired[CallDisposition]
     tenantId: NotRequired[str | None]
     domain: NotRequired[str | None]
@@ -1974,6 +1969,66 @@ class RecordingResource(TypedDict):
 
 class RecordingCollectionDocument(TypedDict):
     data: list[RecordingResource]
+
+
+class TranscriptSegment(TypedDict):
+    speaker: str
+    start: float
+    end: float
+    text: str
+
+
+TranscriptAttributes = TypedDict(
+    'TranscriptAttributes',
+    {
+        'ccc-id': NotRequired[str],
+        'status': NotRequired[Literal['ready', 'pending']],
+        'language': NotRequired[str | None],
+        'duration': NotRequired[int | None],
+        'byte-size': NotRequired[int | None],
+        'sha256': NotRequired[str | None],
+        'provider': NotRequired[str | None],
+        'model': NotRequired[str | None],
+        'content-url': NotRequired[str | None],
+        'expires-at': NotRequired[str | None],
+    },
+)
+
+
+class TranscriptResource(TypedDict):
+    type: Literal['transcripts']
+    id: str
+    attributes: NotRequired[TranscriptAttributes]
+
+
+Attributes9 = TypedDict(
+    'Attributes9',
+    {
+        'ccc-id': NotRequired[str],
+        'status': NotRequired[Literal['ready', 'pending']],
+        'language': NotRequired[str | None],
+        'duration': NotRequired[int | None],
+        'byte-size': NotRequired[int | None],
+        'sha256': NotRequired[str | None],
+        'provider': NotRequired[str | None],
+        'model': NotRequired[str | None],
+        'content-url': NotRequired[str | None],
+        'expires-at': NotRequired[str | None],
+        'segments': NotRequired[list[TranscriptSegment]],
+    },
+)
+
+
+class TranscriptWithSegmentsResource(TranscriptResource):
+    attributes: NotRequired[Attributes9]
+
+
+class TranscriptCollectionDocument(TypedDict):
+    data: list[TranscriptResource]
+
+
+class TranscriptDocumentResponse(TypedDict):
+    data: TranscriptWithSegmentsResource
 
 
 class CallRecordDocumentResponse(TypedDict):

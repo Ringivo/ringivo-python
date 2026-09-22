@@ -79,28 +79,27 @@ def _user_resource(*, attributes: dict[str, object] | None = None) -> dict[str, 
     """One resource object, with any attribute replaced.
 
     The overrides come in as a DICT rather than as `**kwargs`, unlike the
-    fax suites' builders: this server writes its attributes in kebab-case,
-    and `display-name` is not a Python identifier, so `**{"...": ...}` is
-    the only spelling `**kwargs` would accept — and a `**dict[str, object]`
-    splat reads to a type checker as something that could also fill
-    `relationships`.
+    fax suites' builders: a `**dict[str, object]` splat would read to a type
+    checker as something that could also fill `relationships`. The kebab-case
+    attribute names that once forced the dict are gone as of 0.11.0 — every
+    member on this surface is camelCase now — but the typing reason stands.
     """
     merged: dict[str, object] = {
         "user": "101",
         "domain": "acme.example",
-        "display-name": "Ann Perkins",
-        "first-name": "Ann",
-        "last-name": "Perkins",
+        "displayName": "Ann Perkins",
+        "firstName": "Ann",
+        "lastName": "Perkins",
         "email": "ann@acme.example",
         "scope": "Basic User",
         "group": "sales",
         "site": "HQ",
         "presence": "open",
-        "caller-id-number": "+14075550101",
-        "caller-id-name": "Ann Perkins",
-        "time-zone": "US/Eastern",
-        "created-at": "2026-01-02 03:04:05",
-        "updated-at": "2026-09-01 10:00:00",
+        "callerIdNumber": "+14075550101",
+        "callerIdName": "Ann Perkins",
+        "timeZone": "US/Eastern",
+        "createdAt": "2026-01-02 03:04:05",
+        "updatedAt": "2026-09-01 10:00:00",
     }
     merged.update(attributes or {})
     return {
@@ -120,15 +119,15 @@ def _device_resource(*, attributes: dict[str, object] | None = None) -> dict[str
         "user": "101",
         "domain": "acme.example",
         "mode": "register",
-        "user-agent": "Polycom/6.4.2",
+        "userAgent": "Polycom/6.4.2",
         "contact": "sip:101@198.51.100.7:5060",
         "transport": "udp",
-        "received-from": "198.51.100.7:5060",
-        "registered-at": "2026-09-14 08:00:00",
-        "registration-expires-at": "2026-09-14 09:00:00",
+        "receivedFrom": "198.51.100.7:5060",
+        "registeredAt": "2026-09-14 08:00:00",
+        "registrationExpiresAt": "2026-09-14 09:00:00",
         "registered": True,
-        "auto-answer": False,
-        "created-at": "2026-01-02 03:04:05",
+        "autoAnswer": False,
+        "createdAt": "2026-01-02 03:04:05",
     }
     merged.update(attributes or {})
     return {
@@ -137,7 +136,7 @@ def _device_resource(*, attributes: dict[str, object] | None = None) -> dict[str
         "attributes": merged,
         "relationships": {
             "customer": {"data": {"type": "customers", "id": CUSTOMER_ID}},
-            "pbx-user": {"data": {"type": "users", "id": USER_ID}},
+            "pbxUser": {"data": {"type": "users", "id": USER_ID}},
         },
     }
 
@@ -148,7 +147,7 @@ def _call_record_resource(*, attributes: dict[str, object] | None = None) -> dic
     never sent.
     """
     merged: dict[str, object] = {
-        "type": "outbound",
+        "direction": "outbound",
         "disposition": "answered",
         "tenantId": TENANT,
         "domain": "acme.example",
@@ -204,11 +203,11 @@ _EXTENDED_ATTRIBUTES: dict[str, object] = {
 def _call_resource(*, attributes: dict[str, object] | None = None) -> dict[str, object]:
     merged: dict[str, object] = {
         "destination": "+13025046250",
-        "caller-id": None,
-        "auto-answer": False,
+        "callerId": None,
+        "autoAnswer": False,
         "device": None,
         "status": "requested",
-        "requested-at": "2026-09-15T09:30:00+00:00",
+        "requestedAt": "2026-09-15T09:30:00+00:00",
     }
     merged.update(attributes or {})
     return {"type": "calls", "id": CALL_ID, "attributes": merged}
@@ -427,8 +426,8 @@ async def test_call_records_list_builds_every_filter_and_the_page_query(
             customer=CUSTOMER_ID,
             started_after="2026-09-01T00:00:00Z",
             started_before="2026-09-30T23:59:59Z",
-            type="outbound",
-            fields=["type", "startedAt", "vendorId"],
+            direction="outbound",
+            fields=["direction", "startedAt", "vendorId"],
             user=USER_ID,
             call_id=CALL_ID,
             include_hidden=True,
@@ -444,11 +443,11 @@ async def test_call_records_list_builds_every_filter_and_the_page_query(
     assert params["filter[customer]"] == CUSTOMER_ID
     assert params["filter[startedAfter]"] == "2026-09-01T00:00:00Z"
     assert params["filter[startedBefore]"] == "2026-09-30T23:59:59Z"
-    assert params["filter[type]"] == "outbound"
-    assert params["fields[call-records]"] == "type,startedAt,vendorId"
+    assert params["filter[direction]"] == "outbound"
+    assert params["fields[call-records]"] == "direction,startedAt,vendorId"
     assert params["filter[user]"] == USER_ID
-    assert params["filter[call-id]"] == CALL_ID
-    assert params["filter[include-hidden]"] == "true"
+    assert params["filter[callId]"] == CALL_ID
+    assert params["filter[includeHidden]"] == "true"
     assert params["page[after]"] == "0198c4a1"
     assert params["page[size]"] == "100"
     assert "page[before]" not in params
@@ -495,7 +494,7 @@ async def test_call_records_list_sends_include_hidden_false_rather_than_dropping
     async with client:
         await client.pbx.call_records.list(include_hidden=False)
 
-    assert route.calls.last.request.url.params["filter[include-hidden]"] == "false"
+    assert route.calls.last.request.url.params["filter[includeHidden]"] == "false"
 
 
 @pytest.mark.anyio
@@ -511,7 +510,7 @@ async def test_call_records_get_reads_the_standard_tier_and_the_three_instants(
 
     assert isinstance(record, CallRecord)
     assert record.id == CALL_RECORD_ID
-    assert record.type == "outbound"
+    assert record.direction == "outbound"
     assert record.disposition == "answered"
     assert record.tenant_id == TENANT
     assert record.from_number == "+14075550101"
@@ -557,7 +556,7 @@ async def test_call_records_get_reads_every_extended_field_when_the_server_sent_
 
 
 @pytest.mark.parametrize(
-    ("call_type", "disposition"),
+    ("call_direction", "disposition"),
     [
         ("inbound", "answered"),
         ("inbound", "missed"),
@@ -567,14 +566,14 @@ async def test_call_records_get_reads_every_extended_field_when_the_server_sent_
 )
 @pytest.mark.anyio
 async def test_every_type_and_its_disposition_round_trip(
-    respx_mock: respx.MockRouter, client: AsyncRingivo, call_type: str, disposition: str
+    respx_mock: respx.MockRouter, client: AsyncRingivo, call_direction: str, disposition: str
 ) -> None:
     respx_mock.get(CALL_RECORD_URL).mock(
         return_value=httpx.Response(
             200,
             json={
                 "data": _call_record_resource(
-                    attributes={"type": call_type, "disposition": disposition}
+                    attributes={"direction": call_direction, "disposition": disposition}
                 )
             },
         )
@@ -583,7 +582,7 @@ async def test_every_type_and_its_disposition_round_trip(
     async with client:
         record = await client.pbx.call_records.get(CALL_RECORD_ID)
 
-    assert record.type == call_type
+    assert record.direction == call_direction
     assert record.disposition == disposition
 
 
@@ -599,7 +598,7 @@ async def test_a_number_field_is_e164_or_null_never_an_extension_or_a_dial_code(
             json={
                 "data": _call_record_resource(
                     attributes={
-                        "type": "onNet",
+                        "direction": "onNet",
                         "fromNumber": None,
                         "fromExtension": "300",
                         "toNumber": None,
@@ -678,9 +677,9 @@ async def test_call_posts_a_jsonapi_document_under_the_users_own_path(
     assert request.headers["content-type"] == JSONAPI
     assert body["data"]["type"] == "calls"
     assert body["data"]["attributes"]["destination"] == "+13025046250"
-    assert body["data"]["attributes"]["auto-answer"] is False
+    assert body["data"]["attributes"]["autoAnswer"] is False
     # Absent, not null — there is nothing to clear on a create.
-    assert "caller-id" not in body["data"]["attributes"]
+    assert "callerId" not in body["data"]["attributes"]
     assert "device" not in body["data"]["attributes"]
     assert isinstance(placed, PbxCall)
     assert placed.status == "requested"
@@ -698,8 +697,8 @@ async def test_call_sends_every_optional_attribute_it_was_given(
                     attributes={
                         # AS THE PLATFORM STORES IT — E.164 without the plus,
                         # which is not the spelling the request used.
-                        "caller-id": "14075550101",
-                        "auto-answer": True,
+                        "callerId": "14075550101",
+                        "autoAnswer": True,
                         "device": DEVICE_ID,
                     }
                 )
@@ -720,8 +719,8 @@ async def test_call_sends_every_optional_attribute_it_was_given(
 
     assert attributes == {
         "destination": "1002",
-        "auto-answer": True,
-        "caller-id": "+14075550101",
+        "autoAnswer": True,
+        "callerId": "+14075550101",
         "device": DEVICE_ID,
     }
     # The request went out WITH the plus; the answer is what the switch was

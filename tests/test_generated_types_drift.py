@@ -543,18 +543,18 @@ _READS: tuple[_Read, ...] = (
         models.PbxUser,
         "display_name",
         generated.PbxUserAttributes,
-        "display-name",
+        "displayName",
         "PbxUser._from_resource",
     ),
     _Read(
         models.PbxUser,
         "first_name",
         generated.PbxUserAttributes,
-        "first-name",
+        "firstName",
         "PbxUser._from_resource",
     ),
     _Read(
-        models.PbxUser, "last_name", generated.PbxUserAttributes, "last-name", "PbxUser._from_resource"
+        models.PbxUser, "last_name", generated.PbxUserAttributes, "lastName", "PbxUser._from_resource"
     ),
     _Read(models.PbxUser, "email", generated.PbxUserAttributes, "email", "PbxUser._from_resource"),
     _Read(models.PbxUser, "scope", generated.PbxUserAttributes, "scope", "PbxUser._from_resource"),
@@ -567,24 +567,24 @@ _READS: tuple[_Read, ...] = (
         models.PbxUser,
         "caller_id_number",
         generated.PbxUserAttributes,
-        "caller-id-number",
+        "callerIdNumber",
         "PbxUser._from_resource",
     ),
     _Read(
         models.PbxUser,
         "caller_id_name",
         generated.PbxUserAttributes,
-        "caller-id-name",
+        "callerIdName",
         "PbxUser._from_resource",
     ),
     _Read(
-        models.PbxUser, "time_zone", generated.PbxUserAttributes, "time-zone", "PbxUser._from_resource"
+        models.PbxUser, "time_zone", generated.PbxUserAttributes, "timeZone", "PbxUser._from_resource"
     ),
     _Read(
-        models.PbxUser, "created_at", generated.PbxUserAttributes, "created-at", "PbxUser._from_resource"
+        models.PbxUser, "created_at", generated.PbxUserAttributes, "createdAt", "PbxUser._from_resource"
     ),
     _Read(
-        models.PbxUser, "updated_at", generated.PbxUserAttributes, "updated-at", "PbxUser._from_resource"
+        models.PbxUser, "updated_at", generated.PbxUserAttributes, "updatedAt", "PbxUser._from_resource"
     ),
     _Read(
         models.PbxUser,
@@ -615,7 +615,7 @@ _READS: tuple[_Read, ...] = (
         models.PbxDevice,
         "user_agent",
         generated.PbxDeviceAttributes,
-        "user-agent",
+        "userAgent",
         "PbxDevice._from_resource",
     ),
     _Read(
@@ -632,21 +632,21 @@ _READS: tuple[_Read, ...] = (
         models.PbxDevice,
         "received_from",
         generated.PbxDeviceAttributes,
-        "received-from",
+        "receivedFrom",
         "PbxDevice._from_resource",
     ),
     _Read(
         models.PbxDevice,
         "registered_at",
         generated.PbxDeviceAttributes,
-        "registered-at",
+        "registeredAt",
         "PbxDevice._from_resource",
     ),
     _Read(
         models.PbxDevice,
         "registration_expires_at",
         generated.PbxDeviceAttributes,
-        "registration-expires-at",
+        "registrationExpiresAt",
         "PbxDevice._from_resource",
     ),
     _Read(
@@ -660,14 +660,14 @@ _READS: tuple[_Read, ...] = (
         models.PbxDevice,
         "auto_answer",
         generated.PbxDeviceAttributes,
-        "auto-answer",
+        "autoAnswer",
         "PbxDevice._from_resource",
     ),
     _Read(
         models.PbxDevice,
         "created_at",
         generated.PbxDeviceAttributes,
-        "created-at",
+        "createdAt",
         "PbxDevice._from_resource",
     ),
     _Read(
@@ -683,7 +683,7 @@ _READS: tuple[_Read, ...] = (
         models.PbxDevice,
         "pbx_user_id",
         generated.PbxDeviceRelationships,
-        "pbx-user",
+        "pbxUser",
         "PbxDevice._from_resource",
     ),
     # -- CallRecord._from_resource reads a CallRecordResource (id) + its ----
@@ -693,7 +693,7 @@ _READS: tuple[_Read, ...] = (
     # it — `from-pbx-user` is `fromPbxUser`, `to-pbx-user` is `toPbxUser`.
     _Read(models.CallRecord, "id", generated.CallRecordResource, "id", "CallRecord._from_resource"),
     _Read(
-        models.CallRecord, "type", generated.CallRecordAttributes, "type", "CallRecord._from_resource"
+        models.CallRecord, "direction", generated.CallRecordAttributes, "direction", "CallRecord._from_resource"
     ),
     _Read(
         models.CallRecord,
@@ -947,13 +947,13 @@ _READS: tuple[_Read, ...] = (
         "PbxCall._from_resource",
     ),
     _Read(
-        models.PbxCall, "caller_id", generated.PbxCallAttributes, "caller-id", "PbxCall._from_resource"
+        models.PbxCall, "caller_id", generated.PbxCallAttributes, "callerId", "PbxCall._from_resource"
     ),
     _Read(
         models.PbxCall,
         "auto_answer",
         generated.PbxCallAttributes,
-        "auto-answer",
+        "autoAnswer",
         "PbxCall._from_resource",
     ),
     _Read(models.PbxCall, "device", generated.PbxCallAttributes, "device", "PbxCall._from_resource"),
@@ -962,7 +962,7 @@ _READS: tuple[_Read, ...] = (
         models.PbxCall,
         "requested_at",
         generated.PbxCallAttributes,
-        "requested-at",
+        "requestedAt",
         "PbxCall._from_resource",
     ),
     # -- Customer._from_resource reads a CustomerResource (id) + its --------
