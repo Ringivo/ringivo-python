@@ -12178,9 +12178,9 @@ components:
     TranscriptAttributes:
       type: object
       # NOT A CLOSED SET, and the one member that proves it is `segments`: the single-transcript
-      # endpoint composes this schema with it (`TranscriptWithSegmentsResource`), so a validator that
-      # treated these ten as the whole of a transcript's attributes would reject that endpoint's own
-      # response. Redocly's example check is such a validator.
+      # endpoint composes this schema with it (`TranscriptWithSegmentsAttributes`), so a validator
+      # that treated these ten as the whole of a transcript's attributes would reject that
+      # endpoint's own response. Redocly's example check is such a validator.
       unevaluatedProperties: true
       properties:
         ccc-id:
@@ -12251,28 +12251,68 @@ components:
             the same id the recordings list publishes and the same id in every region.
         attributes:
           $ref: '#/components/schemas/TranscriptAttributes'
+    TranscriptWithSegmentsAttributes:
+      description: |
+        Everything `TranscriptAttributes` carries, plus the turns.
+      # COMPOSED HERE, INSIDE `attributes`, and never by overriding the `attributes` PROPERTY on a
+      # resource that already declares it — see `TranscriptWithSegmentsResource` below for what that
+      # cost. This `allOf` only ADDS a member to the set, which every generator models as an
+      # ordinary extension.
+      allOf:
+        - $ref: '#/components/schemas/TranscriptAttributes'
+        - type: object
+          properties:
+            segments:
+              type: array
+              description: |
+                The turns of the conversation, in the order they were spoken. An EMPTY array is a
+                real answer: nobody spoke, or the provider heard nothing it could separate into
+                turns.
+              items:
+                $ref: '#/components/schemas/TranscriptSegment'
     TranscriptWithSegmentsResource:
       description: |
         A transcript as the single-transcript endpoint serves it: everything the list carries, plus
         the turns. `segments` is the one member the list leaves out, because deriving the turns means
         reading the stored document and the list would pay that per capture.
+      # THIS COMPOSES TWO ANONYMOUS PARTS, and it does NOT `allOf` `TranscriptResource`, which is
+      # what it used to do. Both halves of that shape are load-bearing, and each is owed to a gate
+      # that the other one breaks:
+      #
+      # NOT `allOf: [TranscriptResource, {attributes: …}]`, because that narrows the INHERITED
+      # `attributes` property to a different type. A generator models it as a subclass re-declaring
+      # a mutable member, and a mutable member's type is invariant — so it reached the Ringivo
+      # Python SDK as `"attributes" overrides symbol of same name in class "TranscriptResource"`
+      # and red CI, while this repo's own generator smokes stayed green and could not see it
+      # (Ringivo/ringivo-python #77, 2026-09-22).
+      #
+      # NOT a plain `type: object` spelling it all out either, however much cleaner that reads: a
+      # top-level `properties.type.enum` is exactly how `openApiResourceAttributes()` recognises a
+      # resource schema, so a second one pinning `transcripts` trips its "two schemas pin the
+      # resource type" guard — the guard that stops layer 3 comparing a request against whichever
+      # attribute set was written last. Under `allOf` this schema has no top-level `properties`, so
+      # it stays what it has always been to that check: invisible, with `TranscriptResource` the one
+      # schema that pins the type.
+      #
+      # NOTHING ON THE WIRE CHANGED. The old and new spellings were fully dereferenced and
+      # allOf-merged and the normalised documents are byte-identical. Keep `type` and `id` below in
+      # step with `TranscriptResource` by hand — they are one contract in two places, which is the
+      # price of the composition that satisfies both gates.
       allOf:
-        - $ref: '#/components/schemas/TranscriptResource'
+        - type: object
+          required: [type, id]
+          properties:
+            type: { type: string, enum: [transcripts] }
+            id:
+              type: string
+              format: uuid
+              description: |
+                The RECORDING's id — a transcript is keyed by the capture it is of, one to one — so
+                it is the same id the recordings list publishes and the same id in every region.
         - type: object
           properties:
             attributes:
-              allOf:
-                - $ref: '#/components/schemas/TranscriptAttributes'
-                - type: object
-                  properties:
-                    segments:
-                      type: array
-                      description: |
-                        The turns of the conversation, in the order they were spoken. An EMPTY array
-                        is a real answer: nobody spoke, or the provider heard nothing it could
-                        separate into turns.
-                      items:
-                        $ref: '#/components/schemas/TranscriptSegment'
+              $ref: '#/components/schemas/TranscriptWithSegmentsAttributes'
     TranscriptCollectionDocument:
       type: object
       required: [data]

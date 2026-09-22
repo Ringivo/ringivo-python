@@ -2001,26 +2001,14 @@ class TranscriptResource(TypedDict):
     attributes: NotRequired[TranscriptAttributes]
 
 
-Attributes9 = TypedDict(
-    'Attributes9',
-    {
-        'ccc-id': NotRequired[str],
-        'status': NotRequired[Literal['ready', 'pending']],
-        'language': NotRequired[str | None],
-        'duration': NotRequired[int | None],
-        'byte-size': NotRequired[int | None],
-        'sha256': NotRequired[str | None],
-        'provider': NotRequired[str | None],
-        'model': NotRequired[str | None],
-        'content-url': NotRequired[str | None],
-        'expires-at': NotRequired[str | None],
-        'segments': NotRequired[list[TranscriptSegment]],
-    },
-)
+class TranscriptWithSegmentsAttributes(TranscriptAttributes):
+    segments: NotRequired[list[TranscriptSegment]]
 
 
-class TranscriptWithSegmentsResource(TranscriptResource):
-    attributes: NotRequired[Attributes9]
+class TranscriptWithSegmentsResource(TypedDict):
+    type: Literal['transcripts']
+    id: str
+    attributes: NotRequired[TranscriptWithSegmentsAttributes]
 
 
 class TranscriptCollectionDocument(TypedDict):
