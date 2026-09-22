@@ -182,30 +182,33 @@ def _call_record_resource(
     relationships: dict[str, object] | None = None,
     attributes: dict[str, object] | None = None,
 ) -> dict[str, object]:
+    """One resource object, STANDARD TIER ONLY — no extended member present
+    at all, the way the real API omits them when `fields[call-records]` was
+    never sent. `_EXTENDED_ATTRIBUTES` below is what a caller who asked for
+    the extended tier gets layered on top.
+    """
     merged: dict[str, object] = {
-        "direction": "inbound",
+        "type": "inbound",
         "disposition": "answered",
-        "vendor-type": 1,
+        "tenantId": TENANT,
         "domain": "acme.example",
-        "from-number": "+13025556789",
-        "to-number": "+14075550101",
-        "from-user": "",
-        "from-uri": "sip:+13025556789@carrier.example",
-        "from-name": "Dr Bell",
-        "to-user": "101",
-        "to-uri": "sip:101@acme.example",
-        "dialed": "+14075550101",
-        "by-user": "",
-        "term-user": "101",
-        "started-at": "2026-09-12T14:00:00+00:00",
-        "answered-at": "2026-09-12T14:00:04+00:00",
-        "released-at": "2026-09-12T14:01:04+00:00",
-        "duration": 64,
-        "talk-time": 60,
-        "tag": "clinic",
+        "territory": "telimatic",
+        "fromNumber": "+13025556789",
+        "fromExtension": None,
+        "fromName": "Dr Bell",
+        "toNumber": "+14075550101",
+        "dialedNumber": "+14075550101",
+        "routedByExtension": None,
+        "answeringExtension": "101",
+        "startedAt": "2026-09-12T14:00:00Z",
+        "answeredAt": "2026-09-12T14:00:04Z",
+        "releasedAt": "2026-09-12T14:01:04Z",
+        "durationSeconds": 64,
+        "talkSeconds": 60,
+        "releaseCode": "end",
+        "releaseText": "Orig: Bye",
+        "hasRecording": True,
         "hidden": False,
-        "has-recording": True,
-        "vendor-id": "20260912000000000001c0ffee0123456789abcdef",
     }
     merged.update(attributes or {})
     return {
@@ -217,11 +220,29 @@ def _call_record_resource(
             if relationships is not None
             else {
                 "customer": {"data": {"type": "customers", "id": CUSTOMER_ID}},
-                "from-pbx-user": {"data": None},
-                "to-pbx-user": {"data": {"type": "users", "id": USER_ID}},
+                "fromPbxUser": {"data": None},
+                "toPbxUser": {"data": {"type": "users", "id": USER_ID}},
             }
         ),
     }
+
+
+#: The EXTENDED tier's own values, layered onto `_call_record_resource()`'s
+#: `attributes=` to simulate a response that named every one of them in
+#: `fields[call-records]`.
+_EXTENDED_ATTRIBUTES: dict[str, object] = {
+    "vendorId": "20260912000000000001c0ffee0123456789abcdef",
+    "origCallId": "orig-call-id-0001",
+    "termCallId": "term-call-id-0001",
+    "byAction": "ForwardNoAns",
+    "terminatedTo": "sip:106@acme.example",
+    "codec": "PCMU",
+    "hostname": "sw-use1-03",
+    "rawFromUri": "sip:+13025556789@carrier.example",
+    "rawFromUser": "13025556789",
+    "rawToUser": "14075550101",
+    "rawRequestUser": "14075550101",
+}
 
 
 def _call_resource(*, attributes: dict[str, object] | None = None) -> dict[str, object]:
@@ -640,7 +661,8 @@ def test_call_records_list_builds_every_filter_and_the_page_query(
             customer=CUSTOMER_ID,
             started_after="2026-09-01T00:00:00Z",
             started_before="2026-09-30T23:59:59Z",
-            direction="inbound",
+            type="inbound",
+            fields=["type", "startedAt", "origCallId", "terminatedTo"],
             user=USER_ID,
             call_id=CALL_ID,
             include_hidden=True,
@@ -653,19 +675,43 @@ def test_call_records_list_builds_every_filter_and_the_page_query(
 
     assert request.url.path == "/v1/pbx/call-records"
     assert params["filter[customer]"] == CUSTOMER_ID
-    # The date range is KEBAB-CASE here, unlike the fax collection's
-    # `filter[created_after]`. Two servers, two spellings, and only the
-    # spec settles which is which.
-    assert params["filter[started-after]"] == "2026-09-01T00:00:00Z"
-    assert params["filter[started-before]"] == "2026-09-30T23:59:59Z"
-    assert params["filter[direction]"] == "inbound"
+    # The date range moved to CAMELCASE with the 0.10.0 rebuild — every
+    # other filter on this resource stayed kebab-case (`filter[call-id]`,
+    # `filter[include-hidden]`), and only the spec settles which is which.
+    assert params["filter[startedAfter]"] == "2026-09-01T00:00:00Z"
+    assert params["filter[startedBefore]"] == "2026-09-30T23:59:59Z"
+    assert params["filter[type]"] == "inbound"
+    # ONE comma-joined value, the API's own sparse-fieldset syntax — not a
+    # repeated `fields[call-records][]=` pair like `filter[id][]`.
+    assert params["fields[call-records]"] == "type,startedAt,origCallId,terminatedTo"
     assert params["filter[user]"] == USER_ID
-    # The id `users.call()` answered with, KEBAB-CASE like the date range.
+    # The id `users.call()` answered with, KEBAB-CASE like `include-hidden`.
     assert params["filter[call-id]"] == CALL_ID
     assert params["filter[include-hidden]"] == "true"
     assert params["page[after]"] == "0198c4a1"
     assert params["page[size]"] == "100"
     assert "page[before]" not in params
+
+
+def test_call_records_list_with_no_fields_sends_no_fields_parameter(
+    respx_mock: respx.MockRouter, client: Ringivo
+) -> None:
+    route = respx_mock.get(CALL_RECORDS_URL).mock(
+        return_value=httpx.Response(200, json={"data": []})
+    )
+
+    with client:
+        client.pbx.call_records.list()
+
+    assert "fields[call-records]" not in route.calls.last.request.url.params
+
+
+def test_call_records_list_refuses_a_bare_string_of_fields(client: Ringivo) -> None:
+    # The same footgun `customers.list(ids=...)` refuses: a `str` IS a
+    # `Sequence[str]`, so `fields="type"` would be read one character at a
+    # time rather than as one field name.
+    with client, pytest.raises(ValueError, match="fields must be a list of field names"):
+        cast(Any, client.pbx.call_records).list(fields="type")
 
 
 def test_call_records_list_no_longer_sends_a_disposition_filter(
@@ -722,8 +768,8 @@ def test_call_records_list_with_no_range_asks_for_no_range(
 
     assert isinstance(page, CallRecordPage)
     params = route.calls.last.request.url.params
-    assert "filter[started-after]" not in params
-    assert "filter[started-before]" not in params
+    assert "filter[startedAfter]" not in params
+    assert "filter[startedBefore]" not in params
 
 
 def test_a_range_wider_than_the_ceiling_is_the_servers_refusal_to_make(
@@ -742,7 +788,7 @@ def test_a_range_wider_than_the_ceiling_is_the_servers_refusal_to_make(
                         "code": "invalid_query",
                         "title": "Bad query",
                         "detail": "The date range may not be wider than 13 months.",
-                        "source": {"parameter": "filter[started-after]"},
+                        "source": {"parameter": "filter[startedAfter]"},
                         "meta": {"filter": {"maxMonths": 13}},
                     }
                 ]
@@ -755,12 +801,12 @@ def test_a_range_wider_than_the_ceiling_is_the_servers_refusal_to_make(
             started_after="2020-01-01T00:00:00Z", started_before="2026-09-01T00:00:00Z"
         )
 
-    assert route.calls.last.request.url.params["filter[started-after]"] == "2020-01-01T00:00:00Z"
+    assert route.calls.last.request.url.params["filter[startedAfter]"] == "2020-01-01T00:00:00Z"
     assert caught.value.status_code == 400
     assert caught.value.errors[0].meta == {"filter": {"maxMonths": 13}}
 
 
-def test_a_direction_this_collection_does_not_publish_is_refused_by_the_api(
+def test_a_type_this_collection_does_not_publish_is_refused_by_the_api(
     respx_mock: respx.MockRouter, client: Ringivo
 ) -> None:
     # Passed through rather than validated here, for the reason
@@ -776,8 +822,8 @@ def test_a_direction_this_collection_does_not_publish_is_refused_by_the_api(
                         "status": "400",
                         "code": "invalid_query",
                         "title": "Bad query",
-                        "detail": "filter[direction] must be one of: outbound, inbound, on-net.",
-                        "source": {"parameter": "filter[direction]"},
+                        "detail": "filter[type] must be one of: inbound, outbound, onNet.",
+                        "source": {"parameter": "filter[type]"},
                     }
                 ]
             },
@@ -785,13 +831,13 @@ def test_a_direction_this_collection_does_not_publish_is_refused_by_the_api(
     )
 
     with client, pytest.raises(ApiError) as caught:
-        client.pbx.call_records.list(direction="sideways")
+        client.pbx.call_records.list(type="sideways")
 
-    assert route.calls.last.request.url.params["filter[direction]"] == "sideways"
-    assert caught.value.errors[0].source == {"parameter": "filter[direction]"}
+    assert route.calls.last.request.url.params["filter[type]"] == "sideways"
+    assert caught.value.errors[0].source == {"parameter": "filter[type]"}
 
 
-def test_call_records_get_reads_a_jsonapi_document_into_the_public_dataclass(
+def test_call_records_get_reads_the_standard_tier_into_the_public_dataclass(
     respx_mock: respx.MockRouter, client: Ringivo
 ) -> None:
     respx_mock.get(CALL_RECORD_URL).mock(
@@ -803,31 +849,83 @@ def test_call_records_get_reads_a_jsonapi_document_into_the_public_dataclass(
 
     assert isinstance(record, CallRecord)
     assert record.id == CALL_RECORD_ID
-    assert record.direction == "inbound"
+    assert record.type == "inbound"
     assert record.disposition == "answered"
-    assert record.vendor_type == 1
+    assert record.tenant_id == TENANT
     assert record.domain == "acme.example"
+    assert record.territory == "telimatic"
     assert record.from_number == "+13025556789"
-    assert record.to_number == "+14075550101"
-    assert record.from_user == ""
-    assert record.from_uri == "sip:+13025556789@carrier.example"
+    assert record.from_extension is None
     assert record.from_name == "Dr Bell"
-    assert record.to_user == "101"
-    assert record.to_uri == "sip:101@acme.example"
-    assert record.dialed == "+14075550101"
-    assert record.by_user == ""
-    assert record.term_user == "101"
-    assert record.duration == 64
-    assert record.talk_time == 60
-    assert record.tag == "clinic"
+    assert record.to_number == "+14075550101"
+    assert record.dialed_number == "+14075550101"
+    assert record.routed_by_extension is None
+    assert record.answering_extension == "101"
+    assert record.duration_seconds == 64
+    assert record.talk_seconds == 60
+    assert record.release_code == "end"
+    assert record.release_text == "Orig: Bye"
     assert record.hidden is False
     assert record.has_recording is True
-    assert record.vendor_id == "20260912000000000001c0ffee0123456789abcdef"
     assert record.customer_id == CUSTOMER_ID
     # An outside caller has no subscriber to point at, and the API says so
     # with an explicit null linkage rather than by leaving the member out.
     assert record.from_pbx_user_id is None
     assert record.to_pbx_user_id == USER_ID
+
+
+def test_call_records_get_leaves_the_extended_tier_none_when_not_asked_for(
+    respx_mock: respx.MockRouter, client: Ringivo
+) -> None:
+    # `_call_record_resource()` sends ONLY the standard set — the real shape
+    # of a response that never named `fields[call-records]` — so every
+    # extended attribute reads back None rather than a missing-key crash.
+    respx_mock.get(CALL_RECORD_URL).mock(
+        return_value=httpx.Response(200, json={"data": _call_record_resource()})
+    )
+
+    with client:
+        record = client.pbx.call_records.get(CALL_RECORD_ID)
+
+    assert record.vendor_id is None
+    assert record.orig_call_id is None
+    assert record.term_call_id is None
+    assert record.by_action is None
+    assert record.terminated_to is None
+    assert record.codec is None
+    assert record.hostname is None
+    assert record.raw_from_uri is None
+    assert record.raw_from_user is None
+    assert record.raw_to_user is None
+    assert record.raw_request_user is None
+
+
+def test_call_records_get_reads_every_extended_field_when_the_server_sent_them(
+    respx_mock: respx.MockRouter, client: Ringivo
+) -> None:
+    # The other half: a response that DID name every extended field in
+    # `fields[call-records]` — simulated by sending them all, the way
+    # `_call_record_resource(attributes=_EXTENDED_ATTRIBUTES)` does.
+    respx_mock.get(CALL_RECORD_URL).mock(
+        return_value=httpx.Response(
+            200, json={"data": _call_record_resource(attributes=_EXTENDED_ATTRIBUTES)}
+        )
+    )
+
+    with client:
+        record = client.pbx.call_records.get(CALL_RECORD_ID)
+
+    assert record.vendor_id == "20260912000000000001c0ffee0123456789abcdef"
+    assert record.orig_call_id == "orig-call-id-0001"
+    assert record.term_call_id == "term-call-id-0001"
+    assert record.by_action == "ForwardNoAns"
+    assert record.terminated_to == "sip:106@acme.example"
+    assert record.codec == "PCMU"
+    assert record.hostname == "sw-use1-03"
+    assert record.raw_from_uri == "sip:+13025556789@carrier.example"
+    assert record.raw_from_user == "13025556789"
+    assert record.raw_to_user == "14075550101"
+    assert record.raw_request_user == "14075550101"
 
 
 def test_a_call_records_three_instants_are_parsed_unlike_the_other_two_resources(
@@ -848,6 +946,39 @@ def test_a_call_records_three_instants_are_parsed_unlike_the_other_two_resources
     assert record.released_at == datetime(2026, 9, 12, 14, 1, 4, tzinfo=timezone.utc)
 
 
+@pytest.mark.parametrize(
+    ("call_type", "disposition"),
+    [
+        ("inbound", "answered"),
+        ("inbound", "missed"),
+        ("outbound", "answered"),
+        ("onNet", "answered"),
+    ],
+)
+def test_every_type_and_its_disposition_round_trip(
+    respx_mock: respx.MockRouter, client: Ringivo, call_type: str, disposition: str
+) -> None:
+    # `type` is inbound, outbound or onNet; only `inbound` can be missed —
+    # `disposition` is the orthogonal half of the same vendor integer, and
+    # this reads every combination the API actually publishes back unchanged.
+    respx_mock.get(CALL_RECORD_URL).mock(
+        return_value=httpx.Response(
+            200,
+            json={
+                "data": _call_record_resource(
+                    attributes={"type": call_type, "disposition": disposition}
+                )
+            },
+        )
+    )
+
+    with client:
+        record = client.pbx.call_records.get(CALL_RECORD_ID)
+
+    assert record.type == call_type
+    assert record.disposition == disposition
+
+
 def test_a_missed_call_carries_no_answered_at(
     respx_mock: respx.MockRouter, client: Ringivo
 ) -> None:
@@ -857,11 +988,10 @@ def test_a_missed_call_carries_no_answered_at(
             json={
                 "data": _call_record_resource(
                     attributes={
-                        "direction": "inbound",
+                        "type": "inbound",
                         "disposition": "missed",
-                        "vendor-type": 2,
-                        "answered-at": None,
-                        "talk-time": 0,
+                        "answeredAt": None,
+                        "talkSeconds": 0,
                     }
                 )
             },
@@ -872,48 +1002,52 @@ def test_a_missed_call_carries_no_answered_at(
         record = client.pbx.call_records.get(CALL_RECORD_ID)
 
     assert record.disposition == "missed"
-    assert record.vendor_type == 2
     assert record.answered_at is None
-    assert record.talk_time == 0
+    assert record.talk_seconds == 0
 
 
-def test_a_vendor_type_with_no_word_for_it_arrives_as_its_own_digits(
+def test_a_call_type_with_no_word_for_it_arrives_as_its_own_digits(
     respx_mock: respx.MockRouter, client: Ringivo
 ) -> None:
-    # The API publishes an unknown integer as a STRING in `direction` rather
-    # than as null, so a vocabulary that grows at the switch's end never
-    # erases a call. This client passes that through — it keeps no enum of
-    # its own to fall foul of.
+    # The API publishes an unknown integer as a STRING in `type` rather than
+    # as null, so a vocabulary that grows at the switch's end never erases a
+    # call. This client passes that through — it keeps no enum of its own to
+    # fall foul of.
     respx_mock.get(CALL_RECORD_URL).mock(
         return_value=httpx.Response(
             200,
-            json={"data": _call_record_resource(
-                attributes={"direction": "9", "disposition": None, "vendor-type": 9}
-            )},
+            json={"data": _call_record_resource(attributes={"type": "9", "disposition": None})},
         )
     )
 
     with client:
         record = client.pbx.call_records.get(CALL_RECORD_ID)
 
-    assert record.direction == "9"
+    assert record.type == "9"
     assert record.disposition is None
-    assert record.vendor_type == 9
 
 
-def test_from_number_and_to_number_pass_through_extensions_and_dial_codes_unchanged(
+def test_a_number_field_is_e164_or_null_never_an_extension_or_a_dial_code(
     respx_mock: respx.MockRouter, client: Ringivo
 ) -> None:
-    # The API normalises a North American number to E.164 but passes an
-    # extension, a dial code or a star code through byte for byte — this
-    # client reads whichever spelling arrives, the same as every other
-    # field here, rather than reshaping either one.
+    # Unlike the retired surface, `fromNumber`/`toNumber`/`dialedNumber` are
+    # E.164 or nothing at all — the console does the normalise-then-CHECK
+    # itself now, so an extension lives in `fromExtension` instead and this
+    # client has nothing left to reshape.
     respx_mock.get(CALL_RECORD_URL).mock(
         return_value=httpx.Response(
             200,
             json={
                 "data": _call_record_resource(
-                    attributes={"direction": "on-net", "from-number": "300", "to-number": "08113"}
+                    attributes={
+                        "type": "onNet",
+                        "fromNumber": None,
+                        "fromExtension": "300",
+                        "toNumber": None,
+                        "dialedNumber": None,
+                        "routedByExtension": "500",
+                        "answeringExtension": "08113",
+                    }
                 )
             },
         )
@@ -922,8 +1056,12 @@ def test_from_number_and_to_number_pass_through_extensions_and_dial_codes_unchan
     with client:
         record = client.pbx.call_records.get(CALL_RECORD_ID)
 
-    assert record.from_number == "300"
-    assert record.to_number == "08113"
+    assert record.from_number is None
+    assert record.to_number is None
+    assert record.dialed_number is None
+    assert record.from_extension == "300"
+    assert record.routed_by_extension == "500"
+    assert record.answering_extension == "08113"
 
 
 def test_a_hidden_record_is_served_on_a_direct_read(

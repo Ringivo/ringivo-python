@@ -1764,7 +1764,7 @@ class SipTrunkTargetUpdateRequest(TypedDict):
     data: Data26
 
 
-CallDirection: TypeAlias = Literal['outbound', 'inbound', 'on-net']
+CallType: TypeAlias = Literal['inbound', 'outbound', 'onNet']
 
 
 CallDisposition: TypeAlias = Literal['answered', 'missed']
@@ -1902,42 +1902,45 @@ class PbxDeviceCollectionDocument(TypedDict):
     meta: NotRequired[DocumentMeta]
 
 
-CallRecordAttributes = TypedDict(
-    'CallRecordAttributes',
-    {
-        'direction': NotRequired[CallDirection],
-        'disposition': NotRequired[CallDisposition],
-        'vendor-type': NotRequired[int | None],
-        'domain': NotRequired[str | None],
-        'from-user': NotRequired[str | None],
-        'from-uri': NotRequired[str | None],
-        'from-name': NotRequired[str | None],
-        'to-user': NotRequired[str | None],
-        'to-uri': NotRequired[str | None],
-        'dialed': NotRequired[str | None],
-        'by-user': NotRequired[str | None],
-        'term-user': NotRequired[str | None],
-        'started-at': NotRequired[str | None],
-        'answered-at': NotRequired[str | None],
-        'released-at': NotRequired[str | None],
-        'duration': NotRequired[int | None],
-        'talk-time': NotRequired[int | None],
-        'tag': NotRequired[str | None],
-        'hidden': NotRequired[bool],
-        'has-recording': NotRequired[bool],
-        'vendor-id': NotRequired[str | None],
-    },
-)
+class CallRecordAttributes(TypedDict):
+    type: NotRequired[CallType]
+    disposition: NotRequired[CallDisposition]
+    tenantId: NotRequired[str | None]
+    domain: NotRequired[str | None]
+    territory: NotRequired[str | None]
+    fromNumber: NotRequired[str | None]
+    fromExtension: NotRequired[str | None]
+    fromName: NotRequired[str | None]
+    toNumber: NotRequired[str | None]
+    dialedNumber: NotRequired[str | None]
+    routedByExtension: NotRequired[str | None]
+    answeringExtension: NotRequired[str | None]
+    startedAt: NotRequired[str | None]
+    answeredAt: NotRequired[str | None]
+    releasedAt: NotRequired[str | None]
+    durationSeconds: NotRequired[int | None]
+    talkSeconds: NotRequired[int | None]
+    releaseCode: NotRequired[str | None]
+    releaseText: NotRequired[str | None]
+    hasRecording: NotRequired[bool]
+    hidden: NotRequired[bool]
+    vendorId: NotRequired[str | None]
+    origCallId: NotRequired[str | None]
+    termCallId: NotRequired[str | None]
+    byAction: NotRequired[str | None]
+    terminatedTo: NotRequired[str | None]
+    codec: NotRequired[str | None]
+    hostname: NotRequired[str | None]
+    rawFromUri: NotRequired[str | None]
+    rawFromUser: NotRequired[str | None]
+    rawToUser: NotRequired[str | None]
+    rawRequestUser: NotRequired[str | None]
 
 
-CallRecordRelationships = TypedDict(
-    'CallRecordRelationships',
-    {
-        'customer': NotRequired[RelationshipToOne],
-        'from-pbx-user': NotRequired[RelationshipToOne],
-        'to-pbx-user': NotRequired[RelationshipToOne],
-    },
-)
+class CallRecordRelationships(TypedDict):
+    customer: NotRequired[RelationshipToOne]
+    fromPbxUser: NotRequired[RelationshipToOne]
+    toPbxUser: NotRequired[RelationshipToOne]
 
 
 class CallRecordResource(TypedDict):

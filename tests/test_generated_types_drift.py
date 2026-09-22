@@ -687,14 +687,13 @@ _READS: tuple[_Read, ...] = (
         "PbxDevice._from_resource",
     ),
     # -- CallRecord._from_resource reads a CallRecordResource (id) + its ----
-    # CallRecordAttributes, plus all three relationship linkages.
+    # CallRecordAttributes, plus all three relationship linkages. The whole
+    # resource was rebuilt with no backward compatibility (0.10.0): every
+    # attribute key is camelCase now, and the relationship names moved with
+    # it — `from-pbx-user` is `fromPbxUser`, `to-pbx-user` is `toPbxUser`.
     _Read(models.CallRecord, "id", generated.CallRecordResource, "id", "CallRecord._from_resource"),
     _Read(
-        models.CallRecord,
-        "direction",
-        generated.CallRecordAttributes,
-        "direction",
-        "CallRecord._from_resource",
+        models.CallRecord, "type", generated.CallRecordAttributes, "type", "CallRecord._from_resource"
     ),
     _Read(
         models.CallRecord,
@@ -705,9 +704,9 @@ _READS: tuple[_Read, ...] = (
     ),
     _Read(
         models.CallRecord,
-        "vendor_type",
+        "tenant_id",
         generated.CallRecordAttributes,
-        "vendor-type",
+        "tenantId",
         "CallRecord._from_resource",
     ),
     _Read(
@@ -717,123 +716,196 @@ _READS: tuple[_Read, ...] = (
         "domain",
         "CallRecord._from_resource",
     ),
-    # from_number and to_number are NOT here. spec/openapi.yaml has not synced
-    # the console API's `from-number`/`to-number` attributes yet, so they are
-    # excluded below with a tripwire — the same shape as PbxCall's fields
-    # before click-to-dial reached the spec.
     _Read(
         models.CallRecord,
-        "from_user",
+        "territory",
         generated.CallRecordAttributes,
-        "from-user",
+        "territory",
         "CallRecord._from_resource",
     ),
     _Read(
         models.CallRecord,
-        "from_uri",
+        "from_number",
         generated.CallRecordAttributes,
-        "from-uri",
+        "fromNumber",
+        "CallRecord._from_resource",
+    ),
+    _Read(
+        models.CallRecord,
+        "from_extension",
+        generated.CallRecordAttributes,
+        "fromExtension",
         "CallRecord._from_resource",
     ),
     _Read(
         models.CallRecord,
         "from_name",
         generated.CallRecordAttributes,
-        "from-name",
+        "fromName",
         "CallRecord._from_resource",
     ),
     _Read(
         models.CallRecord,
-        "to_user",
+        "to_number",
         generated.CallRecordAttributes,
-        "to-user",
+        "toNumber",
         "CallRecord._from_resource",
     ),
     _Read(
         models.CallRecord,
-        "to_uri",
+        "dialed_number",
         generated.CallRecordAttributes,
-        "to-uri",
+        "dialedNumber",
         "CallRecord._from_resource",
     ),
     _Read(
         models.CallRecord,
-        "dialed",
+        "routed_by_extension",
         generated.CallRecordAttributes,
-        "dialed",
+        "routedByExtension",
         "CallRecord._from_resource",
     ),
     _Read(
         models.CallRecord,
-        "by_user",
+        "answering_extension",
         generated.CallRecordAttributes,
-        "by-user",
-        "CallRecord._from_resource",
-    ),
-    _Read(
-        models.CallRecord,
-        "term_user",
-        generated.CallRecordAttributes,
-        "term-user",
+        "answeringExtension",
         "CallRecord._from_resource",
     ),
     _Read(
         models.CallRecord,
         "started_at",
         generated.CallRecordAttributes,
-        "started-at",
+        "startedAt",
         "CallRecord._from_resource",
     ),
     _Read(
         models.CallRecord,
         "answered_at",
         generated.CallRecordAttributes,
-        "answered-at",
+        "answeredAt",
         "CallRecord._from_resource",
     ),
     _Read(
         models.CallRecord,
         "released_at",
         generated.CallRecordAttributes,
-        "released-at",
+        "releasedAt",
         "CallRecord._from_resource",
     ),
     _Read(
         models.CallRecord,
-        "duration",
+        "duration_seconds",
         generated.CallRecordAttributes,
-        "duration",
+        "durationSeconds",
         "CallRecord._from_resource",
     ),
     _Read(
         models.CallRecord,
-        "talk_time",
+        "talk_seconds",
         generated.CallRecordAttributes,
-        "talk-time",
+        "talkSeconds",
         "CallRecord._from_resource",
     ),
     _Read(
-        models.CallRecord, "tag", generated.CallRecordAttributes, "tag", "CallRecord._from_resource"
+        models.CallRecord,
+        "release_code",
+        generated.CallRecordAttributes,
+        "releaseCode",
+        "CallRecord._from_resource",
     ),
     _Read(
         models.CallRecord,
-        "hidden",
+        "release_text",
         generated.CallRecordAttributes,
-        "hidden",
+        "releaseText",
         "CallRecord._from_resource",
     ),
     _Read(
         models.CallRecord,
         "has_recording",
         generated.CallRecordAttributes,
-        "has-recording",
+        "hasRecording",
+        "CallRecord._from_resource",
+    ),
+    _Read(
+        models.CallRecord,
+        "hidden",
+        generated.CallRecordAttributes,
+        "hidden",
         "CallRecord._from_resource",
     ),
     _Read(
         models.CallRecord,
         "vendor_id",
         generated.CallRecordAttributes,
-        "vendor-id",
+        "vendorId",
+        "CallRecord._from_resource",
+    ),
+    _Read(
+        models.CallRecord,
+        "orig_call_id",
+        generated.CallRecordAttributes,
+        "origCallId",
+        "CallRecord._from_resource",
+    ),
+    _Read(
+        models.CallRecord,
+        "term_call_id",
+        generated.CallRecordAttributes,
+        "termCallId",
+        "CallRecord._from_resource",
+    ),
+    _Read(
+        models.CallRecord,
+        "by_action",
+        generated.CallRecordAttributes,
+        "byAction",
+        "CallRecord._from_resource",
+    ),
+    _Read(
+        models.CallRecord,
+        "terminated_to",
+        generated.CallRecordAttributes,
+        "terminatedTo",
+        "CallRecord._from_resource",
+    ),
+    _Read(
+        models.CallRecord, "codec", generated.CallRecordAttributes, "codec", "CallRecord._from_resource"
+    ),
+    _Read(
+        models.CallRecord,
+        "hostname",
+        generated.CallRecordAttributes,
+        "hostname",
+        "CallRecord._from_resource",
+    ),
+    _Read(
+        models.CallRecord,
+        "raw_from_uri",
+        generated.CallRecordAttributes,
+        "rawFromUri",
+        "CallRecord._from_resource",
+    ),
+    _Read(
+        models.CallRecord,
+        "raw_from_user",
+        generated.CallRecordAttributes,
+        "rawFromUser",
+        "CallRecord._from_resource",
+    ),
+    _Read(
+        models.CallRecord,
+        "raw_to_user",
+        generated.CallRecordAttributes,
+        "rawToUser",
+        "CallRecord._from_resource",
+    ),
+    _Read(
+        models.CallRecord,
+        "raw_request_user",
+        generated.CallRecordAttributes,
+        "rawRequestUser",
         "CallRecord._from_resource",
     ),
     _Read(
@@ -847,14 +919,14 @@ _READS: tuple[_Read, ...] = (
         models.CallRecord,
         "from_pbx_user_id",
         generated.CallRecordRelationships,
-        "from-pbx-user",
+        "fromPbxUser",
         "CallRecord._from_resource",
     ),
     _Read(
         models.CallRecord,
         "to_pbx_user_id",
         generated.CallRecordRelationships,
-        "to-pbx-user",
+        "toPbxUser",
         "CallRecord._from_resource",
     ),
     # -- PbxCall._from_resource reads a PbxCallResource (id) + its ----------
@@ -1050,16 +1122,6 @@ _EXCLUDED: dict[tuple[type, str], str] = {
     (models.PbxUser, "raw"): "holds the whole source mapping this object was built from",
     (models.PbxDevice, "raw"): "holds the whole source mapping this object was built from",
     (models.CallRecord, "raw"): "holds the whole source mapping this object was built from",
-    (models.CallRecord, "from_number"): (
-        "ahead of the generated types: spec/openapi.yaml has not synced the console API's "
-        "from-number attribute yet — see test_the_call_record_from_number_and_to_number_are_"
-        "still_missing_from_the_spec below"
-    ),
-    (models.CallRecord, "to_number"): (
-        "ahead of the generated types: spec/openapi.yaml has not synced the console API's "
-        "to-number attribute yet — see test_the_call_record_from_number_and_to_number_are_"
-        "still_missing_from_the_spec below"
-    ),
     (models.PbxCall, "raw"): "holds the whole source mapping this object was built from",
     (models.Customer, "raw"): "holds the whole source mapping this object was built from",
 }
@@ -1150,7 +1212,7 @@ def test_every_field_a_model_reads_is_covered_by_the_read_table() -> None:
 
 
 def test_every_field_a_model_reads_exists_in_the_generated_types() -> None:
-    assert len(_READS) == 168, f"{len(_READS)} reads were checked, not 168 — the sweep is broken"
+    assert len(_READS) == 179, f"{len(_READS)} reads were checked, not 179 — the sweep is broken"
 
     failures: list[str] = []
     for read in _READS:
@@ -1181,29 +1243,3 @@ def test_every_deliberately_unread_key_still_exists_to_be_unread() -> None:
     ]
 
     assert stale == [], "\n".join(stale)
-
-
-def test_the_call_record_from_number_and_to_number_are_still_missing_from_the_spec() -> None:
-    """The other half of the `_EXCLUDED` entries above. `CallRecord.from_number`
-    and `.to_number` were added to models.py ahead of `spec/openapi.yaml`
-    syncing the console API's `from-number`/`to-number` attributes — the same
-    situation `PbxCall` was in before click-to-dial reached the spec, and
-    resolved the same way: exclude the fields, and pin the exclusion with a
-    tripwire so it cannot go stale silently.
-
-    THIS FAILS the day `scripts/generate.sh` regenerates `_generated_types`
-    with those two keys. The fix, when it does: move
-    `(models.CallRecord, "from_number")` and `(models.CallRecord,
-    "to_number")` out of `_EXCLUDED` and into `_READS` (mirroring
-    `from_user`/`to_user` immediately above them), bump `_READS`' count by
-    two, and delete this test.
-    """
-    keys = _generated_keys(generated.CallRecordAttributes)
-    assert "from-number" not in keys, (
-        "CallRecordAttributes now carries 'from-number' — move "
-        "(models.CallRecord, 'from_number') from _EXCLUDED into _READS and delete this tripwire"
-    )
-    assert "to-number" not in keys, (
-        "CallRecordAttributes now carries 'to-number' — move "
-        "(models.CallRecord, 'to_number') from _EXCLUDED into _READS and delete this tripwire"
-    )

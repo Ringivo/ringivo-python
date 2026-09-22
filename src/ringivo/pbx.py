@@ -47,7 +47,7 @@ months is refused with a 400 carrying `meta: {"filter": {"maxMonths": 13}}`.
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from typing import TYPE_CHECKING, Any
 
 from .fax_accounts import _JSONAPI
@@ -76,6 +76,14 @@ _CALL_RECORD_NOUN = "call record"
 #: A call REQUEST is its own resource — it is not a `users` write and not a
 #: call record, which does not exist until the call has happened.
 _CALLS_TYPE = "calls"
+
+#: The refusal one bare string of field names earns, in the shape
+#: customers.py refuses `ids="<an id>"` with.
+_BARE_STRING_FIELDS = (
+    "fields must be a list of field names, not one string: a str is read one "
+    'character at a time, so fields="type" would ask for the one-character '
+    'field names it is spelled with. Pass fields=["type"].'
+)
 
 
 class Pbx:
@@ -310,7 +318,8 @@ class PbxCallRecords:
         customer: str | None = None,
         started_after: str | None = None,
         started_before: str | None = None,
-        direction: str | None = None,
+        type: str | None = None,
+        fields: Sequence[str] | None = None,
         user: str | None = None,
         call_id: str | None = None,
         include_hidden: bool | None = None,
@@ -334,13 +343,24 @@ class PbxCallRecords:
                 3339 — `"2026-09-01T00:00:00Z"`.
             started_before: Calls that started at or before this moment,
                 RFC 3339.
-            direction: `inbound`, `outbound` or `on-net`. A word outside
-                that list is refused with a 400 rather than answered with
-                an empty page, which is why this client passes the value
-                through instead of keeping a copy of the vocabulary that
-                would go stale here. There is no filter on disposition:
-                each `CallRecord` still carries `disposition`, and the list
+            type: `inbound`, `outbound` or `onNet`. `inbound` selects both
+                answered and missed inbound calls. A word outside that list
+                is refused with a 400 rather than answered with an empty
+                page, which is why this client passes the value through
+                instead of keeping a copy of the vocabulary that would go
+                stale here. There is no filter on disposition: each
+                `CallRecord` still carries `disposition`, and the list
                 takes no argument for it.
+            fields: Ask for the EXTENDED tier on this page — the phone
+                system's own raw values, off by default. This is a JSON:API
+                sparse fieldset, so it NARROWS rather than adds: naming any
+                field here means every other field on the response is
+                exactly what you named, standard ones included. Pass a
+                list, e.g. `["type", "startedAt", "origCallId",
+                "terminatedTo"]`, in the API's own camelCase spelling — not
+                this client's snake_case attribute names. Leave it off for
+                the standard tier. Naming a field the API does not publish
+                is a 400.
             user: Calls with this subscriber on EITHER leg — placed by them
                 or taken by them — by `users` id, not by extension.
             call_id: The records of ONE click-to-dial call. Pass the `id`
@@ -376,9 +396,10 @@ class PbxCallRecords:
             "page[before]": before,
             "page[size]": page_size,
             "filter[customer]": customer,
-            "filter[started-after]": started_after,
-            "filter[started-before]": started_before,
-            "filter[direction]": direction,
+            "filter[startedAfter]": started_after,
+            "filter[startedBefore]": started_before,
+            "filter[type]": type,
+            "fields[call-records]": _fields_param(fields),
             "filter[user]": user,
             "filter[call-id]": call_id,
             "filter[include-hidden]": include_hidden,
@@ -473,6 +494,28 @@ def _call_record_page(document: Any) -> CallRecordPage:
         next_cursor=_next_cursor(document),
         raw=document,
     )
+
+
+def _fields_param(fields: Sequence[str] | None) -> str | None:
+    """The `fields[call-records]` value: one comma-joined string, or the
+    parameter left off entirely.
+
+    ONE BARE STRING IS REFUSED, for the reason `customers.list(ids=...)`
+    refuses one: a `str` IS a `Sequence[str]`, so `fields="type"`
+    type-checks and would be read one character at a time — four
+    one-character field names nothing on the API matches. Pass a list even
+    for a single field: `fields=["type"]`.
+
+    `None` and an empty sequence both leave the parameter off, which is the
+    same "send nothing" the API's own sparse-fieldset syntax reads as the
+    standard tier — there is no separate spelling for "every field".
+    """
+    if isinstance(fields, str):
+        raise ValueError(_BARE_STRING_FIELDS)
+    if fields is None:
+        return None
+    names = tuple(fields)
+    return ",".join(names) if names else None
 
 
 def _resources(document: Mapping[str, Any]) -> list[Mapping[str, Any]]:
