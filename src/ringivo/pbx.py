@@ -81,8 +81,8 @@ _CALLS_TYPE = "calls"
 #: customers.py refuses `ids="<an id>"` with.
 _BARE_STRING_FIELDS = (
     "fields must be a list of field names, not one string: a str is read one "
-    'character at a time, so fields="type" would ask for the one-character '
-    'field names it is spelled with. Pass fields=["type"].'
+    'character at a time, so fields="direction" would ask for the '
+    'one-character field names it is spelled with. Pass fields=["direction"].'
 )
 
 
@@ -318,7 +318,7 @@ class PbxCallRecords:
         customer: str | None = None,
         started_after: str | None = None,
         started_before: str | None = None,
-        type: str | None = None,
+        direction: str | None = None,
         fields: Sequence[str] | None = None,
         user: str | None = None,
         call_id: str | None = None,
@@ -343,9 +343,9 @@ class PbxCallRecords:
                 3339 — `"2026-09-01T00:00:00Z"`.
             started_before: Calls that started at or before this moment,
                 RFC 3339.
-            type: `inbound`, `outbound` or `onNet`. `inbound` selects both
-                answered and missed inbound calls. A word outside that list
-                is refused with a 400 rather than answered with an empty
+            direction: `inbound`, `outbound` or `onNet`. `inbound` selects
+                both answered and missed inbound calls. A word outside that
+                list is refused with a 400 rather than answered with an empty
                 page, which is why this client passes the value through
                 instead of keeping a copy of the vocabulary that would go
                 stale here. There is no filter on disposition: each
@@ -356,7 +356,7 @@ class PbxCallRecords:
                 sparse fieldset, so it NARROWS rather than adds: naming any
                 field here means every other field on the response is
                 exactly what you named, standard ones included. Pass a
-                list, e.g. `["type", "startedAt", "origCallId",
+                list, e.g. `["direction", "startedAt", "origCallId",
                 "terminatedTo"]`, in the API's own camelCase spelling — not
                 this client's snake_case attribute names. Leave it off for
                 the standard tier. Naming a field the API does not publish
@@ -398,11 +398,11 @@ class PbxCallRecords:
             "filter[customer]": customer,
             "filter[startedAfter]": started_after,
             "filter[startedBefore]": started_before,
-            "filter[type]": type,
+            "filter[direction]": direction,
             "fields[call-records]": _fields_param(fields),
             "filter[user]": user,
-            "filter[call-id]": call_id,
-            "filter[include-hidden]": include_hidden,
+            "filter[callId]": call_id,
+            "filter[includeHidden]": include_hidden,
         }
         document = self._client.request("GET", "/v1/pbx/call-records", params=params).json()
         return _call_record_page(document)
@@ -436,21 +436,21 @@ def _call_document(
 ) -> dict[str, Any]:
     """The JSON:API document `users.call()` posts.
 
-    `caller-id` and `device` are LEFT OUT when they were not passed, rather
+    `callerId` and `device` are LEFT OUT when they were not passed, rather
     than sent as null. They are optional members of a create, and on a
-    create there is nothing to clear: an absent `caller-id` means "use the
+    create there is nothing to clear: an absent `callerId` means "use the
     subscriber's own", which is not the same request as one naming no
     caller id at all. That is why neither takes the `NOT_GIVEN` sentinel
     the sparse PATCHes in fax_accounts.py need — two states are enough
     here, so `None` can be the spelling of "I said nothing".
 
-    `auto-answer` is different and is always sent: it is a fact about this
+    `autoAnswer` is different and is always sent: it is a fact about this
     call, it has a default the caller can see in the signature, and `False`
     is a real value rather than a silence.
     """
-    attributes: dict[str, Any] = {"destination": destination, "auto-answer": auto_answer}
+    attributes: dict[str, Any] = {"destination": destination, "autoAnswer": auto_answer}
     if caller_id is not None:
-        attributes["caller-id"] = caller_id
+        attributes["callerId"] = caller_id
     if device is not None:
         attributes["device"] = device
 
@@ -501,10 +501,10 @@ def _fields_param(fields: Sequence[str] | None) -> str | None:
     parameter left off entirely.
 
     ONE BARE STRING IS REFUSED, for the reason `customers.list(ids=...)`
-    refuses one: a `str` IS a `Sequence[str]`, so `fields="type"`
+    refuses one: a `str` IS a `Sequence[str]`, so `fields="direction"`
     type-checks and would be read one character at a time — four
     one-character field names nothing on the API matches. Pass a list even
-    for a single field: `fields=["type"]`.
+    for a single field: `fields=["direction"]`.
 
     `None` and an empty sequence both leave the parameter off, which is the
     same "send nothing" the API's own sparse-fieldset syntax reads as the

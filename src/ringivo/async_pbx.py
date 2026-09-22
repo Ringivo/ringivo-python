@@ -210,7 +210,7 @@ class AsyncPbxCallRecords:
         customer: str | None = None,
         started_after: str | None = None,
         started_before: str | None = None,
-        type: str | None = None,
+        direction: str | None = None,
         fields: Sequence[str] | None = None,
         user: str | None = None,
         call_id: str | None = None,
@@ -228,12 +228,12 @@ class AsyncPbxCallRecords:
 
         Hidden records are left out unless `include_hidden=True`.
 
-        `type` is `inbound`, `outbound` or `onNet`, passed through rather
-        than validated locally. There is no filter on disposition.
+        `direction` is `inbound`, `outbound` or `onNet`, passed through
+        rather than validated locally. There is no filter on disposition.
 
         `fields` asks for the EXTENDED tier — the phone system's own raw
         values — as a list of the API's own camelCase names, e.g.
-        `["type", "startedAt", "origCallId"]`. It is a sparse fieldset, so
+        `["direction", "startedAt", "origCallId"]`. It is a sparse fieldset, so
         it NARROWS: name every field you want, standard ones included, or
         leave it off for the standard tier alone.
 
@@ -260,11 +260,11 @@ class AsyncPbxCallRecords:
             "filter[customer]": customer,
             "filter[startedAfter]": started_after,
             "filter[startedBefore]": started_before,
-            "filter[type]": type,
+            "filter[direction]": direction,
             "fields[call-records]": _fields_param(fields),
             "filter[user]": user,
-            "filter[call-id]": call_id,
-            "filter[include-hidden]": include_hidden,
+            "filter[callId]": call_id,
+            "filter[includeHidden]": include_hidden,
         }
         response = await self._client.request("GET", "/v1/pbx/call-records", params=params)
         return _call_record_page(response.json())

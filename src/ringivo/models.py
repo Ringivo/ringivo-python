@@ -767,19 +767,19 @@ class PbxUser:
             id=_text(resource, "id") or "",
             user=_text(attributes, "user"),
             domain=_text(attributes, "domain"),
-            display_name=_text(attributes, "display-name"),
-            first_name=_text(attributes, "first-name"),
-            last_name=_text(attributes, "last-name"),
+            display_name=_text(attributes, "displayName"),
+            first_name=_text(attributes, "firstName"),
+            last_name=_text(attributes, "lastName"),
             email=_text(attributes, "email"),
             scope=_text(attributes, "scope"),
             group=_text(attributes, "group"),
             site=_text(attributes, "site"),
             presence=_text(attributes, "presence"),
-            caller_id_number=_text(attributes, "caller-id-number"),
-            caller_id_name=_text(attributes, "caller-id-name"),
-            time_zone=_text(attributes, "time-zone"),
-            created_at=_text(attributes, "created-at"),
-            updated_at=_text(attributes, "updated-at"),
+            caller_id_number=_text(attributes, "callerIdNumber"),
+            caller_id_name=_text(attributes, "callerIdName"),
+            time_zone=_text(attributes, "timeZone"),
+            created_at=_text(attributes, "createdAt"),
+            updated_at=_text(attributes, "updatedAt"),
             customer_id=_relationship_id(resource, "customer"),
             device_ids=_relationship_ids(resource, "devices"),
             raw=resource,
@@ -832,7 +832,7 @@ class PbxDevice:
     not the `users` resource. `pbx_user_id` is that resource, read off the
     relationship linkage. It is named `pbx_user_id` rather than `user_id`
     because the attribute and the relationship would otherwise collide,
-    which is the same reason the API calls the relationship `pbx-user`.
+    which is the same reason the API calls the relationship `pbxUser`.
     """
 
     id: str
@@ -864,17 +864,17 @@ class PbxDevice:
             user=_text(attributes, "user"),
             domain=_text(attributes, "domain"),
             mode=_text(attributes, "mode"),
-            user_agent=_text(attributes, "user-agent"),
+            user_agent=_text(attributes, "userAgent"),
             contact=_text(attributes, "contact"),
             transport=_text(attributes, "transport"),
-            received_from=_text(attributes, "received-from"),
-            registered_at=_text(attributes, "registered-at"),
-            registration_expires_at=_text(attributes, "registration-expires-at"),
+            received_from=_text(attributes, "receivedFrom"),
+            registered_at=_text(attributes, "registeredAt"),
+            registration_expires_at=_text(attributes, "registrationExpiresAt"),
             registered=_boolean(attributes, "registered"),
-            auto_answer=_boolean(attributes, "auto-answer"),
-            created_at=_text(attributes, "created-at"),
+            auto_answer=_boolean(attributes, "autoAnswer"),
+            created_at=_text(attributes, "createdAt"),
             customer_id=_relationship_id(resource, "customer"),
-            pbx_user_id=_relationship_id(resource, "pbx-user"),
+            pbx_user_id=_relationship_id(resource, "pbxUser"),
             raw=resource,
         )
 
@@ -905,17 +905,19 @@ class PbxDevicePage:
 class CallRecord:
     """One call, as the phone system recorded it.
 
-    THIS SHAPE HAS NO BACKWARD COMPATIBILITY WITH `ringivo` BEFORE 0.10.0.
-    The console rebuilt `GET /v1/pbx/call-records` as one clean camelCase
-    surface — the owner's ruling was that a correct shape matters more than
-    a migration path — and every field below is new: `direction` is gone in
-    favour of `type`, `vendor_type` is gone with nothing standing in for it,
-    and `from_user`/`from_uri`/`to_user`/`to_uri`/`dialed`/`by_user`/
-    `term_user`/`tag` are gone. Reach for the extended tier (below) for the
-    raw material those used to carry.
+    THIS SHAPE HAS NO BACKWARD COMPATIBILITY WITH `ringivo` BEFORE 0.10.0,
+    AND `type` IS RENAMED `direction` IN 0.11.0. The console rebuilt
+    `GET /v1/pbx/call-records` as one clean camelCase surface — the owner's
+    ruling was that a correct shape matters more than a migration path — and
+    then renamed the member that says which way the call went, because
+    JSON:API reserves `type` for the resource object itself and a resource
+    may not carry an attribute of that name. `vendor_type` is gone with
+    nothing standing in for it, and `from_user`/`from_uri`/`to_user`/
+    `to_uri`/`dialed`/`by_user`/`term_user`/`tag` are gone. Reach for the
+    extended tier (below) for the raw material those used to carry.
 
     -- TWO TIERS -----------------------------------------------------------
-    Everything from `type` through `hidden` is the STANDARD set and is on
+    Everything from `direction` through `hidden` is the STANDARD set and is on
     every response. `vendor_id` onward through `raw_request_user` is the
     EXTENDED tier — the phone system's own raw values — and each of those
     fields is None unless you named it in `fields=` on `list()`. A sparse
@@ -930,14 +932,14 @@ class CallRecord:
     UTC, which is the one timestamp shape that carries no zone ambiguity.
     `answered_at` is None when nobody answered.
 
-    -- type AND disposition ARE ONE INTEGER, SPLIT IN TWO -------------------
+    -- direction AND disposition ARE ONE INTEGER, SPLIT IN TWO --------------
     The phone system records a single number carrying both which way the
-    call went and whether anybody picked it up. `type` is `inbound`,
+    call went and whether anybody picked it up. `direction` is `inbound`,
     `outbound` or `onNet`; `disposition` is `answered` or `missed`, and
-    `inbound` is the only `type` that can be either. A number this API has
-    no word for is published as ITS OWN DIGITS in `type` rather than as
-    null, so a vocabulary that grows at the switch's end never erases a
-    call from your reading of it. Match on the values you know and let the
+    `inbound` is the only `direction` that can be either. A number this API
+    has no word for is published as ITS OWN DIGITS in `direction` rather
+    than as null, so a vocabulary that grows at the switch's end never
+    erases a call from your reading of it. Match on the values you know and let the
     rest fall through; do not assume the set is closed.
 
     -- A `*_number` FIELD IS E.164 OR NOTHING -------------------------------
@@ -971,7 +973,7 @@ class CallRecord:
     """
 
     id: str
-    type: str | None = None
+    direction: str | None = None
     disposition: str | None = None
     tenant_id: str | None = None
     domain: str | None = None
@@ -1016,7 +1018,7 @@ class CallRecord:
 
         return cls(
             id=_text(resource, "id") or "",
-            type=_text(attributes, "type"),
+            direction=_text(attributes, "direction"),
             disposition=_text(attributes, "disposition"),
             tenant_id=_text(attributes, "tenantId"),
             domain=_text(attributes, "domain"),
@@ -1139,7 +1141,7 @@ class PbxCall:
         """Build from the JSON:API resource object the 202 carries.
 
         `requested_at` is a real instant, and the spec now says so rather
-        than this package inferring it: `PbxCallAttributes.requested-at` is
+        than this package inferring it: `PbxCallAttributes.requestedAt` is
         `{type: string, format: date-time}`. It is the platform's own
         timestamp, minted here — which is why it is parsed while a user's
         and a device's are not (see `PbxUser`).
@@ -1149,11 +1151,11 @@ class PbxCall:
         return cls(
             id=_text(resource, "id") or "",
             destination=_text(attributes, "destination"),
-            caller_id=_text(attributes, "caller-id"),
-            auto_answer=_boolean(attributes, "auto-answer"),
+            caller_id=_text(attributes, "callerId"),
+            auto_answer=_boolean(attributes, "autoAnswer"),
             device=_text(attributes, "device"),
             status=_text(attributes, "status"),
-            requested_at=_parse_datetime(attributes.get("requested-at")),
+            requested_at=_parse_datetime(attributes.get("requestedAt")),
             raw=resource,
         )
 
