@@ -906,7 +906,8 @@ class CallRecord:
     """One call, as the phone system recorded it.
 
     THIS SHAPE HAS NO BACKWARD COMPATIBILITY WITH `ringivo` BEFORE 0.10.0,
-    AND `type` IS RENAMED `direction` IN 0.11.0. The console rebuilt
+    `type` IS RENAMED `direction` IN 0.11.0, AND ITS VALUE `onNet` IS RENAMED
+    `internal` IN 0.12.0 (a call that stayed inside one domain). The console rebuilt
     `GET /v1/pbx/call-records` as one clean camelCase surface — the owner's
     ruling was that a correct shape matters more than a migration path — and
     then renamed the member that says which way the call went, because
@@ -935,7 +936,7 @@ class CallRecord:
     -- direction AND disposition ARE ONE INTEGER, SPLIT IN TWO --------------
     The phone system records a single number carrying both which way the
     call went and whether anybody picked it up. `direction` is `inbound`,
-    `outbound` or `onNet`; `disposition` is `answered` or `missed`, and
+    `outbound` or `internal`; `disposition` is `answered` or `missed`, and
     `inbound` is the only `direction` that can be either. A number this API
     has no word for is published as ITS OWN DIGITS in `direction` rather
     than as null, so a vocabulary that grows at the switch's end never

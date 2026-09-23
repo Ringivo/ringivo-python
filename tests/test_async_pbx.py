@@ -561,7 +561,7 @@ async def test_call_records_get_reads_every_extended_field_when_the_server_sent_
         ("inbound", "answered"),
         ("inbound", "missed"),
         ("outbound", "answered"),
-        ("onNet", "answered"),
+        ("internal", "answered"),
     ],
 )
 @pytest.mark.anyio
@@ -598,7 +598,7 @@ async def test_a_number_field_is_e164_or_null_never_an_extension_or_a_dial_code(
             json={
                 "data": _call_record_resource(
                     attributes={
-                        "direction": "onNet",
+                        "direction": "internal",
                         "fromNumber": None,
                         "fromExtension": "300",
                         "toNumber": None,

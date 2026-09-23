@@ -491,19 +491,27 @@ relationship sharing the name of the `user` attribute beside it.
 
 ### The call log, one date range at a time
 
-**0.10.0 rebuilt this resource with no backward compatibility, and 0.11.0
-renamed one member of it.** The console owns both decisions (one clean shape
+**0.10.0 rebuilt this resource with no backward compatibility, 0.11.0
+renamed one member of it, and 0.12.0 renamed one value.** The console owns both decisions (one clean shape
 mattered more than a migration path), so `0.9.x`'s `vendor_type`,
 `from_user`, `from_uri`, `to_user`, `to_uri`, `dialed`, `by_user`,
 `term_user` and `tag` are all gone rather than deprecated. There is no
 argument or attribute standing in for them: reach for the extended tier
 below for the raw material they used to carry.
 
+**Upgrading from 0.11.x:** the `direction` value `onNet` is now `internal`,
+and `call_records.list(direction="onNet")` is now
+`call_records.list(direction="internal")`. The API refuses `onNet` with a
+400. The value names a call that stayed inside one domain — extension to
+extension, a call to voicemail, or a call into a conference. A call between
+two domains was never `onNet`: it arrives as two records, `outbound` on the
+caller's side and `inbound` on the called side. Nothing else moved.
+
 **Upgrading from 0.10.x:** `CallRecord.type` is now `CallRecord.direction`,
 and `call_records.list(type=...)` is now `call_records.list(direction=...)`.
-The values are unchanged — `inbound`, `outbound`, `onNet`. JSON:API reserves
-`type` for the resource object itself and forbids an attribute of that name,
-which is the defect this rename fixes. Nothing else on this object moved.
+JSON:API reserves `type` for the resource object itself and forbids an
+attribute of that name, which is the defect this rename fixes. Take the
+0.11.x step above too.
 
 ```python
     page = client.pbx.call_records.list(
@@ -531,7 +539,7 @@ with `include_hidden=True`, or read one by id:
     call = client.pbx.call_records.get(call_id)      # served even if hidden
 ```
 
-`call.direction` is `inbound`, `outbound` or `onNet`, and
+`call.direction` is `inbound`, `outbound` or `internal`, and
 `call.disposition` is `answered` or `missed` — only `inbound` can be either.
 The list filters on `direction` but not on disposition: read
 `call.disposition` on each record instead. The phone system records ONE

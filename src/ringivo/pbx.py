@@ -343,7 +343,7 @@ class PbxCallRecords:
                 3339 — `"2026-09-01T00:00:00Z"`.
             started_before: Calls that started at or before this moment,
                 RFC 3339.
-            direction: `inbound`, `outbound` or `onNet`. `inbound` selects
+            direction: `inbound`, `outbound` or `internal`. `inbound` selects
                 both answered and missed inbound calls. A word outside that
                 list is refused with a 400 rather than answered with an empty
                 page, which is why this client passes the value through

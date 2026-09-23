@@ -25,7 +25,7 @@ they were not passed, and the boolean that is always sent.
 from __future__ import annotations
 
 from datetime import datetime, timezone
-from typing import Any, cast
+from typing import Any, cast, get_args
 
 import httpx
 import pytest
@@ -42,6 +42,7 @@ from ringivo import (
     PbxUserPage,
     Ringivo,
 )
+from ringivo import _generated_types as generated
 
 BASE_URL = "https://api.yourprovider.example"
 TOKEN_URL = f"{BASE_URL}/oauth/token"
@@ -821,7 +822,7 @@ def test_a_type_this_collection_does_not_publish_is_refused_by_the_api(
                         "status": "400",
                         "code": "invalid_query",
                         "title": "Bad query",
-                        "detail": "filter[direction] must be one of: inbound, outbound, onNet.",
+                        "detail": "filter[direction] must be one of: inbound, outbound, internal.",
                         "source": {"parameter": "filter[direction]"},
                     }
                 ]
@@ -951,13 +952,13 @@ def test_a_call_records_three_instants_are_parsed_unlike_the_other_two_resources
         ("inbound", "answered"),
         ("inbound", "missed"),
         ("outbound", "answered"),
-        ("onNet", "answered"),
+        ("internal", "answered"),
     ],
 )
 def test_every_type_and_its_disposition_round_trip(
     respx_mock: respx.MockRouter, client: Ringivo, call_direction: str, disposition: str
 ) -> None:
-    # `type` is inbound, outbound or onNet; only `inbound` can be missed —
+    # `direction` is inbound, outbound or internal; only `inbound` can be missed —
     # `disposition` is the orthogonal half of the same vendor integer, and
     # this reads every combination the API actually publishes back unchanged.
     respx_mock.get(CALL_RECORD_URL).mock(
@@ -976,6 +977,13 @@ def test_every_type_and_its_disposition_round_trip(
 
     assert record.direction == call_direction
     assert record.disposition == disposition
+
+
+def test_the_direction_vocabulary_is_the_consoles() -> None:
+    # The API renamed `onNet` to `internal` (0.12.0): the value names a call
+    # that stayed inside one domain, never a call between two domains. This
+    # pins the regenerated spec enum to that word.
+    assert get_args(generated.CallDirection) == ("inbound", "outbound", "internal")
 
 
 def test_a_missed_call_carries_no_answered_at(
@@ -1039,7 +1047,7 @@ def test_a_number_field_is_e164_or_null_never_an_extension_or_a_dial_code(
             json={
                 "data": _call_record_resource(
                     attributes={
-                        "direction": "onNet",
+                        "direction": "internal",
                         "fromNumber": None,
                         "fromExtension": "300",
                         "toNumber": None,
