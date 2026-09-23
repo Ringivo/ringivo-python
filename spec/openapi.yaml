@@ -6242,7 +6242,8 @@ paths:
           required: false
           description: |
             A word outside this list is refused with a 400, never answered with an empty page.
-            `inbound` selects both answered and missed inbound calls.
+            `inbound` selects both answered and missed inbound calls; `internal` selects calls that
+            stayed inside one domain.
           schema:
             $ref: '#/components/schemas/CallDirection'
         - name: fields[call-records]
@@ -11666,12 +11667,15 @@ components:
       type: [string, 'null']
       description: |
         Which way the call went. `inbound` covers both an answered and a missed inbound call — read
-        `disposition` for that half. `onNet` is extension to extension.
+        `disposition` for that half. `internal` is a call that stayed inside one domain: extension
+        to extension, a call to voicemail, or a call into a conference. A call between two of your
+        customers' domains is not `internal` — it is recorded twice, `outbound` on the caller's side
+        and `inbound` on the called side.
 
         The phone system records ONE integer carrying both this and `disposition`; an integer we have
         no word for is published as its own digits rather than as null, so a vocabulary that grows at
         the switch's end never erases a call.
-      enum: [inbound, outbound, onNet]
+      enum: [inbound, outbound, internal]
     CallDisposition:
       type: [string, 'null']
       description: Whether anybody answered. Derived from the same integer as `direction`.
@@ -11942,7 +11946,7 @@ components:
             **Who called**, in E.164. Read `direction` to know what it names:
 
             - `inbound` — the **outside caller's** number.
-            - `outbound` and `onNet` — the **caller ID your customer sent**.
+            - `outbound` and `internal` — the **caller ID your customer sent**.
 
             Null when the calling party had no telephone number at all, which is the ordinary case on
             an extension-to-extension call and on an extension with no caller ID configured. The

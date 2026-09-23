@@ -228,7 +228,7 @@ class AsyncPbxCallRecords:
 
         Hidden records are left out unless `include_hidden=True`.
 
-        `direction` is `inbound`, `outbound` or `onNet`, passed through
+        `direction` is `inbound`, `outbound` or `internal`, passed through
         rather than validated locally. There is no filter on disposition.
 
         `fields` asks for the EXTENDED tier — the phone system's own raw

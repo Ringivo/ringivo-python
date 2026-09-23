@@ -1779,7 +1779,7 @@ class SipTrunkTargetUpdateRequest(TypedDict):
     data: Data26
 
 
-CallDirection: TypeAlias = Literal['inbound', 'outbound', 'onNet']
+CallDirection: TypeAlias = Literal['inbound', 'outbound', 'internal']
 
 
 CallDisposition: TypeAlias = Literal['answered', 'missed']
