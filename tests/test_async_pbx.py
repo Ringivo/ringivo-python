@@ -749,6 +749,27 @@ async def test_an_empty_call_record_id_is_refused_by_recordings(client: AsyncRin
             await client.pbx.call_records.recordings("")
 
 
+@pytest.mark.anyio
+async def test_a_call_record_outside_your_customers_domains_raises_a_typed_404_on_recordings(
+    respx_mock: respx.MockRouter, client: AsyncRingivo
+) -> None:
+    # 404 rather than 403, the same posture get() has: telling the two apart
+    # would tell a caller that the call exists somewhere on the platform.
+    respx_mock.get(CALL_RECORD_RECORDINGS_URL).mock(
+        return_value=httpx.Response(
+            404,
+            json={"errors": [{"status": "404", "title": "Not found", "code": "not_found"}]},
+        )
+    )
+
+    async with client:
+        with pytest.raises(ApiError) as caught:
+            await client.pbx.call_records.recordings(CALL_RECORD_ID)
+
+    assert caught.value.status_code == 404
+    assert caught.value.code == "not_found"
+
+
 # -- call_records.transcripts ------------------------------------------------
 
 
@@ -836,6 +857,26 @@ async def test_an_empty_call_record_id_is_refused_by_transcripts(client: AsyncRi
     async with client:
         with pytest.raises(ValueError, match="a call record id is required"):
             await client.pbx.call_records.transcripts("")
+
+
+@pytest.mark.anyio
+async def test_a_call_record_outside_your_customers_domains_raises_a_typed_404_on_transcripts(
+    respx_mock: respx.MockRouter, client: AsyncRingivo
+) -> None:
+    # 404 rather than 403, the same posture get() and recordings() have.
+    respx_mock.get(CALL_RECORD_TRANSCRIPTS_URL).mock(
+        return_value=httpx.Response(
+            404,
+            json={"errors": [{"status": "404", "title": "Not found", "code": "not_found"}]},
+        )
+    )
+
+    async with client:
+        with pytest.raises(ApiError) as caught:
+            await client.pbx.call_records.transcripts(CALL_RECORD_ID)
+
+    assert caught.value.status_code == 404
+    assert caught.value.code == "not_found"
 
 
 # -- users.call (click-to-dial) --------------------------------------------

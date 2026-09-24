@@ -1236,6 +1236,25 @@ def test_a_call_record_id_stays_inside_its_own_path_segment_on_recordings(
     )
 
 
+def test_a_call_record_outside_your_customers_domains_raises_a_typed_404_on_recordings(
+    respx_mock: respx.MockRouter, client: Ringivo
+) -> None:
+    # 404 rather than 403, the same posture get() has: telling the two apart
+    # would tell a caller that the call exists somewhere on the platform.
+    respx_mock.get(CALL_RECORD_RECORDINGS_URL).mock(
+        return_value=httpx.Response(
+            404,
+            json={"errors": [{"status": "404", "title": "Not found", "code": "not_found"}]},
+        )
+    )
+
+    with client, pytest.raises(ApiError) as caught:
+        client.pbx.call_records.recordings(CALL_RECORD_ID)
+
+    assert caught.value.status_code == 404
+    assert caught.value.code == "not_found"
+
+
 # -- call_records.transcripts ------------------------------------------------
 
 
@@ -1341,6 +1360,24 @@ def test_a_call_record_id_stays_inside_its_own_path_segment_on_transcripts(
     assert (
         route.calls.last.request.url.raw_path == b"/v1/pbx/call-records/..%2Fusers%2Fsecret/transcripts"
     )
+
+
+def test_a_call_record_outside_your_customers_domains_raises_a_typed_404_on_transcripts(
+    respx_mock: respx.MockRouter, client: Ringivo
+) -> None:
+    # 404 rather than 403, the same posture get() and recordings() have.
+    respx_mock.get(CALL_RECORD_TRANSCRIPTS_URL).mock(
+        return_value=httpx.Response(
+            404,
+            json={"errors": [{"status": "404", "title": "Not found", "code": "not_found"}]},
+        )
+    )
+
+    with client, pytest.raises(ApiError) as caught:
+        client.pbx.call_records.transcripts(CALL_RECORD_ID)
+
+    assert caught.value.status_code == 404
+    assert caught.value.code == "not_found"
 
 
 # -- users.call (click-to-dial) --------------------------------------------
