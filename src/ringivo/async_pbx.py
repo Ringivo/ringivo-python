@@ -169,7 +169,7 @@ class AsyncPbxDevices:
         self,
         *,
         customer: str | None = None,
-        user: str | None = None,
+        subscriber: str | None = None,
         registered: bool | None = None,
         after: str | None = None,
         before: str | None = None,
@@ -177,9 +177,9 @@ class AsyncPbxDevices:
     ) -> PbxDevicePage:
         """One page of registrations, by address of record.
 
-        The awaited twin of `PbxDevices.list`. `user` here is a
-        `subscribers` ID, unlike the same-named filter on
-        `subscribers.list()`, which is an extension.
+        The awaited twin of `PbxDevices.list`. `subscriber` is a
+        `subscribers` ID, unlike `user=` on `subscribers.list()`, which is
+        an extension.
 
         Needs `pbx-users:read` — the same scope as `subscribers`.
         """
@@ -188,7 +188,7 @@ class AsyncPbxDevices:
             "page[before]": before,
             "page[size]": page_size,
             "filter[customer]": customer,
-            "filter[user]": user,
+            "filter[subscriber]": subscriber,
             "filter[registered]": registered,
         }
         response = await self._client.request("GET", "/v1/pbx/devices", params=params)
@@ -224,7 +224,7 @@ class AsyncPbxCallRecords:
         started_before: str | None = None,
         direction: str | None = None,
         fields: Sequence[str] | None = None,
-        user: str | None = None,
+        subscriber: str | None = None,
         call_id: str | None = None,
         include_hidden: bool | None = None,
         after: str | None = None,
@@ -274,7 +274,7 @@ class AsyncPbxCallRecords:
             "filter[startedBefore]": started_before,
             "filter[direction]": direction,
             "fields[call-records]": _fields_param(fields),
-            "filter[user]": user,
+            "filter[subscriber]": subscriber,
             "filter[callId]": call_id,
             "filter[includeHidden]": include_hidden,
         }

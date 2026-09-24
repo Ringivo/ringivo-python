@@ -6138,12 +6138,12 @@ paths:
           required: false
           description: Only the registrations on this customer's PBX domain.
           schema: { type: string, format: uuid }
-        - name: filter[user]
+        - name: filter[subscriber]
           in: query
           required: false
           description: |
-            Only the registrations belonging to this PBX **user id** — not an extension. An id you
-            cannot reach answers an empty page rather than a refusal.
+            Only the registrations belonging to this PBX **subscriber id** — not an extension. An id
+            you cannot reach answers an empty page rather than a refusal.
           schema: { type: string, format: uuid }
         - name: filter[registered]
           in: query
@@ -6178,7 +6178,7 @@ paths:
                     relationships:
                       customer:
                         data: { type: customers, id: 0198c4a1-2b3c-7d4e-8f50-1a2b3c4d5e6f }
-                      pbxUser:
+                      subscriber:
                         data: { type: subscribers, id: 6f98cc5d-5248-5100-9967-8606e2993077 }
                 meta:
                   page:
@@ -6287,11 +6287,11 @@ paths:
             `rawRequestUser`. Naming a field that does not exist is a 400.
           schema: { type: string }
           example: direction,startedAt,vendorId,terminatedTo
-        - name: filter[user]
+        - name: filter[subscriber]
           in: query
           required: false
           description: |
-            Calls with this PBX **user id** on either leg — placed by them or taken by them.
+            Calls with this PBX **subscriber id** on either leg — placed by them or taken by them.
           schema: { type: string, format: uuid }
         - name: filter[callId]
           in: query
@@ -6353,9 +6353,9 @@ paths:
                     relationships:
                       customer:
                         data: { type: customers, id: 0198c4a1-2b3c-7d4e-8f50-1a2b3c4d5e6f }
-                      fromPbxUser:
+                      fromSubscriber:
                         data: null
-                      toPbxUser:
+                      toSubscriber:
                         data: { type: subscribers, id: 6f98cc5d-5248-5100-9967-8606e2993077 }
                 meta:
                   page:
@@ -11904,7 +11904,7 @@ components:
       properties:
         customer:
           $ref: '#/components/schemas/RelationshipToOne'
-        pbxUser:
+        subscriber:
           $ref: '#/components/schemas/RelationshipToOne'
     PbxDeviceResource:
       type: object
@@ -12103,9 +12103,9 @@ components:
       properties:
         customer:
           $ref: '#/components/schemas/RelationshipToOne'
-        fromPbxUser:
+        fromSubscriber:
           $ref: '#/components/schemas/RelationshipToOne'
-        toPbxUser:
+        toSubscriber:
           $ref: '#/components/schemas/RelationshipToOne'
     CallRecordResource:
       type: object

@@ -1850,7 +1850,7 @@ class PbxDeviceAttributes(TypedDict):
 
 class PbxDeviceRelationships(TypedDict):
     customer: NotRequired[RelationshipToOne]
-    pbxUser: NotRequired[RelationshipToOne]
+    subscriber: NotRequired[RelationshipToOne]
 
 
 class PbxDeviceResource(TypedDict):
@@ -1911,8 +1911,8 @@ class CallRecordAttributes(TypedDict):
 
 class CallRecordRelationships(TypedDict):
     customer: NotRequired[RelationshipToOne]
-    fromPbxUser: NotRequired[RelationshipToOne]
-    toPbxUser: NotRequired[RelationshipToOne]
+    fromSubscriber: NotRequired[RelationshipToOne]
+    toSubscriber: NotRequired[RelationshipToOne]
 
 
 class CallRecordResource(TypedDict):

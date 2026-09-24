@@ -178,7 +178,7 @@ def _device_resource(
             if relationships is not None
             else {
                 "customer": {"data": {"type": "customers", "id": CUSTOMER_ID}},
-                "pbxUser": {"data": {"type": "subscribers", "id": USER_ID}},
+                "subscriber": {"data": {"type": "subscribers", "id": USER_ID}},
             }
         ),
     }
@@ -227,8 +227,8 @@ def _call_record_resource(
             if relationships is not None
             else {
                 "customer": {"data": {"type": "customers", "id": CUSTOMER_ID}},
-                "fromPbxUser": {"data": None},
-                "toPbxUser": {"data": {"type": "subscribers", "id": USER_ID}},
+                "fromSubscriber": {"data": None},
+                "toSubscriber": {"data": {"type": "subscribers", "id": USER_ID}},
             }
         ),
     }
@@ -647,7 +647,7 @@ def test_devices_list_builds_the_filter_and_page_query(
 
     with client:
         client.pbx.devices.list(
-            customer=CUSTOMER_ID, user=USER_ID, registered=True, before="0198c4a1", page_size=50
+            customer=CUSTOMER_ID, subscriber=USER_ID, registered=True, before="0198c4a1", page_size=50
         )
 
     request = route.calls.last.request
@@ -655,7 +655,7 @@ def test_devices_list_builds_the_filter_and_page_query(
 
     assert request.url.path == "/v1/pbx/devices"
     assert params["filter[customer]"] == CUSTOMER_ID
-    assert params["filter[user]"] == USER_ID
+    assert params["filter[subscriber]"] == USER_ID
     assert params["filter[registered]"] == "true"
     assert params["page[before]"] == "0198c4a1"
     assert params["page[size]"] == "50"
@@ -718,9 +718,9 @@ def test_devices_get_reads_a_jsonapi_document_into_the_public_dataclass(
     assert device.registered is True
     assert device.auto_answer is False
     assert device.customer_id == CUSTOMER_ID
-    # `pbx_user_id`, not `user_id`: `user` is already an attribute here, and
-    # JSON:API forbids a relationship sharing an attribute's name.
-    assert device.pbx_user_id == USER_ID
+    # `subscriber_id`, read off the `subscriber` relationship; `user` is the
+    # extension attribute beside it.
+    assert device.subscriber_id == USER_ID
 
 
 def test_an_expired_registration_is_a_row_with_registered_false(
@@ -779,7 +779,7 @@ def test_call_records_list_builds_every_filter_and_the_page_query(
             started_before="2026-09-30T23:59:59Z",
             direction="inbound",
             fields=["direction", "startedAt", "origCallId", "terminatedTo"],
-            user=USER_ID,
+            subscriber=USER_ID,
             call_id=CALL_ID,
             include_hidden=True,
             after="0198c4a1",
@@ -800,7 +800,7 @@ def test_call_records_list_builds_every_filter_and_the_page_query(
     # ONE comma-joined value, the API's own sparse-fieldset syntax — not a
     # repeated `fields[call-records][]=` pair like `filter[id][]`.
     assert params["fields[call-records]"] == "direction,startedAt,origCallId,terminatedTo"
-    assert params["filter[user]"] == USER_ID
+    assert params["filter[subscriber]"] == USER_ID
     # The id `subscribers.call()` answered with.
     assert params["filter[callId]"] == CALL_ID
     assert params["filter[includeHidden]"] == "true"
@@ -986,8 +986,8 @@ def test_call_records_get_reads_the_standard_tier_into_the_public_dataclass(
     assert record.customer_id == CUSTOMER_ID
     # An outside caller has no subscriber to point at, and the API says so
     # with an explicit null linkage rather than by leaving the member out.
-    assert record.from_pbx_user_id is None
-    assert record.to_pbx_user_id == USER_ID
+    assert record.from_subscriber_id is None
+    assert record.to_subscriber_id == USER_ID
 
 
 def test_call_records_get_leaves_the_extended_tier_none_when_not_asked_for(

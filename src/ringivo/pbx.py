@@ -269,7 +269,7 @@ class PbxDevices:
         self,
         *,
         customer: str | None = None,
-        user: str | None = None,
+        subscriber: str | None = None,
         registered: bool | None = None,
         after: str | None = None,
         before: str | None = None,
@@ -280,8 +280,8 @@ class PbxDevices:
         Args:
             customer: Only the registrations on this customer's phone
                 system.
-            user: Only this subscriber's registrations, BY `subscribers` ID
-                — not by extension, which is what the same-named filter on
+            subscriber: Only this subscriber's registrations, BY
+                `subscribers` ID — not by extension, which is what `user=` on
                 `subscribers.list()` takes. An id you cannot reach answers an
                 empty page rather than a refusal.
             registered: `True` for registrations that have not expired,
@@ -302,7 +302,7 @@ class PbxDevices:
             "page[before]": before,
             "page[size]": page_size,
             "filter[customer]": customer,
-            "filter[user]": user,
+            "filter[subscriber]": subscriber,
             "filter[registered]": registered,
         }
         document = self._client.request("GET", "/v1/pbx/devices", params=params).json()
@@ -339,7 +339,7 @@ class PbxCallRecords:
         started_before: str | None = None,
         direction: str | None = None,
         fields: Sequence[str] | None = None,
-        user: str | None = None,
+        subscriber: str | None = None,
         call_id: str | None = None,
         include_hidden: bool | None = None,
         after: str | None = None,
@@ -380,8 +380,9 @@ class PbxCallRecords:
                 this client's snake_case attribute names. Leave it off for
                 the standard tier. Naming a field the API does not publish
                 is a 400.
-            user: Calls with this subscriber on EITHER leg — placed by them
-                or taken by them — by `subscribers` id, not by extension.
+            subscriber: Calls with this subscriber on EITHER leg — placed
+                by them or taken by them — by `subscribers` id, not by
+                extension.
             call_id: The records of ONE click-to-dial call. Pass the `id`
                 that `subscribers.call()` returned. The call record appears once
                 the call has ended. One call writes two records: by default
@@ -419,7 +420,7 @@ class PbxCallRecords:
             "filter[startedBefore]": started_before,
             "filter[direction]": direction,
             "fields[call-records]": _fields_param(fields),
-            "filter[user]": user,
+            "filter[subscriber]": subscriber,
             "filter[callId]": call_id,
             "filter[includeHidden]": include_hidden,
         }

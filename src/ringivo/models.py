@@ -847,10 +847,8 @@ class PbxDevice:
     API refused to guess.
 
     `user` is the subscriber's extension — a string off the registration,
-    not the `subscribers` resource. `pbx_user_id` is that resource's id,
-    read off the relationship linkage. It is named `pbx_user_id` rather than `user_id`
-    because the attribute and the relationship would otherwise collide,
-    which is the same reason the API calls the relationship `pbxUser`.
+    not the `subscribers` resource. `subscriber_id` is that resource's id,
+    read off the `subscriber` relationship linkage.
     """
 
     id: str
@@ -868,7 +866,7 @@ class PbxDevice:
     auto_answer: bool | None = None
     created_at: str | None = None
     customer_id: str | None = None
-    pbx_user_id: str | None = None
+    subscriber_id: str | None = None
     raw: Mapping[str, Any] = field(default_factory=dict, repr=False)
 
     @classmethod
@@ -892,7 +890,7 @@ class PbxDevice:
             auto_answer=_boolean(attributes, "autoAnswer"),
             created_at=_text(attributes, "createdAt"),
             customer_id=_relationship_id(resource, "customer"),
-            pbx_user_id=_relationship_id(resource, "pbxUser"),
+            subscriber_id=_relationship_id(resource, "subscriber"),
             raw=resource,
         )
 
@@ -984,12 +982,12 @@ class CallRecord:
     of `list()` unless you ask for them with `include_hidden=True`, and a
     direct `get()` serves one either way.
 
-    `customer_id`, `from_pbx_user_id` and `to_pbx_user_id` come off the
-    relationship linkages (`customer`, `fromPbxUser`, `toPbxUser`), so each
+    `customer_id`, `from_subscriber_id` and `to_subscriber_id` come off the
+    relationship linkages (`customer`, `fromSubscriber`, `toSubscriber`), so each
     is None when the server answered that relationship with links alone
     (see `_relationship_id`) — a statement about the response, never about
     the call. An outside caller has no subscriber to point at, so
-    `from_pbx_user_id` is None on every inbound call from off the phone
+    `from_subscriber_id` is None on every inbound call from off the phone
     system.
     """
 
@@ -1028,8 +1026,8 @@ class CallRecord:
     raw_to_user: str | None = None
     raw_request_user: str | None = None
     customer_id: str | None = None
-    from_pbx_user_id: str | None = None
-    to_pbx_user_id: str | None = None
+    from_subscriber_id: str | None = None
+    to_subscriber_id: str | None = None
     raw: Mapping[str, Any] = field(default_factory=dict, repr=False)
 
     @classmethod
@@ -1072,8 +1070,8 @@ class CallRecord:
             raw_to_user=_text(attributes, "rawToUser"),
             raw_request_user=_text(attributes, "rawRequestUser"),
             customer_id=_relationship_id(resource, "customer"),
-            from_pbx_user_id=_relationship_id(resource, "fromPbxUser"),
-            to_pbx_user_id=_relationship_id(resource, "toPbxUser"),
+            from_subscriber_id=_relationship_id(resource, "fromSubscriber"),
+            to_subscriber_id=_relationship_id(resource, "toSubscriber"),
             raw=resource,
         )
 

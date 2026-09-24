@@ -142,7 +142,7 @@ def _device_resource(*, attributes: dict[str, object] | None = None) -> dict[str
         "attributes": merged,
         "relationships": {
             "customer": {"data": {"type": "customers", "id": CUSTOMER_ID}},
-            "pbxUser": {"data": {"type": "subscribers", "id": USER_ID}},
+            "subscriber": {"data": {"type": "subscribers", "id": USER_ID}},
         },
     }
 
@@ -182,8 +182,8 @@ def _call_record_resource(*, attributes: dict[str, object] | None = None) -> dic
         "attributes": merged,
         "relationships": {
             "customer": {"data": {"type": "customers", "id": CUSTOMER_ID}},
-            "fromPbxUser": {"data": {"type": "subscribers", "id": USER_ID}},
-            "toPbxUser": {"data": None},
+            "fromSubscriber": {"data": {"type": "subscribers", "id": USER_ID}},
+            "toSubscriber": {"data": None},
         },
     }
 
@@ -413,7 +413,7 @@ async def test_devices_list_builds_the_filter_and_page_query(
 
     async with client:
         await client.pbx.devices.list(
-            customer=CUSTOMER_ID, user=USER_ID, registered=True, before="0198c4a1", page_size=50
+            customer=CUSTOMER_ID, subscriber=USER_ID, registered=True, before="0198c4a1", page_size=50
         )
 
     request = route.calls.last.request
@@ -421,7 +421,7 @@ async def test_devices_list_builds_the_filter_and_page_query(
 
     assert request.url.path == "/v1/pbx/devices"
     assert params["filter[customer]"] == CUSTOMER_ID
-    assert params["filter[user]"] == USER_ID
+    assert params["filter[subscriber]"] == USER_ID
     assert params["filter[registered]"] == "true"
     assert params["page[before]"] == "0198c4a1"
     assert params["page[size]"] == "50"
@@ -462,7 +462,7 @@ async def test_devices_get_reads_a_jsonapi_document_into_the_public_dataclass(
     assert device.auto_answer is False
     assert device.registered_at == "2026-09-14 08:00:00"
     assert device.customer_id == CUSTOMER_ID
-    assert device.pbx_user_id == USER_ID
+    assert device.subscriber_id == USER_ID
 
 
 @pytest.mark.anyio
@@ -490,7 +490,7 @@ async def test_call_records_list_builds_every_filter_and_the_page_query(
             started_before="2026-09-30T23:59:59Z",
             direction="outbound",
             fields=["direction", "startedAt", "vendorId"],
-            user=USER_ID,
+            subscriber=USER_ID,
             call_id=CALL_ID,
             include_hidden=True,
             after="0198c4a1",
@@ -507,7 +507,7 @@ async def test_call_records_list_builds_every_filter_and_the_page_query(
     assert params["filter[startedBefore]"] == "2026-09-30T23:59:59Z"
     assert params["filter[direction]"] == "outbound"
     assert params["fields[call-records]"] == "direction,startedAt,vendorId"
-    assert params["filter[user]"] == USER_ID
+    assert params["filter[subscriber]"] == USER_ID
     assert params["filter[callId]"] == CALL_ID
     assert params["filter[includeHidden]"] == "true"
     assert params["page[after]"] == "0198c4a1"
@@ -584,8 +584,8 @@ async def test_call_records_get_reads_the_standard_tier_and_the_three_instants(
     assert record.answered_at == datetime(2026, 9, 12, 14, 0, 4, tzinfo=timezone.utc)
     assert record.released_at == datetime(2026, 9, 12, 14, 1, 4, tzinfo=timezone.utc)
     # The outbound leg resolves to a subscriber; the far end does not.
-    assert record.from_pbx_user_id == USER_ID
-    assert record.to_pbx_user_id is None
+    assert record.from_subscriber_id == USER_ID
+    assert record.to_subscriber_id is None
     # No `fields[call-records]` was sent, so the extended tier is untouched.
     assert record.vendor_id is None
     assert record.orig_call_id is None

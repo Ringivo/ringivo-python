@@ -675,20 +675,21 @@ _READS: tuple[_Read, ...] = (
         "customer",
         "PbxDevice._from_resource",
     ),
-    # `pbx-user`, not `user`: JSON:API forbids a relationship sharing the
+    # `subscriber`, not `user`: JSON:API forbids a relationship sharing the
     # name of an attribute, and `user` is already one on this resource.
     _Read(
         models.PbxDevice,
-        "pbx_user_id",
+        "subscriber_id",
         generated.PbxDeviceRelationships,
-        "pbxUser",
+        "subscriber",
         "PbxDevice._from_resource",
     ),
     # -- CallRecord._from_resource reads a CallRecordResource (id) + its ----
     # CallRecordAttributes, plus all three relationship linkages. The whole
     # resource was rebuilt with no backward compatibility (0.10.0): every
     # attribute key is camelCase now, and the relationship names moved with
-    # it — `from-pbx-user` is `fromPbxUser`, `to-pbx-user` is `toPbxUser`.
+    # it. 0.14.0 renamed the two legs again, to `fromSubscriber` and
+    # `toSubscriber`.
     _Read(models.CallRecord, "id", generated.CallRecordResource, "id", "CallRecord._from_resource"),
     _Read(
         models.CallRecord, "direction", generated.CallRecordAttributes, "direction", "CallRecord._from_resource"
@@ -915,16 +916,16 @@ _READS: tuple[_Read, ...] = (
     ),
     _Read(
         models.CallRecord,
-        "from_pbx_user_id",
+        "from_subscriber_id",
         generated.CallRecordRelationships,
-        "fromPbxUser",
+        "fromSubscriber",
         "CallRecord._from_resource",
     ),
     _Read(
         models.CallRecord,
-        "to_pbx_user_id",
+        "to_subscriber_id",
         generated.CallRecordRelationships,
-        "toPbxUser",
+        "toSubscriber",
         "CallRecord._from_resource",
     ),
     # -- Recording._from_resource reads a RecordingResource (id) + its ------
