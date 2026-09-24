@@ -264,10 +264,10 @@ tags:
       **`preference` ascending is tried first**, and equal preferences ring at the same time. A blank
       `port` resolves the host through DNS SRV; an explicit port disables that lookup.
 
-  - name: PBX users
+  - name: PBX subscribers
     description: |
-      The subscribers on your customers' phone systems — who has which extension, and how they are
-      reached.
+      Every row on your customers' phone systems — people, and the auto attendants, call queues, AI
+      agents and other machines that also hold an extension. `kind` says which a row is.
 
       **Scope note.** Every `/v1/pbx/` read is narrowed to the PBX domains of the customers your
       credential may read, and there is no unscoped form. A credential that reaches no customer with
@@ -279,7 +279,7 @@ tags:
       than stored.
   - name: PBX calls
     description: |
-      Click-to-dial: ask one of your customers' PBX users to call a number, from their own phone.
+      Click-to-dial: ask one of your customers' PBX subscribers to call a number, from their own phone.
 
       **This is the one write on `/v1/pbx/`**, it needs its own scope (`pbx-calls:write`), and the
       read scopes do not imply it — the act has a cost and a caller ID attached. It answers **202**,
@@ -5917,18 +5917,22 @@ paths:
 # -------------------------------------------------------------------------------------------------
 # Outbound webhooks — what WE send to YOUR server.
 # -------------------------------------------------------------------------------------------------
-  /v1/pbx/users:
+  /v1/pbx/subscribers:
     get:
-      tags: [PBX users]
-      operationId: listPbxUsers
-      summary: List PBX users
+      tags: [PBX subscribers]
+      operationId: listPbxSubscribers
+      summary: List PBX subscribers
       description: |
-        The subscribers of your customers' phone systems, extension first.
+        Every subscriber on your customers' phone systems, extension first — people AND machines.
+        Read `kind` to tell them apart, or ask for the kinds you want with `filter[kind]`.
+
+        **For a click-to-call picker**, send `filter[kind]=user&filter[hasDevices]=true`: the people
+        who have a phone. A subscriber with no device cannot place a call.
 
         **Every `/v1/pbx/` read is scoped to your customers' PBX domains**, and there is no unscoped
         form. A credential that reaches no customer with a PBX is refused with a **400** rather than
         given an empty page, so "nobody has a phone system yet" never reads as "nobody has any
-        users".
+        subscribers".
       security:
         - bearerAuth: [pbx-users:read]
       parameters:
@@ -5965,16 +5969,34 @@ paths:
             extension — the one parameter behind a directory search box.
           schema: { type: string }
           example: perkins
+        - name: filter[kind]
+          in: query
+          required: false
+          description: |
+            One kind, or several separated by commas (`call_queue,auto_attendant`). The words are the
+            `kind` values. A word outside the list is refused with a **400** that names the accepted
+            words, never answered with an empty page.
+          schema: { type: string }
+          example: user
+        - name: filter[hasDevices]
+          in: query
+          required: false
+          description: |
+            `true` for subscribers with at least one device registration, `false` for those with
+            none — the same devices the `devices` relationship lists. Any other value is refused
+            with a **400**, never read as `false`.
+          schema: { type: boolean }
+          example: true
       responses:
         '200':
-          description: A page of PBX users.
+          description: A page of PBX subscribers.
           content:
             application/vnd.api+json:
               schema:
-                $ref: '#/components/schemas/PbxUserCollectionDocument'
+                $ref: '#/components/schemas/PbxSubscriberCollectionDocument'
               example:
                 data:
-                  - type: users
+                  - type: subscribers
                     id: 6f98cc5d-5248-5100-9967-8606e2993077
                     attributes:
                       user: '101'
@@ -5992,6 +6014,7 @@ paths:
                       timeZone: US/Eastern
                       createdAt: '2026-01-02 03:04:05'
                       updatedAt: '2026-09-01 10:00:00'
+                      kind: user
                     relationships:
                       customer:
                         data: { type: customers, id: 0198c4a1-2b3c-7d4e-8f50-1a2b3c4d5e6f }
@@ -6008,25 +6031,25 @@ paths:
           $ref: '#/components/responses/Unauthenticated'
         '403':
           $ref: '#/components/responses/Forbidden'
-  /v1/pbx/users/{user}:
+  /v1/pbx/subscribers/{subscriber}:
     get:
-      tags: [PBX users]
-      operationId: getPbxUser
-      summary: Read one PBX user
+      tags: [PBX subscribers]
+      operationId: getPbxSubscriber
+      summary: Read one PBX subscriber
       description: |
         A subscriber outside your customers' domains answers **404**, not 403 — the same answer an id
         that names nothing gives.
       security:
         - bearerAuth: [pbx-users:read]
       parameters:
-        - $ref: '#/components/parameters/PbxUserId'
+        - $ref: '#/components/parameters/PbxSubscriberId'
       responses:
         '200':
-          description: The PBX user.
+          description: The PBX subscriber.
           content:
             application/vnd.api+json:
               schema:
-                $ref: '#/components/schemas/PbxUserDocumentResponse'
+                $ref: '#/components/schemas/PbxSubscriberDocumentResponse'
         '400':
           $ref: '#/components/responses/BadQuery'
         '401':
@@ -6035,13 +6058,13 @@ paths:
           $ref: '#/components/responses/Forbidden'
         '404':
           $ref: '#/components/responses/NotFound'
-  /v1/pbx/users/{user}/calls:
+  /v1/pbx/subscribers/{subscriber}/calls:
     post:
       tags: [PBX calls]
       operationId: placePbxCall
       summary: Place a click-to-dial call
       description: |
-        Asks the phone system to ring `{user}`'s phone and connect it to `destination`.
+        Asks the phone system to ring `{subscriber}`'s phone and connect it to `destination`.
 
         **202, and the id is yours before the call exists.** The `data.id` in the answer is minted
         here and handed to the phone system as the SIP Call-ID it places the call under. Nothing
@@ -6053,18 +6076,23 @@ paths:
         records the leg that rang the user as hidden, so the list answers the outbound leg alone
         unless you add `filter[includeHidden]=true`.
 
-        **`device` must belong to `{user}`.** A device id that names a registration owned by
-        somebody else — including a user of the same name on another domain — is refused with a
+        **The subscriber needs a registered device.** A subscriber with no device, and the domain
+        template (`kind: domain`) whatever it holds, is refused with a **422** titled
+        `Not Callable`, with the kind in `errors[0].meta.kind`. Nothing is dialled. Any other `kind`
+        may place a call.
+
+        **`device` must belong to `{subscriber}`.** A device id that names a registration owned by
+        somebody else — including a subscriber with the same extension on another domain — is refused with a
         **422** pointing at `/data/attributes/device`. Nothing is dialled.
 
-        A user outside your customers' domains answers **404**, not 403 — the same answer an id that
+        A subscriber outside your customers' domains answers **404**, not 403 — the same answer an id that
         names nothing gives. A phone system that refuses or cannot be reached answers **502** with
         its own status in `errors[0].meta.vendor_status`; nothing was dialled and the request may be
         retried.
       security:
         - bearerAuth: [pbx-calls:write]
       parameters:
-        - $ref: '#/components/parameters/PbxUserId'
+        - $ref: '#/components/parameters/PbxSubscriberId'
       requestBody:
         required: true
         content:
@@ -6116,12 +6144,12 @@ paths:
           required: false
           description: Only the registrations on this customer's PBX domain.
           schema: { type: string, format: uuid }
-        - name: filter[user]
+        - name: filter[subscriber]
           in: query
           required: false
           description: |
-            Only the registrations belonging to this PBX **user id** — not an extension. An id you
-            cannot reach answers an empty page rather than a refusal.
+            Only the registrations belonging to this PBX **subscriber id** — not an extension. An id
+            you cannot reach answers an empty page rather than a refusal.
           schema: { type: string, format: uuid }
         - name: filter[registered]
           in: query
@@ -6156,8 +6184,8 @@ paths:
                     relationships:
                       customer:
                         data: { type: customers, id: 0198c4a1-2b3c-7d4e-8f50-1a2b3c4d5e6f }
-                      pbxUser:
-                        data: { type: users, id: 6f98cc5d-5248-5100-9967-8606e2993077 }
+                      subscriber:
+                        data: { type: subscribers, id: 6f98cc5d-5248-5100-9967-8606e2993077 }
                 meta:
                   page:
                     size: 25
@@ -6265,17 +6293,17 @@ paths:
             `rawRequestUser`. Naming a field that does not exist is a 400.
           schema: { type: string }
           example: direction,startedAt,vendorId,terminatedTo
-        - name: filter[user]
+        - name: filter[subscriber]
           in: query
           required: false
           description: |
-            Calls with this PBX **user id** on either leg — placed by them or taken by them.
+            Calls with this PBX **subscriber id** on either leg — placed by them or taken by them.
           schema: { type: string, format: uuid }
         - name: filter[callId]
           in: query
           required: false
           description: |
-            The records of ONE click-to-dial call — the `id` that `POST /v1/pbx/users/{user}/calls`
+            The records of ONE click-to-dial call — the `id` that `POST /v1/pbx/subscribers/{subscriber}/calls`
             answered with.
 
             **One call writes two records.** The phone system rings the user first and then dials
@@ -6331,10 +6359,10 @@ paths:
                     relationships:
                       customer:
                         data: { type: customers, id: 0198c4a1-2b3c-7d4e-8f50-1a2b3c4d5e6f }
-                      fromPbxUser:
+                      fromSubscriber:
                         data: null
-                      toPbxUser:
-                        data: { type: users, id: 6f98cc5d-5248-5100-9967-8606e2993077 }
+                      toSubscriber:
+                        data: { type: subscribers, id: 6f98cc5d-5248-5100-9967-8606e2993077 }
                 meta:
                   page:
                     size: 25
@@ -7527,11 +7555,11 @@ components:
       required: true
       description: The customer's id. A customer that is not on your account is a 404.
       schema: { type: string, format: uuid }
-    PbxUserId:
-      name: user
+    PbxSubscriberId:
+      name: subscriber
       in: path
       required: true
-      description: The PBX user's id.
+      description: The PBX subscriber's id.
       schema: { type: string, format: uuid }
     PbxDeviceId:
       name: device
@@ -11683,7 +11711,7 @@ components:
       type: [string, 'null']
       description: Whether anybody answered. Derived from the same integer as `direction`.
       enum: [answered, missed]
-    # -- Click-to-dial (POST /v1/pbx/users/{user}/calls) -------------------------------------------
+    # -- Click-to-dial (POST /v1/pbx/subscribers/{subscriber}/calls) -------------------------------
     PbxCallRequest:
       type: object
       required: [data]
@@ -11768,11 +11796,12 @@ components:
       properties:
         data:
           $ref: '#/components/schemas/PbxCallResource'
-    PbxUserAttributes:
+    PbxSubscriberAttributes:
       type: object
       description: |
-        A subscriber on a customer's phone system. Every field is read-only: this API does not write
-        the phone system, and the write surface answers with a change INTENT rather than an update.
+        A subscriber on a customer's phone system — a person or a machine; `kind` says which. Every
+        field is read-only: this API does not write the phone system, and the write surface answers
+        with a change INTENT rather than an update.
       properties:
         user: { type: [string, 'null'], description: 'The extension.' }
         domain: { type: [string, 'null'], description: 'The customer''s PBX domain.' }
@@ -11798,18 +11827,29 @@ components:
             As the phone system stores it — TEXT, not RFC 3339. It is served unparsed because the
             switch has never published the format, and a mis-parse would be silent.
         updatedAt: { type: [string, 'null'], description: 'As the phone system stores it.' }
-    PbxUserRelationships:
+        kind:
+          $ref: '#/components/schemas/PbxSubscriberKind'
+    PbxSubscriberKind:
+      type: string
+      description: |
+        What this subscriber is, derived on every read from the phone system's own markers. `user`
+        is a person. `domain` is the domain's settings template, never a phone. `system` is any
+        machine this API has no word for yet: an unknown marker is never read as `user`, so a
+        `filter[kind]=user` list cannot gain a machine. New words may be added; read an unknown word
+        as `system`.
+      enum: [user, auto_attendant, call_queue, ai_agent, conference, department, site, ring_group, trunk, time_of_day, domain, system]
+    PbxSubscriberRelationships:
       type: object
       properties:
         customer:
           $ref: '#/components/schemas/RelationshipToOne'
         devices:
           $ref: '#/components/schemas/RelationshipToMany'
-    PbxUserResource:
+    PbxSubscriberResource:
       type: object
       required: [type, id]
       properties:
-        type: { type: string, enum: [users] }
+        type: { type: string, enum: [subscribers] }
         id:
           type: string
           format: uuid
@@ -11818,31 +11858,31 @@ components:
             so it is the same id in every region and will not change when this data moves to its
             permanent home.
         attributes:
-          $ref: '#/components/schemas/PbxUserAttributes'
+          $ref: '#/components/schemas/PbxSubscriberAttributes'
         relationships:
-          $ref: '#/components/schemas/PbxUserRelationships'
+          $ref: '#/components/schemas/PbxSubscriberRelationships'
         links:
           $ref: '#/components/schemas/ResourceLinks'
         meta:
           $ref: '#/components/schemas/ResourceMeta'
-    PbxUserDocumentResponse:
+    PbxSubscriberDocumentResponse:
       type: object
       required: [data]
       properties:
         data:
-          $ref: '#/components/schemas/PbxUserResource'
+          $ref: '#/components/schemas/PbxSubscriberResource'
         links:
           $ref: '#/components/schemas/ResourceLinks'
         meta:
           $ref: '#/components/schemas/DocumentMeta'
-    PbxUserCollectionDocument:
+    PbxSubscriberCollectionDocument:
       type: object
       required: [data]
       properties:
         data:
           type: array
           items:
-            $ref: '#/components/schemas/PbxUserResource'
+            $ref: '#/components/schemas/PbxSubscriberResource'
         links:
           $ref: '#/components/schemas/CollectionLinks'
         meta:
@@ -11873,7 +11913,7 @@ components:
       properties:
         customer:
           $ref: '#/components/schemas/RelationshipToOne'
-        pbxUser:
+        subscriber:
           $ref: '#/components/schemas/RelationshipToOne'
     PbxDeviceResource:
       type: object
@@ -12072,9 +12112,9 @@ components:
       properties:
         customer:
           $ref: '#/components/schemas/RelationshipToOne'
-        fromPbxUser:
+        fromSubscriber:
           $ref: '#/components/schemas/RelationshipToOne'
-        toPbxUser:
+        toSubscriber:
           $ref: '#/components/schemas/RelationshipToOne'
     CallRecordResource:
       type: object

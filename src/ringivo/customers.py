@@ -11,7 +11,7 @@ does: the platform drops that scope from a customer credential when the
 token is minted, so every call here is refused for such a client.
 
 -- THE id IS WHAT THE REST OF THE API ASKS FOR ----------------------------------
-A customer's `id` is the value `customer=` takes on `pbx.users.list()`,
+A customer's `id` is the value `customer=` takes on `pbx.subscribers.list()`,
 `pbx.devices.list()` and `pbx.call_records.list()`, and on the fax-account
 calls. Reading it here is how an integration that knows a customer by name
 or by code finds the id those calls need.

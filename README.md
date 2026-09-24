@@ -440,12 +440,12 @@ never carries it.
 ```
 
 **A customer's `id` is what the rest of this client asks for.** Pass it as
-`customer=` to `client.pbx.users.list`, `client.pbx.devices.list` and
+`customer=` to `client.pbx.subscribers.list`, `client.pbx.devices.list` and
 `client.pbx.call_records.list`, and to the fax-account calls:
 
 ```python
-    for user in client.pbx.users.list(customer=customer.id):
-        print(user.user, user.display_name)
+    for subscriber in client.pbx.subscribers.list(customer=customer.id):
+        print(subscriber.user, subscriber.display_name, subscriber.kind)
 ```
 
 The list is newest first. It walks by cursor, like every other list here.
@@ -459,35 +459,69 @@ When `customer.pbx` is False, the five phone-system fields —
 `provisioning_state` — are None. `transports` keeps the server's order,
 because the order is the DNS preference.
 
-## Call records, users, devices and click-to-dial
+## Call records, subscribers, devices and click-to-dial
 
-`client.pbx` is your customers' phone systems: `pbx.users` are the
-subscribers, `pbx.devices` are the registrations their phones have made,
-and `pbx.call_records` is the call log. Reading needs `pbx-users:read` —
+`client.pbx` is your customers' phone systems: `pbx.subscribers` are every
+extension on them — people AND machines — `pbx.devices` are the
+registrations their phones have made, and `pbx.call_records` is the call
+log. Reading needs `pbx-users:read` —
 which covers subscribers AND their devices, because a registration is read
 as part of the subscriber it belongs to — or `pbx-call-records:read` for
 the call log, which is a separate scope because who called whom is a
 different sensitivity from a directory.
 
 ```python
-    for user in client.pbx.users.list(search="perkins"):
-        print(user.user, user.display_name, user.presence)
+    for subscriber in client.pbx.subscribers.list(search="perkins"):
+        print(subscriber.user, subscriber.display_name, subscriber.kind)
 
-    for device in client.pbx.devices.list(user=user.id, registered=True):
+    for device in client.pbx.devices.list(subscriber=subscriber.id, registered=True):
         print(device.aor, device.user_agent)
 ```
+
+**`kind` says what a subscriber is.** A phone system holds people and
+machines: auto attendants, call queues, AI agents, the domain's settings
+template. `kind` is `user` for a person, and otherwise one of
+`auto_attendant`, `call_queue`, `ai_agent`, `conference`, `department`,
+`site`, `ring_group`, `trunk`, `time_of_day`, `domain` or `system`. `system`
+is any machine the platform has no word for yet — an unknown marker is
+never read as `user`. `kind` is a plain `str`, so a word added later parses
+as itself; read a word you do not know as `system`.
+
+**For a click-to-call picker, ask for the people who have a phone:**
+
+```python
+    page = client.pbx.subscribers.list(kind="user", has_devices=True)
+```
+
+`kind=` takes one word, a comma list (`"call_queue,auto_attendant"`) or a
+list of words; a word the API does not know is a 400 that names the
+accepted words. `has_devices=False` asks for the subscribers with no
+registered device. A subscriber's own devices are `subscriber.device_ids`.
+
+**Upgrading from 0.13.x:** `pbx.users` is now `pbx.subscribers`, and the
+API path `/v1/pbx/users` is gone — there is no alias. `PbxUser` is
+`PbxSubscriber`, `PbxUserPage` is `PbxSubscriberPage` and its rows are
+`page.subscribers`, and `PbxUsers`/`AsyncPbxUsers` are
+`PbxSubscribers`/`AsyncPbxSubscribers`. `get()` and `call()` take
+`subscriber_id` where they took `pbx_user_id`. Click-to-dial is
+`pbx.subscribers.call(...)`, with the same arguments. The list now returns
+machines too, so a people-only list needs `kind="user"`. The links back to a
+subscriber moved too: `PbxDevice.pbx_user_id` is `PbxDevice.subscriber_id`,
+`CallRecord.from_pbx_user_id`/`to_pbx_user_id` are
+`from_subscriber_id`/`to_subscriber_id`, and `user=` on `devices.list()`
+and `call_records.list()` is `subscriber=`. `user=` on
+`subscribers.list()` is unchanged: it is the extension. The scope is still
+`pbx-users:read`.
 
 **Every `/v1/pbx/` read is narrowed to your customers' phone systems**, and
 there is no unscoped form. A credential that reaches no customer with a
 phone system is refused with a 400 rather than handed an empty page, so
-"nobody has a phone system yet" never reads as "nobody has any users".
+"nobody has a phone system yet" never reads as "nobody has any subscribers".
 
-The two collections take a `user=` argument that means different things,
-and it is worth knowing which is which: `users.list(user=...)` is an EXACT
-extension — `101` does not match `1010` — while `devices.list(user=...)` is
-a `users` id. A device points back at its subscriber as
-`device.pbx_user_id`, named that way because JSON:API forbids a
-relationship sharing the name of the `user` attribute beside it.
+`subscribers.list(user=...)` is an EXACT extension — `101` does not match
+`1010` — while `devices.list(subscriber=...)` and
+`call_records.list(subscriber=...)` take a `subscribers` id. A device points
+back at its subscriber as `device.subscriber_id`.
 
 ### The call log, one date range at a time
 
@@ -585,8 +619,8 @@ reads back `None`.
 | Standard (always served) | `type`, `disposition`, `tenant_id`, `domain`, `territory`, `from_number`, `from_extension`, `from_name`, `to_number`, `dialed_number`, `routed_by_extension`, `answering_extension`, `started_at`, `answered_at`, `released_at`, `duration_seconds`, `talk_seconds`, `release_code`, `release_text`, `has_recording`, `hidden` |
 | Extended (needs `fields=`) | `vendor_id`, `orig_call_id`, `term_call_id`, `by_action`, `terminated_to`, `codec`, `hostname`, `raw_from_uri`, `raw_from_user`, `raw_to_user`, `raw_request_user` |
 
-`call.customer_id`, `call.from_pbx_user_id` and `call.to_pbx_user_id` come
-off the `customer`, `fromPbxUser` and `toPbxUser` relationships — read-only
+`call.customer_id`, `call.from_subscriber_id` and `call.to_subscriber_id` come
+off the `customer`, `fromSubscriber` and `toSubscriber` relationships — read-only
 in every tier, and each `None` on a leg with no subscriber to point at, such
 as an outside caller on an inbound call.
 
@@ -632,7 +666,7 @@ yourself; the API derives that one for you.
 ### Click-to-dial
 
 ```python
-    placed = client.pbx.users.call(user.id, destination="+13025556789")
+    placed = client.pbx.subscribers.call(subscriber.id, destination="+13025556789")
 
     print(placed.id, placed.status)        # 0198c7f2-… requested
 ```
@@ -640,6 +674,10 @@ yourself; the API derives that one for you.
 The phone system rings that subscriber's phone and connects it to
 `destination`, so the call goes out as them rather than as you. Needs
 `pbx-calls:write`.
+
+The subscriber needs a registered device. One with no device, and the
+domain template (`kind == "domain"`), is refused with a 422 titled
+`Not Callable`; nothing is dialled. Any other `kind` may place a call.
 
 The answer is a 202 and says exactly that much: the request was accepted
 and handed to the phone system. Nothing here says a phone rang or anybody
@@ -653,7 +691,7 @@ call-detail row, so the two ids differ. Pass this id as `call_id=` to the
 call-record list:
 
 ```python
-    placed = client.pbx.users.call(user.id, destination="+13025556789")
+    placed = client.pbx.subscribers.call(subscriber.id, destination="+13025556789")
 
     # Later, once the call has ended. With no range, only the current and
     # the previous month are searched.
@@ -832,12 +870,12 @@ are deliberately not wrapped.
 | `client.webhook_deliveries.get(webhook_delivery_id)` | `webhooks:read` | One `WebhookDelivery`. |
 | `client.customers.list(*, ids=None, code=None, after=None, before=None, page_size=None)` | `customers:read` | A `CustomerPage`, newest first: iterable, with `next_cursor`. `ids=` reads several customers by id in one request — the ids `list()` and `get()` hand back — and combines with `code=`. A customer's `id` is what `client.pbx.*.list(customer=...)` takes. |
 | `client.customers.get(customer_id)` | `customers:read` | One `Customer`. A customer that is not on your account is a 404, not a 403. |
-| `client.pbx.users.list(*, customer=None, user=None, search=None, after=None, before=None, page_size=None)` | `pbx-users:read` | A `PbxUserPage`: iterable, with `next_cursor`. `user` is an EXACT extension; `search` is the directory search box. |
-| `client.pbx.users.get(pbx_user_id)` | `pbx-users:read` | One `PbxUser`. A subscriber you cannot reach is a 404, not a 403. |
-| `client.pbx.users.call(pbx_user_id, *, destination, caller_id=None, auto_answer=False, device=None)` | `pbx-calls:write` | Ring this subscriber and dial `destination`. Returns the accepted `PbxCall` — a 202, no idempotency key, and an id that names the call on the phone system rather than a call record. Pass that id to `call_records.list(call_id=...)` once the call has ended. |
-| `client.pbx.devices.list(*, customer=None, user=None, registered=None, after=None, before=None, page_size=None)` | `pbx-users:read` | A `PbxDevicePage`. `user` here is a `users` ID, not an extension. |
+| `client.pbx.subscribers.list(*, customer=None, user=None, search=None, kind=None, has_devices=None, after=None, before=None, page_size=None)` | `pbx-users:read` | A `PbxSubscriberPage`: iterable, with `next_cursor`. `user` is an EXACT extension; `search` is the directory search box; `kind` is one word, a comma list or a list of words; `has_devices` narrows to subscribers with (or without) a device. |
+| `client.pbx.subscribers.get(subscriber_id)` | `pbx-users:read` | One `PbxSubscriber`. A subscriber you cannot reach is a 404, not a 403. |
+| `client.pbx.subscribers.call(subscriber_id, *, destination, caller_id=None, auto_answer=False, device=None)` | `pbx-calls:write` | Ring this subscriber and dial `destination`. Returns the accepted `PbxCall` — a 202, no idempotency key, and an id that names the call on the phone system rather than a call record. Pass that id to `call_records.list(call_id=...)` once the call has ended. |
+| `client.pbx.devices.list(*, customer=None, subscriber=None, registered=None, after=None, before=None, page_size=None)` | `pbx-users:read` | A `PbxDevicePage`. `subscriber` is a `subscribers` ID, not an extension. |
 | `client.pbx.devices.get(pbx_device_id)` | `pbx-users:read` | One `PbxDevice` — one registration, not one handset. |
-| `client.pbx.call_records.list(*, customer=None, started_after=None, started_before=None, direction=None, fields=None, user=None, call_id=None, include_hidden=None, after=None, before=None, page_size=None)` | `pbx-call-records:read` | A `CallRecordPage`, newest first. The date range decides which months are read; no range means the current and previous one. `fields=` asks for the extended tier — a sparse fieldset, so it narrows rather than adds. `call_id` finds the records of one `users.call()`, matched only inside the range's months. |
+| `client.pbx.call_records.list(*, customer=None, started_after=None, started_before=None, direction=None, fields=None, subscriber=None, call_id=None, include_hidden=None, after=None, before=None, page_size=None)` | `pbx-call-records:read` | A `CallRecordPage`, newest first. The date range decides which months are read; no range means the current and previous one. `fields=` asks for the extended tier — a sparse fieldset, so it narrows rather than adds. `call_id` finds the records of one `subscribers.call()`, matched only inside the range's months. |
 | `client.pbx.call_records.get(call_record_id)` | `pbx-call-records:read` | One `CallRecord`. A hidden record IS served here. |
 | `client.pbx.call_records.recordings(call_record_id)` | `pbx-call-records:read` | Every capture of that call, as a plain `tuple[Recording, ...]` — NOT paginated: this is the captures of one call, not a walk over a table. Each `Recording.content_url` is a freshly minted, short-lived link. |
 | `client.pbx.call_records.transcripts(call_record_id)` | `pbx-call-records:read` + `pbx-transcripts:read` | One `Transcript` per capture — `status="pending"` and every other field `None` for one with no words yet. Also NOT paginated. |
@@ -846,7 +884,7 @@ are deliberately not wrapped.
 `CallRecord`, `CallRecordPage`, `Customer`, `CustomerPage`, `Fax`,
 `FaxAccount`, `FaxAccountNumber`, `FaxAccountPage`, `FaxAccountUser`,
 `FaxAccountUserPage`, `FaxDocument`, `FaxPage`, `MediaLink`, `PbxCall`,
-`PbxDevice`, `PbxDevicePage`, `PbxUser`, `PbxUserPage`, `Recording`,
+`PbxDevice`, `PbxDevicePage`, `PbxSubscriber`, `PbxSubscriberPage`, `Recording`,
 `Transcript`, `WebhookDelivery`, `WebhookDeliveryPage`, `WebhookEndpoint`
 and `WebhookEndpointPage` are frozen dataclasses, and each keeps the JSON
 it was built from in `.raw` — so a field the API adds after this release

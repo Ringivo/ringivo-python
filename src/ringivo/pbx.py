@@ -2,7 +2,7 @@
 was called — and one write, which asks a phone to ring.
 
 -- WHY ONE NAMESPACE WITH THREE COLLECTIONS INSIDE IT --------------------------
-`client.pbx.users`, `client.pbx.devices` and `client.pbx.call_records` are
+`client.pbx.subscribers`, `client.pbx.devices` and `client.pbx.call_records` are
 three resources of ONE subject, and the subject is the thing that makes
 them legible: a subscriber, the registrations that subscriber's phones have
 made, and the calls that came and went. Hanging them flat off the client
@@ -13,26 +13,28 @@ guessing which product's devices those are.
 The platform narrows every `/v1/pbx/` read to the phone-system domains of
 the customers your credential may reach. A credential that reaches no such
 customer is REFUSED WITH A 400 rather than handed an empty page, so
-"nobody has a phone system yet" can never read as "nobody has any users".
+"nobody has a phone system yet" can never read as "nobody has any
+subscribers".
 That refusal arrives as an `ApiError`, like any other.
 
 -- THIS SURFACE DOES NOT WRITE THE PHONE SYSTEM --------------------------------
-Every attribute on `users` and `devices` is read-only, which is why neither
-has a `create()`, an `update()` or a `delete()`. The one write in this
-module is `users.call()`, and it does not write the phone system either: it
+Every attribute on `subscribers` and `devices` is read-only, which is why
+neither has a `create()`, an `update()` or a `delete()`. The one write in
+this module is `subscribers.call()`, and it does not write the phone system
+either: it
 asks the switch to place a call and gets an acknowledgement back.
 
 -- THE TWO SCOPES ARE NOT THE THREE COLLECTIONS --------------------------------
-`pbx-users:read` reaches BOTH `users` and `devices` — a registration is
+`pbx-users:read` reaches BOTH `subscribers` and `devices` — a registration is
 read as part of the subscriber it belongs to, not as a resource of its own.
 `pbx-call-records:read` is separate, because a call log is a different
 sensitivity from a directory: who called whom, and for how long, is the
-half a reseller most often wants to withhold. `users.call()` needs
+half a reseller most often wants to withhold. `subscribers.call()` needs
 `pbx-calls:write`, which is a third scope again, for the obvious reason
 that it makes somebody's phone ring.
 
 -- TIMESTAMPS: TEXT ON TWO OF THEM, INSTANTS ON THE THIRD ----------------------
-A user's and a device's timestamps are served as the phone system stores
+A subscriber's and a device's timestamps are served as the phone system stores
 them — TEXT, in a format the switch has never published — so this client
 publishes them as `str` rather than guessing (models.py says why at
 length). A call record's three instants are real `datetime`s: the switch
@@ -58,8 +60,8 @@ from .models import (
     PbxCall,
     PbxDevice,
     PbxDevicePage,
-    PbxUser,
-    PbxUserPage,
+    PbxSubscriber,
+    PbxSubscriberPage,
     Recording,
     Transcript,
 )
@@ -67,15 +69,15 @@ from .models import (
 if TYPE_CHECKING:  # pragma: no cover - import cycle broken for the type only
     from .client import Ringivo
 
-__all__ = ["Pbx", "PbxCallRecords", "PbxDevices", "PbxUsers"]
+__all__ = ["Pbx", "PbxCallRecords", "PbxDevices", "PbxSubscribers"]
 
 #: What `_path_segment` calls each resource in its refusal.
-_USER_NOUN = "PBX user"
+_SUBSCRIBER_NOUN = "PBX subscriber"
 _DEVICE_NOUN = "PBX device"
 _CALL_RECORD_NOUN = "call record"
 
 #: The `type` member the click-to-dial request and its answer both carry.
-#: A call REQUEST is its own resource — it is not a `users` write and not a
+#: A call REQUEST is its own resource — it is not a `subscribers` write and not a
 #: call record, which does not exist until the call has happened.
 _CALLS_TYPE = "calls"
 
@@ -92,13 +94,13 @@ class Pbx:
     """The `client.pbx` namespace: three collections and one action."""
 
     def __init__(self, client: Ringivo) -> None:
-        self.users = PbxUsers(client)
+        self.subscribers = PbxSubscribers(client)
         self.devices = PbxDevices(client)
         self.call_records = PbxCallRecords(client)
 
 
-class PbxUsers:
-    """The `client.pbx.users` namespace."""
+class PbxSubscribers:
+    """The `client.pbx.subscribers` namespace."""
 
     def __init__(self, client: Ringivo) -> None:
         self._client = client
@@ -109,21 +111,34 @@ class PbxUsers:
         customer: str | None = None,
         user: str | None = None,
         search: str | None = None,
+        kind: str | Sequence[str] | None = None,
+        has_devices: bool | None = None,
         after: str | None = None,
         before: str | None = None,
         page_size: int | None = None,
-    ) -> PbxUserPage:
-        """One page of subscribers, extension first.
+    ) -> PbxSubscriberPage:
+        """One page of subscribers — people and machines — extension first.
+
+        For a click-to-call picker, pass `kind="user", has_devices=True`:
+        the people who have a phone.
 
         Args:
             customer: Only the subscribers of this customer's phone system.
             user: EXACT match on the extension — `101` does not match
-                `1010`. This is the extension, not a `users` id.
+                `1010`. This is the extension, not a `subscribers` id.
             search: Case-insensitive substring match on the display name,
                 first name, last name or extension. The one argument behind
                 a directory search box.
+            kind: Only these kinds — one word (`"user"`), a comma list
+                (`"call_queue,auto_attendant"`) or a list of words. See
+                `PbxSubscriber.kind` for the words. A word the API does not
+                know is refused with a 400 that names the accepted words,
+                never answered with an empty page.
+            has_devices: `True` for subscribers with at least one device
+                registration, `False` for those with none. Leave it off for
+                both.
             after: Walk forward: the previous page's
-                `PbxUserPage.next_cursor`. Mutually exclusive with
+                `PbxSubscriberPage.next_cursor`. Mutually exclusive with
                 `before` — passing both is refused with a 400.
             before: Walk backward from a cursor.
             page_size: Rows per page. The default is 25 and the ceiling is
@@ -139,11 +154,13 @@ class PbxUsers:
             "filter[customer]": customer,
             "filter[user]": user,
             "filter[search]": search,
+            "filter[kind]": _kind_param(kind),
+            "filter[hasDevices]": has_devices,
         }
-        document = self._client.request("GET", "/v1/pbx/users", params=params).json()
-        return _user_page(document)
+        document = self._client.request("GET", "/v1/pbx/subscribers", params=params).json()
+        return _subscriber_page(document)
 
-    def get(self, pbx_user_id: str) -> PbxUser:
+    def get(self, subscriber_id: str) -> PbxSubscriber:
         """Read one subscriber.
 
         A subscriber outside your customers' domains answers 404, not 403 —
@@ -154,13 +171,13 @@ class PbxUsers:
         """
         response = self._client.request(
             "GET",
-            f"/v1/pbx/users/{_path_segment(pbx_user_id, noun=_USER_NOUN)}",
+            f"/v1/pbx/subscribers/{_path_segment(subscriber_id, noun=_SUBSCRIBER_NOUN)}",
         )
-        return PbxUser._from_resource(_data_object(response.json()))
+        return PbxSubscriber._from_resource(_data_object(response.json()))
 
     def call(
         self,
-        pbx_user_id: str,
+        subscriber_id: str,
         *,
         destination: str,
         caller_id: str | None = None,
@@ -172,6 +189,10 @@ class PbxUsers:
         The phone system rings THIS SUBSCRIBER's phone and connects it to
         `destination`, so the call goes out as them rather than as the
         credential that asked for it.
+
+        The subscriber needs a registered device: one with none, and the
+        domain template (`kind == "domain"`), is refused with a 422 titled
+        `Not Callable`, and nothing is dialled.
 
         Returns as soon as the request is ACCEPTED (202), which is the
         whole of what a `PbxCall` says: it was handed to the phone system
@@ -196,7 +217,7 @@ class PbxUsers:
         refusal and an outage can be told apart before you try again.
 
         Args:
-            pbx_user_id: The subscriber whose phone places the call. A
+            subscriber_id: The subscriber whose phone places the call. A
                 subscriber your credential cannot reach answers 404, not
                 403.
             destination: What to dial — an E.164 number with its `+`, or an
@@ -229,7 +250,7 @@ class PbxUsers:
         """
         response = self._client.request(
             "POST",
-            f"/v1/pbx/users/{_path_segment(pbx_user_id, noun=_USER_NOUN)}/calls",
+            f"/v1/pbx/subscribers/{_path_segment(subscriber_id, noun=_SUBSCRIBER_NOUN)}/calls",
             accept=_JSONAPI,
             headers={"Content-Type": _JSONAPI},
             json=_call_document(
@@ -252,7 +273,7 @@ class PbxDevices:
         self,
         *,
         customer: str | None = None,
-        user: str | None = None,
+        subscriber: str | None = None,
         registered: bool | None = None,
         after: str | None = None,
         before: str | None = None,
@@ -263,9 +284,9 @@ class PbxDevices:
         Args:
             customer: Only the registrations on this customer's phone
                 system.
-            user: Only this subscriber's registrations, BY `users` ID — not
-                by extension, which is what the same-named filter on
-                `users.list()` takes. An id you cannot reach answers an
+            subscriber: Only this subscriber's registrations, BY
+                `subscribers` ID — not by extension, which is what `user=` on
+                `subscribers.list()` takes. An id you cannot reach answers an
                 empty page rather than a refusal.
             registered: `True` for registrations that have not expired,
                 `False` for the rest. Leave it off for both.
@@ -276,7 +297,7 @@ class PbxDevices:
             page_size: Rows per page. The default is 25 and the ceiling is
                 100.
 
-        Needs `pbx-users:read` — the SAME scope as `users`, not one of its
+        Needs `pbx-users:read` — the SAME scope as `subscribers`, not one of its
         own: a registration is read as part of the subscriber it belongs
         to.
         """
@@ -285,7 +306,7 @@ class PbxDevices:
             "page[before]": before,
             "page[size]": page_size,
             "filter[customer]": customer,
-            "filter[user]": user,
+            "filter[subscriber]": subscriber,
             "filter[registered]": registered,
         }
         document = self._client.request("GET", "/v1/pbx/devices", params=params).json()
@@ -322,7 +343,7 @@ class PbxCallRecords:
         started_before: str | None = None,
         direction: str | None = None,
         fields: Sequence[str] | None = None,
-        user: str | None = None,
+        subscriber: str | None = None,
         call_id: str | None = None,
         include_hidden: bool | None = None,
         after: str | None = None,
@@ -363,10 +384,11 @@ class PbxCallRecords:
                 this client's snake_case attribute names. Leave it off for
                 the standard tier. Naming a field the API does not publish
                 is a 400.
-            user: Calls with this subscriber on EITHER leg — placed by them
-                or taken by them — by `users` id, not by extension.
+            subscriber: Calls with this subscriber on EITHER leg — placed
+                by them or taken by them — by `subscribers` id, not by
+                extension.
             call_id: The records of ONE click-to-dial call. Pass the `id`
-                that `users.call()` returned. The call record appears once
+                that `subscribers.call()` returned. The call record appears once
                 the call has ended. One call writes two records: by default
                 the list returns the visible dial-out record, and the hidden
                 leg that rang the subscriber comes back only with
@@ -402,7 +424,7 @@ class PbxCallRecords:
             "filter[startedBefore]": started_before,
             "filter[direction]": direction,
             "fields[call-records]": _fields_param(fields),
-            "filter[user]": user,
+            "filter[subscriber]": subscriber,
             "filter[callId]": call_id,
             "filter[includeHidden]": include_hidden,
         }
@@ -501,7 +523,7 @@ def _call_document(
     auto_answer: bool,
     device: str | None,
 ) -> dict[str, Any]:
-    """The JSON:API document `users.call()` posts.
+    """The JSON:API document `subscribers.call()` posts.
 
     `callerId` and `device` are LEFT OUT when they were not passed, rather
     than sent as null. They are optional members of a create, and on a
@@ -524,13 +546,13 @@ def _call_document(
     return {"data": {"type": _CALLS_TYPE, "attributes": attributes}}
 
 
-def _user_page(document: Any) -> PbxUserPage:
-    """One `GET /v1/pbx/users` body, as the page this package hands back."""
+def _subscriber_page(document: Any) -> PbxSubscriberPage:
+    """One `GET /v1/pbx/subscribers` body, as the page this package hands back."""
     if not isinstance(document, Mapping):
         document = {}
 
-    return PbxUserPage(
-        users=tuple(PbxUser._from_resource(item) for item in _resources(document)),
+    return PbxSubscriberPage(
+        subscribers=tuple(PbxSubscriber._from_resource(item) for item in _resources(document)),
         next_url=_next_link(document),
         next_cursor=_next_cursor(document),
         raw=document,
@@ -605,6 +627,21 @@ def _fields_param(fields: Sequence[str] | None) -> str | None:
         return None
     names = tuple(fields)
     return ",".join(names) if names else None
+
+
+def _kind_param(kind: str | Sequence[str] | None) -> str | None:
+    """The `filter[kind]` value: one comma-joined string, or the parameter
+    left off entirely.
+
+    A `str` is sent as it is, so `"user"` and `"call_queue,auto_attendant"`
+    both work — unlike `fields`, a bare string here is the common case, not
+    a mistake. Any other sequence is joined with commas. `None` and an
+    empty sequence leave the parameter off: every kind.
+    """
+    if kind is None or isinstance(kind, str):
+        return kind or None
+    words = tuple(kind)
+    return ",".join(words) if words else None
 
 
 def _resources(document: Mapping[str, Any]) -> list[Mapping[str, Any]]:

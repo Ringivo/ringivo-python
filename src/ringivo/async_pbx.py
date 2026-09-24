@@ -9,7 +9,7 @@ touch no client, and one of them is a security control.
 
 Read pbx.py for the whys: why one namespace holds three collections, why
 every `/v1/pbx/` read is scoped and an unreachable credential is a 400
-rather than an empty page, why `devices` shares the `users` scope, why two
+rather than an empty page, why `devices` shares the `subscribers` scope, why two
 of the three resources publish their timestamps as text, and why the date
 range on `call_records` decides which months are read at all.
 """
@@ -27,41 +27,42 @@ from .models import (
     PbxCall,
     PbxDevice,
     PbxDevicePage,
-    PbxUser,
-    PbxUserPage,
+    PbxSubscriber,
+    PbxSubscriberPage,
     Recording,
     Transcript,
 )
 from .pbx import (
     _CALL_RECORD_NOUN,
     _DEVICE_NOUN,
-    _USER_NOUN,
+    _SUBSCRIBER_NOUN,
     _call_document,
     _call_record_page,
     _device_page,
     _fields_param,
     _recordings,
     _transcripts,
-    _user_page,
+    _kind_param,
+    _subscriber_page,
 )
 
 if TYPE_CHECKING:  # pragma: no cover - import cycle broken for the type only
     from .async_client import AsyncRingivo
 
-__all__ = ["AsyncPbx", "AsyncPbxCallRecords", "AsyncPbxDevices", "AsyncPbxUsers"]
+__all__ = ["AsyncPbx", "AsyncPbxCallRecords", "AsyncPbxDevices", "AsyncPbxSubscribers"]
 
 
 class AsyncPbx:
     """The `client.pbx` namespace on `AsyncRingivo`."""
 
     def __init__(self, client: AsyncRingivo) -> None:
-        self.users = AsyncPbxUsers(client)
+        self.subscribers = AsyncPbxSubscribers(client)
         self.devices = AsyncPbxDevices(client)
         self.call_records = AsyncPbxCallRecords(client)
 
 
-class AsyncPbxUsers:
-    """The `client.pbx.users` namespace on `AsyncRingivo`."""
+class AsyncPbxSubscribers:
+    """The `client.pbx.subscribers` namespace on `AsyncRingivo`."""
 
     def __init__(self, client: AsyncRingivo) -> None:
         self._client = client
@@ -72,16 +73,21 @@ class AsyncPbxUsers:
         customer: str | None = None,
         user: str | None = None,
         search: str | None = None,
+        kind: str | Sequence[str] | None = None,
+        has_devices: bool | None = None,
         after: str | None = None,
         before: str | None = None,
         page_size: int | None = None,
-    ) -> PbxUserPage:
-        """One page of subscribers, extension first.
+    ) -> PbxSubscriberPage:
+        """One page of subscribers — people and machines — extension first.
 
-        The awaited twin of `PbxUsers.list`, and the same arguments mean
-        the same things: `user` is an EXACT extension rather than a `users`
-        id, `search` is the one argument behind a directory search box, and
-        `after`/`before` are mutually exclusive.
+        The awaited twin of `PbxSubscribers.list`, and the same arguments
+        mean the same things: `user` is an EXACT extension rather than a
+        `subscribers` id, `search` is the one argument behind a directory
+        search box, `kind` is one word, a comma list or a list of words,
+        `has_devices` narrows to subscribers with (or without) a device, and
+        `after`/`before` are mutually exclusive. A click-to-call picker
+        passes `kind="user", has_devices=True`.
 
         Needs `pbx-users:read`.
         """
@@ -92,27 +98,29 @@ class AsyncPbxUsers:
             "filter[customer]": customer,
             "filter[user]": user,
             "filter[search]": search,
+            "filter[kind]": _kind_param(kind),
+            "filter[hasDevices]": has_devices,
         }
-        response = await self._client.request("GET", "/v1/pbx/users", params=params)
-        return _user_page(response.json())
+        response = await self._client.request("GET", "/v1/pbx/subscribers", params=params)
+        return _subscriber_page(response.json())
 
-    async def get(self, pbx_user_id: str) -> PbxUser:
+    async def get(self, subscriber_id: str) -> PbxSubscriber:
         """Read one subscriber.
 
-        The awaited twin of `PbxUsers.get`. A subscriber outside your
+        The awaited twin of `PbxSubscribers.get`. A subscriber outside your
         customers' domains answers 404, not 403.
 
         Needs `pbx-users:read`.
         """
         response = await self._client.request(
             "GET",
-            f"/v1/pbx/users/{_path_segment(pbx_user_id, noun=_USER_NOUN)}",
+            f"/v1/pbx/subscribers/{_path_segment(subscriber_id, noun=_SUBSCRIBER_NOUN)}",
         )
-        return PbxUser._from_resource(_data_object(response.json()))
+        return PbxSubscriber._from_resource(_data_object(response.json()))
 
     async def call(
         self,
-        pbx_user_id: str,
+        subscriber_id: str,
         *,
         destination: str,
         caller_id: str | None = None,
@@ -121,7 +129,7 @@ class AsyncPbxUsers:
     ) -> PbxCall:
         """Ask this subscriber's phone to call somebody: click-to-dial.
 
-        The awaited twin of `PbxUsers.call`, and it carries the same
+        The awaited twin of `PbxSubscribers.call`, and it carries the same
         warnings: a 202 says the request was accepted, not that a phone
         rang; the id it hands back names the call on the PHONE SYSTEM rather
         than a call record, and `call_records.list(call_id=...)` finds the
@@ -138,7 +146,7 @@ class AsyncPbxUsers:
         """
         response = await self._client.request(
             "POST",
-            f"/v1/pbx/users/{_path_segment(pbx_user_id, noun=_USER_NOUN)}/calls",
+            f"/v1/pbx/subscribers/{_path_segment(subscriber_id, noun=_SUBSCRIBER_NOUN)}/calls",
             accept=_JSONAPI,
             headers={"Content-Type": _JSONAPI},
             json=_call_document(
@@ -161,7 +169,7 @@ class AsyncPbxDevices:
         self,
         *,
         customer: str | None = None,
-        user: str | None = None,
+        subscriber: str | None = None,
         registered: bool | None = None,
         after: str | None = None,
         before: str | None = None,
@@ -169,18 +177,18 @@ class AsyncPbxDevices:
     ) -> PbxDevicePage:
         """One page of registrations, by address of record.
 
-        The awaited twin of `PbxDevices.list`. `user` here is a `users`
-        ID, unlike the same-named filter on `users.list()`, which is an
-        extension.
+        The awaited twin of `PbxDevices.list`. `subscriber` is a
+        `subscribers` ID, unlike `user=` on `subscribers.list()`, which is
+        an extension.
 
-        Needs `pbx-users:read` — the same scope as `users`.
+        Needs `pbx-users:read` — the same scope as `subscribers`.
         """
         params: dict[str, Any] = {
             "page[after]": after,
             "page[before]": before,
             "page[size]": page_size,
             "filter[customer]": customer,
-            "filter[user]": user,
+            "filter[subscriber]": subscriber,
             "filter[registered]": registered,
         }
         response = await self._client.request("GET", "/v1/pbx/devices", params=params)
@@ -216,7 +224,7 @@ class AsyncPbxCallRecords:
         started_before: str | None = None,
         direction: str | None = None,
         fields: Sequence[str] | None = None,
-        user: str | None = None,
+        subscriber: str | None = None,
         call_id: str | None = None,
         include_hidden: bool | None = None,
         after: str | None = None,
@@ -242,7 +250,7 @@ class AsyncPbxCallRecords:
         leave it off for the standard tier alone.
 
         call_id: The records of ONE click-to-dial call. Pass the `id`
-            that `users.call()` returned. The call record appears once
+            that `subscribers.call()` returned. The call record appears once
             the call has ended. One call writes two records: by default
             the list returns the visible dial-out record, and the hidden
             leg that rang the subscriber comes back only with
@@ -266,7 +274,7 @@ class AsyncPbxCallRecords:
             "filter[startedBefore]": started_before,
             "filter[direction]": direction,
             "fields[call-records]": _fields_param(fields),
-            "filter[user]": user,
+            "filter[subscriber]": subscriber,
             "filter[callId]": call_id,
             "filter[includeHidden]": include_hidden,
         }
