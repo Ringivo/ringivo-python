@@ -40,7 +40,9 @@ from ringivo import (
     PbxDevicePage,
     PbxUser,
     PbxUserPage,
+    Recording,
     Ringivo,
+    Transcript,
 )
 from ringivo import _generated_types as generated
 
@@ -56,15 +58,19 @@ DEVICE_ID = "92e7c8b3-9d9f-5286-86ac-f0d0c035e6c0"
 DEVICE_URL = f"{DEVICES_URL}/{DEVICE_ID}"
 CALL_RECORD_ID = "e4837703-48c1-5c9e-8699-bbaafb17bb84"
 CALL_RECORD_URL = f"{CALL_RECORDS_URL}/{CALL_RECORD_ID}"
+CALL_RECORD_RECORDINGS_URL = f"{CALL_RECORD_URL}/recordings"
+CALL_RECORD_TRANSCRIPTS_URL = f"{CALL_RECORD_URL}/transcripts"
+RECORDING_ID = "0198c9aa-1111-7000-8000-0000000000b1"
 CALL_ID = "0198c7f2-1111-7000-8000-000000000001"
 CUSTOMER_ID = "0198c4a1-2b3c-7d4e-8f50-1a2b3c4d5e6f"
 TENANT = "0198c4a1-3d4e-7f50-a1b2-c3d4e5f6a7b8"
 JSONAPI = "application/vnd.api+json"
 
-# The scopes this whole surface needs, in one place: two reads that are
-# deliberately separate — a call log is a different sensitivity from a
-# directory — and the write that makes a phone ring.
-SCOPES = ["pbx-users:read", "pbx-call-records:read", "pbx-calls:write"]
+# The scopes this whole surface needs, in one place: three reads that are
+# deliberately separate — a call log, the words spoken on it, and a
+# directory are three different sensitivities — and the write that makes a
+# phone ring.
+SCOPES = ["pbx-users:read", "pbx-call-records:read", "pbx-transcripts:read", "pbx-calls:write"]
 
 
 @pytest.fixture(autouse=True)
@@ -256,6 +262,48 @@ def _call_resource(*, attributes: dict[str, object] | None = None) -> dict[str, 
     }
     merged.update(attributes or {})
     return {"type": "calls", "id": CALL_ID, "attributes": merged}
+
+
+def _recording_resource(
+    *, resource_id: str = RECORDING_ID, attributes: dict[str, object] | None = None
+) -> dict[str, object]:
+    """One `recordings` resource object, KEBAB-CASE attributes and all —
+    this endpoint's own spelling, unlike the camelCase call-records block.
+    """
+    merged: dict[str, object] = {
+        "ccc-id": "00b1",
+        "duration": 64,
+        "byte-size": 512000,
+        "sha256": "a" * 64,
+        "superseded": False,
+        "content-url": f"{BASE_URL}/v1/pbx/recordings-content/signed-token",
+        "expires-at": "2026-09-12T15:00:00Z",
+    }
+    merged.update(attributes or {})
+    return {"type": "recordings", "id": resource_id, "attributes": merged}
+
+
+def _transcript_resource(
+    *, resource_id: str = RECORDING_ID, attributes: dict[str, object] | None = None
+) -> dict[str, object]:
+    """One `transcripts` resource object in the `ready` state — the shape a
+    `status="pending"` capture overrides most of, in the test that covers
+    it.
+    """
+    merged: dict[str, object] = {
+        "ccc-id": "00b1",
+        "status": "ready",
+        "language": "en-US",
+        "duration": 64,
+        "byte-size": 2048,
+        "sha256": "b" * 64,
+        "provider": "deepgram",
+        "model": "nova-3",
+        "content-url": f"{BASE_URL}/v1/pbx/transcripts-content/signed-token",
+        "expires-at": "2026-09-12T15:00:00Z",
+    }
+    merged.update(attributes or {})
+    return {"type": "transcripts", "id": resource_id, "attributes": merged}
 
 
 # -- users.list ------------------------------------------------------------
@@ -1104,6 +1152,195 @@ def test_a_call_record_id_stays_inside_its_own_path_segment(
         client.pbx.call_records.get("../users/secret")
 
     assert route.calls.last.request.url.raw_path == b"/v1/pbx/call-records/..%2Fusers%2Fsecret"
+
+
+# -- call_records.recordings ------------------------------------------------
+
+
+def test_call_records_recordings_reads_every_field_into_the_public_dataclass(
+    respx_mock: respx.MockRouter, client: Ringivo
+) -> None:
+    respx_mock.get(CALL_RECORD_RECORDINGS_URL).mock(
+        return_value=httpx.Response(200, json={"data": [_recording_resource()]})
+    )
+
+    with client:
+        recordings = client.pbx.call_records.recordings(CALL_RECORD_ID)
+
+    assert isinstance(recordings, tuple)
+    assert len(recordings) == 1
+    recording = recordings[0]
+    assert isinstance(recording, Recording)
+    assert recording.id == RECORDING_ID
+    assert recording.ccc_id == "00b1"
+    assert recording.duration == 64
+    assert recording.byte_size == 512000
+    assert recording.sha256 == "a" * 64
+    assert recording.superseded is False
+    assert recording.content_url == f"{BASE_URL}/v1/pbx/recordings-content/signed-token"
+    assert recording.expires_at == datetime(2026, 9, 12, 15, 0, tzinfo=timezone.utc)
+
+
+def test_call_records_recordings_returns_every_capture_in_the_servers_own_order(
+    respx_mock: respx.MockRouter, client: Ringivo
+) -> None:
+    # Vendor key order `(call_id, ccc_id)`, not chronological — this client
+    # does not reorder what the server sent.
+    second_id = "0198c9aa-1111-7000-8000-0000000000b2"
+    respx_mock.get(CALL_RECORD_RECORDINGS_URL).mock(
+        return_value=httpx.Response(
+            200,
+            json={
+                "data": [
+                    _recording_resource(),
+                    _recording_resource(resource_id=second_id, attributes={"ccc-id": "00b2"}),
+                ]
+            },
+        )
+    )
+
+    with client:
+        recordings = client.pbx.call_records.recordings(CALL_RECORD_ID)
+
+    assert [recording.id for recording in recordings] == [RECORDING_ID, second_id]
+
+
+def test_call_records_recordings_with_no_captures_is_an_empty_tuple_not_an_error(
+    respx_mock: respx.MockRouter, client: Ringivo
+) -> None:
+    respx_mock.get(CALL_RECORD_RECORDINGS_URL).mock(return_value=httpx.Response(200, json={"data": []}))
+
+    with client:
+        recordings = client.pbx.call_records.recordings(CALL_RECORD_ID)
+
+    assert recordings == ()
+
+
+def test_an_empty_call_record_id_is_refused_by_recordings(client: Ringivo) -> None:
+    with client, pytest.raises(ValueError, match="a call record id is required"):
+        client.pbx.call_records.recordings("")
+
+
+def test_a_call_record_id_stays_inside_its_own_path_segment_on_recordings(
+    respx_mock: respx.MockRouter, client: Ringivo
+) -> None:
+    route = respx_mock.route(host="api.yourprovider.example").mock(
+        return_value=httpx.Response(200, json={"data": [_recording_resource()]})
+    )
+
+    with client:
+        client.pbx.call_records.recordings("../users/secret")
+
+    assert (
+        route.calls.last.request.url.raw_path == b"/v1/pbx/call-records/..%2Fusers%2Fsecret/recordings"
+    )
+
+
+# -- call_records.transcripts ------------------------------------------------
+
+
+def test_call_records_transcripts_reads_the_ready_state_into_the_public_dataclass(
+    respx_mock: respx.MockRouter, client: Ringivo
+) -> None:
+    respx_mock.get(CALL_RECORD_TRANSCRIPTS_URL).mock(
+        return_value=httpx.Response(200, json={"data": [_transcript_resource()]})
+    )
+
+    with client:
+        transcripts = client.pbx.call_records.transcripts(CALL_RECORD_ID)
+
+    assert isinstance(transcripts, tuple)
+    assert len(transcripts) == 1
+    transcript = transcripts[0]
+    assert isinstance(transcript, Transcript)
+    assert transcript.id == RECORDING_ID
+    assert transcript.ccc_id == "00b1"
+    assert transcript.status == "ready"
+    assert transcript.language == "en-US"
+    assert transcript.duration == 64
+    assert transcript.byte_size == 2048
+    assert transcript.sha256 == "b" * 64
+    assert transcript.provider == "deepgram"
+    assert transcript.model == "nova-3"
+    assert transcript.content_url == f"{BASE_URL}/v1/pbx/transcripts-content/signed-token"
+    assert transcript.expires_at == datetime(2026, 9, 12, 15, 0, tzinfo=timezone.utc)
+
+
+def test_call_records_transcripts_reads_the_pending_state_with_every_other_field_none(
+    respx_mock: respx.MockRouter, client: Ringivo
+) -> None:
+    # A capture with no words yet is still an ITEM in this collection —
+    # `status="pending"` and every field below it null — so a caller can
+    # tell "no transcript yet" from "no recording at all".
+    respx_mock.get(CALL_RECORD_TRANSCRIPTS_URL).mock(
+        return_value=httpx.Response(
+            200,
+            json={
+                "data": [
+                    _transcript_resource(
+                        attributes={
+                            "status": "pending",
+                            "language": None,
+                            "duration": None,
+                            "byte-size": None,
+                            "sha256": None,
+                            "provider": None,
+                            "model": None,
+                            "content-url": None,
+                            "expires-at": None,
+                        }
+                    )
+                ]
+            },
+        )
+    )
+
+    with client:
+        transcripts = client.pbx.call_records.transcripts(CALL_RECORD_ID)
+
+    transcript = transcripts[0]
+    assert transcript.id == RECORDING_ID
+    assert transcript.ccc_id == "00b1"
+    assert transcript.status == "pending"
+    assert transcript.language is None
+    assert transcript.duration is None
+    assert transcript.byte_size is None
+    assert transcript.sha256 is None
+    assert transcript.provider is None
+    assert transcript.model is None
+    assert transcript.content_url is None
+    assert transcript.expires_at is None
+
+
+def test_call_records_transcripts_with_no_captures_is_an_empty_tuple_not_an_error(
+    respx_mock: respx.MockRouter, client: Ringivo
+) -> None:
+    respx_mock.get(CALL_RECORD_TRANSCRIPTS_URL).mock(return_value=httpx.Response(200, json={"data": []}))
+
+    with client:
+        transcripts = client.pbx.call_records.transcripts(CALL_RECORD_ID)
+
+    assert transcripts == ()
+
+
+def test_an_empty_call_record_id_is_refused_by_transcripts(client: Ringivo) -> None:
+    with client, pytest.raises(ValueError, match="a call record id is required"):
+        client.pbx.call_records.transcripts("")
+
+
+def test_a_call_record_id_stays_inside_its_own_path_segment_on_transcripts(
+    respx_mock: respx.MockRouter, client: Ringivo
+) -> None:
+    route = respx_mock.route(host="api.yourprovider.example").mock(
+        return_value=httpx.Response(200, json={"data": [_transcript_resource()]})
+    )
+
+    with client:
+        client.pbx.call_records.transcripts("../users/secret")
+
+    assert (
+        route.calls.last.request.url.raw_path == b"/v1/pbx/call-records/..%2Fusers%2Fsecret/transcripts"
+    )
 
 
 # -- users.call (click-to-dial) --------------------------------------------

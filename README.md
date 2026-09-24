@@ -547,8 +547,9 @@ integer carrying both, and an integer this API has no word for arrives as
 its own digits in `direction` rather than as null, so match on the values
 you know and let the rest fall through — the set is not closed.
 
-`call.has_recording` says a recording is held, not that you can fetch it:
-the endpoint that hands the audio back is a later release.
+`call.has_recording` says a recording is held; it is not itself the audio.
+Fetch the call's captures with `call_records.recordings(call.id)` — see
+[Recordings and transcripts](#recordings-and-transcripts) below.
 
 **A `*_number` field is E.164 or nothing.** `call.from_number`,
 `call.to_number` and `call.dialed_number` carry `+14075550101` or `None` —
@@ -588,6 +589,35 @@ reads back `None`.
 off the `customer`, `fromPbxUser` and `toPbxUser` relationships — read-only
 in every tier, and each `None` on a leg with no subscriber to point at, such
 as an outside caller on an inbound call.
+
+### Recordings and transcripts
+
+```python
+    for recording in client.pbx.call_records.recordings(call.id):
+        print(recording.id, recording.duration, recording.content_url)
+
+    for transcript in client.pbx.call_records.transcripts(call.id):
+        print(transcript.id, transcript.status)   # "ready" or "pending"
+```
+
+Both answer every **capture** of one call — a call can have more than one,
+because the phone system's own capture id is `(call id, ccc id)` — and
+neither is paginated: this is the captures of one call, bounded by its two
+legs, never a walk over a growing table, so there is no `after`/`before`
+cursor and nothing beyond the tuple you get back.
+
+`recording.content_url` and `transcript.content_url` are signed,
+time-limited links minted fresh on every call. Do not cache one past its
+`expires_at` or hand it to anyone else — whoever holds the URL can fetch
+that document with no further authorization.
+
+`transcripts()` answers one item per **recording**, not one per transcript
+that exists: a capture with no words yet still appears, as a `Transcript`
+with `status="pending"` and every other field `None`, so you can tell "no
+transcript yet" from "no recording at all". Needs `pbx-call-records:read`
+to fetch the call at all, and `pbx-transcripts:read` — a separate grant,
+because the words of a call are searchable and cheap to mine at scale in a
+way the call log itself is not — to see whether anyone spoke.
 
 ### Two kinds of timestamp, and why
 
@@ -809,15 +839,18 @@ are deliberately not wrapped.
 | `client.pbx.devices.get(pbx_device_id)` | `pbx-users:read` | One `PbxDevice` — one registration, not one handset. |
 | `client.pbx.call_records.list(*, customer=None, started_after=None, started_before=None, direction=None, fields=None, user=None, call_id=None, include_hidden=None, after=None, before=None, page_size=None)` | `pbx-call-records:read` | A `CallRecordPage`, newest first. The date range decides which months are read; no range means the current and previous one. `fields=` asks for the extended tier — a sparse fieldset, so it narrows rather than adds. `call_id` finds the records of one `users.call()`, matched only inside the range's months. |
 | `client.pbx.call_records.get(call_record_id)` | `pbx-call-records:read` | One `CallRecord`. A hidden record IS served here. |
+| `client.pbx.call_records.recordings(call_record_id)` | `pbx-call-records:read` | Every capture of that call, as a plain `tuple[Recording, ...]` — NOT paginated: this is the captures of one call, not a walk over a table. Each `Recording.content_url` is a freshly minted, short-lived link. |
+| `client.pbx.call_records.transcripts(call_record_id)` | `pbx-call-records:read` + `pbx-transcripts:read` | One `Transcript` per capture — `status="pending"` and every other field `None` for one with no words yet. Also NOT paginated. |
 | `webhooks.verify(payload, header, secret, *, tolerance=300)` | — | Raises unless the body is genuine and fresh. |
 
 `CallRecord`, `CallRecordPage`, `Customer`, `CustomerPage`, `Fax`,
 `FaxAccount`, `FaxAccountNumber`, `FaxAccountPage`, `FaxAccountUser`,
 `FaxAccountUserPage`, `FaxDocument`, `FaxPage`, `MediaLink`, `PbxCall`,
-`PbxDevice`, `PbxDevicePage`, `PbxUser`, `PbxUserPage`, `WebhookDelivery`,
-`WebhookDeliveryPage`, `WebhookEndpoint` and `WebhookEndpointPage` are
-frozen dataclasses, and each keeps the JSON it was built from in `.raw` —
-so a field the API adds after this release reaches you without a new SDK.
+`PbxDevice`, `PbxDevicePage`, `PbxUser`, `PbxUserPage`, `Recording`,
+`Transcript`, `WebhookDelivery`, `WebhookDeliveryPage`, `WebhookEndpoint`
+and `WebhookEndpointPage` are frozen dataclasses, and each keeps the JSON
+it was built from in `.raw` — so a field the API adds after this release
+reaches you without a new SDK.
 
 `NOT_GIVEN` is the sentinel the `create()` and `update()` calls on
 `fax_accounts` and `webhook_endpoints` default every optional argument to.
