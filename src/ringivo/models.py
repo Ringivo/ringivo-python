@@ -725,8 +725,8 @@ class PbxSubscriber:
     A phone system holds people AND machines: auto attendants, call
     queues, AI agents, the domain's settings template. `kind` is the
     platform's word for which one this is — `user` for a person, then
-    `autoAttendant`, `callQueue`, `aiAgent`, `conference`, `department`,
-    `site`, `ringGroup`, `trunk`, `timeOfDay`, `domain` and `system`.
+    `auto_attendant`, `call_queue`, `ai_agent`, `conference`, `department`,
+    `site`, `ring_group`, `trunk`, `time_of_day`, `domain` and `system`.
     `system` is any machine the platform has no word for yet; an unknown
     marker is never read as `user`. It is a `str`, not an enum, and WIDE ON
     PURPOSE: a word added to the API later parses as itself rather than

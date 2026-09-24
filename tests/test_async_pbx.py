@@ -105,7 +105,7 @@ def _user_resource(*, attributes: dict[str, object] | None = None) -> dict[str, 
         "timeZone": "US/Eastern",
         "createdAt": "2026-01-02 03:04:05",
         "updatedAt": "2026-09-01 10:00:00",
-        "kind": "autoAttendant",
+        "kind": "auto_attendant",
     }
     merged.update(attributes or {})
     return {
@@ -294,10 +294,10 @@ async def test_subscribers_list_sends_kind_and_has_devices(
     route = respx_mock.get(USERS_URL).mock(return_value=httpx.Response(200, json={"data": []}))
 
     async with client:
-        await client.pbx.subscribers.list(kind=["user", "aiAgent"], has_devices=False)
+        await client.pbx.subscribers.list(kind=["user", "ai_agent"], has_devices=False)
 
     params = route.calls.last.request.url.params
-    assert params["filter[kind]"] == "user,aiAgent"
+    assert params["filter[kind]"] == "user,ai_agent"
     assert params["filter[hasDevices]"] == "false"
 
 
@@ -355,7 +355,7 @@ async def test_subscribers_get_reads_a_jsonapi_document_into_the_public_dataclas
     assert user.presence == "open"
     assert user.customer_id == CUSTOMER_ID
     assert user.device_ids == (DEVICE_ID,)
-    assert user.kind == "autoAttendant"
+    assert user.kind == "auto_attendant"
     # Text, not a `datetime`: the phone system has never published what
     # format it writes these in, so a parse here would be a guess.
     assert user.created_at == "2026-01-02 03:04:05"

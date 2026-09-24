@@ -481,8 +481,8 @@ different sensitivity from a directory.
 **`kind` says what a subscriber is.** A phone system holds people and
 machines: auto attendants, call queues, AI agents, the domain's settings
 template. `kind` is `user` for a person, and otherwise one of
-`autoAttendant`, `callQueue`, `aiAgent`, `conference`, `department`,
-`site`, `ringGroup`, `trunk`, `timeOfDay`, `domain` or `system`. `system`
+`auto_attendant`, `call_queue`, `ai_agent`, `conference`, `department`,
+`site`, `ring_group`, `trunk`, `time_of_day`, `domain` or `system`. `system`
 is any machine the platform has no word for yet — an unknown marker is
 never read as `user`. `kind` is a plain `str`, so a word added later parses
 as itself; read a word you do not know as `system`.
@@ -493,7 +493,7 @@ as itself; read a word you do not know as `system`.
     page = client.pbx.subscribers.list(kind="user", has_devices=True)
 ```
 
-`kind=` takes one word, a comma list (`"callQueue,autoAttendant"`) or a
+`kind=` takes one word, a comma list (`"call_queue,auto_attendant"`) or a
 list of words; a word the API does not know is a 400 that names the
 accepted words. `has_devices=False` asks for the subscribers with no
 registered device. A subscriber's own devices are `subscriber.device_ids`.
@@ -674,6 +674,10 @@ yourself; the API derives that one for you.
 The phone system rings that subscriber's phone and connects it to
 `destination`, so the call goes out as them rather than as you. Needs
 `pbx-calls:write`.
+
+The subscriber needs a registered device. One with no device, and the
+domain template (`kind == "domain"`), is refused with a 422 titled
+`Not Callable`; nothing is dialled. Any other `kind` may place a call.
 
 The answer is a 202 and says exactly that much: the request was accepted
 and handed to the phone system. Nothing here says a phone rang or anybody

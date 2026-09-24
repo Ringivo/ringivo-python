@@ -1813,15 +1813,15 @@ class PbxCallDocumentResponse(TypedDict):
 
 PbxSubscriberKind: TypeAlias = Literal[
     'user',
-    'autoAttendant',
-    'callQueue',
-    'aiAgent',
+    'auto_attendant',
+    'call_queue',
+    'ai_agent',
     'conference',
     'department',
     'site',
-    'ringGroup',
+    'ring_group',
     'trunk',
-    'timeOfDay',
+    'time_of_day',
     'domain',
     'system',
 ]

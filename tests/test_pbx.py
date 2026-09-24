@@ -345,9 +345,9 @@ def test_subscribers_list_builds_the_filter_and_page_query(
     ("kind", "sent"),
     [
         ("user", "user"),
-        ("callQueue,autoAttendant", "callQueue,autoAttendant"),
-        (["callQueue", "autoAttendant"], "callQueue,autoAttendant"),
-        (("aiAgent",), "aiAgent"),
+        ("call_queue,auto_attendant", "call_queue,auto_attendant"),
+        (["call_queue", "auto_attendant"], "call_queue,auto_attendant"),
+        (("ai_agent",), "ai_agent"),
     ],
 )
 def test_subscribers_list_sends_kind_as_one_comma_list(
@@ -494,13 +494,13 @@ def test_a_kind_this_client_has_no_word_for_parses_as_itself(
     # `kind` is WIDE ON PURPOSE, like `CallRecord.direction`: a word the API
     # adds later must arrive as itself, not fail the read.
     respx_mock.get(USER_URL).mock(
-        return_value=httpx.Response(200, json={"data": _user_resource(attributes={"kind": "pagingGroup"})})
+        return_value=httpx.Response(200, json={"data": _user_resource(attributes={"kind": "paging_group"})})
     )
 
     with client:
         subscriber = client.pbx.subscribers.get(USER_ID)
 
-    assert subscriber.kind == "pagingGroup"
+    assert subscriber.kind == "paging_group"
 
 
 def test_a_pbx_users_timestamps_are_served_as_text_rather_than_guessed_at(

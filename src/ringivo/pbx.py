@@ -130,7 +130,7 @@ class PbxSubscribers:
                 first name, last name or extension. The one argument behind
                 a directory search box.
             kind: Only these kinds — one word (`"user"`), a comma list
-                (`"callQueue,autoAttendant"`) or a list of words. See
+                (`"call_queue,auto_attendant"`) or a list of words. See
                 `PbxSubscriber.kind` for the words. A word the API does not
                 know is refused with a 400 that names the accepted words,
                 never answered with an empty page.
@@ -189,6 +189,10 @@ class PbxSubscribers:
         The phone system rings THIS SUBSCRIBER's phone and connects it to
         `destination`, so the call goes out as them rather than as the
         credential that asked for it.
+
+        The subscriber needs a registered device: one with none, and the
+        domain template (`kind == "domain"`), is refused with a 422 titled
+        `Not Callable`, and nothing is dialled.
 
         Returns as soon as the request is ACCEPTED (202), which is the
         whole of what a `PbxCall` says: it was handed to the phone system
@@ -629,7 +633,7 @@ def _kind_param(kind: str | Sequence[str] | None) -> str | None:
     """The `filter[kind]` value: one comma-joined string, or the parameter
     left off entirely.
 
-    A `str` is sent as it is, so `"user"` and `"callQueue,autoAttendant"`
+    A `str` is sent as it is, so `"user"` and `"call_queue,auto_attendant"`
     both work — unlike `fields`, a bare string here is the common case, not
     a mistake. Any other sequence is joined with commas. `None` and an
     empty sequence leave the parameter off: every kind.
