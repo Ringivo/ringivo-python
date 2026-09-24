@@ -106,7 +106,7 @@ class FaxAccountUsers:
         # `filter[faxAccount]`, camelCase like the relationship it filters
         # on, since the API's v1 naming cleanup. An API from before that
         # rename refuses it with a 400, and `_request_filtered` then asks
-        # once more as `filter[fax_account]` — the 0.14 bridge.
+        # once more as `filter[fax_account]` — the 0.15 bridge.
         params: dict[str, Any] = {
             "page[after]": after,
             "page[before]": before,

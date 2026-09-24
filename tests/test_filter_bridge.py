@@ -1,4 +1,4 @@
-"""The v1 naming cleanup bridge (0.14.x), asserted on the WIRE.
+"""The v1 naming cleanup bridge (0.15.x), asserted on the WIRE.
 
 The API renamed eight filter keys and a few plain-JSON members from
 snake_case to camelCase with no alias. This release works against the API on

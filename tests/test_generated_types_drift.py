@@ -186,7 +186,7 @@ _READS: tuple[_Read, ...] = (
     _Read(models.Fax, "completed_at", generated.FaxAttributes, "completedAt", "Fax._from_resource"),
     # -- Fax._from_acknowledgement reads the flat plain-JSON ------------------
     # `data` object `send()` answers (camelCase since the API's v1 naming
-    # cleanup; the snake_case fallback the 0.14 bridge also reads is not in
+    # cleanup; the snake_case fallback the 0.15 bridge also reads is not in
     # the generated types and is not listed here) — Data1 (SendFaxAccepted), the fuller
     # of the two acknowledgement shapes. `cancel()`'s answer is Data2, a
     # strict subset (id + status only); the other fields simply read back

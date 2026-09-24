@@ -10,7 +10,7 @@ Two things about this resource shape the assertions below. Its write body
 is ALL RELATIONSHIPS — a grant has no attributes a caller writes — and its
 account filter is `filter[faxAccount]`, camelCase like its relationships
 since the API's v1 naming cleanup. Both are asserted rather than assumed:
-a filter the API does not recognise is refused with a 400, and the 0.14
+a filter the API does not recognise is refused with a 400, and the 0.15
 bridge's fallback to the old spelling is pinned in test_filter_bridge.py.
 """
 
