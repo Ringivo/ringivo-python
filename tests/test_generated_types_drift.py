@@ -531,76 +531,74 @@ _READS: tuple[_Read, ...] = (
         "updatedAt",
         "WebhookDelivery._from_resource",
     ),
-    # -- PbxUser._from_resource reads a PbxUserResource (id) + its ---------
-    # PbxUserAttributes, plus BOTH relationship linkages. The attribute keys
-    # here are KEBAB-CASE, unlike every block above: this server writes
-    # `display-name`, not `displayName`, and the generated TypedDict is
-    # spelled in functional syntax for exactly that reason.
-    _Read(models.PbxUser, "id", generated.PbxUserResource, "id", "PbxUser._from_resource"),
-    _Read(models.PbxUser, "user", generated.PbxUserAttributes, "user", "PbxUser._from_resource"),
-    _Read(models.PbxUser, "domain", generated.PbxUserAttributes, "domain", "PbxUser._from_resource"),
+    # -- PbxSubscriber._from_resource reads a PbxSubscriberResource (id) + its
+    # PbxSubscriberAttributes, plus BOTH relationship linkages.
+    _Read(models.PbxSubscriber, "id", generated.PbxSubscriberResource, "id", "PbxSubscriber._from_resource"),
+    _Read(models.PbxSubscriber, "user", generated.PbxSubscriberAttributes, "user", "PbxSubscriber._from_resource"),
+    _Read(models.PbxSubscriber, "domain", generated.PbxSubscriberAttributes, "domain", "PbxSubscriber._from_resource"),
     _Read(
-        models.PbxUser,
+        models.PbxSubscriber,
         "display_name",
-        generated.PbxUserAttributes,
+        generated.PbxSubscriberAttributes,
         "displayName",
-        "PbxUser._from_resource",
+        "PbxSubscriber._from_resource",
     ),
     _Read(
-        models.PbxUser,
+        models.PbxSubscriber,
         "first_name",
-        generated.PbxUserAttributes,
+        generated.PbxSubscriberAttributes,
         "firstName",
-        "PbxUser._from_resource",
+        "PbxSubscriber._from_resource",
     ),
     _Read(
-        models.PbxUser, "last_name", generated.PbxUserAttributes, "lastName", "PbxUser._from_resource"
+        models.PbxSubscriber, "last_name", generated.PbxSubscriberAttributes, "lastName", "PbxSubscriber._from_resource"
     ),
-    _Read(models.PbxUser, "email", generated.PbxUserAttributes, "email", "PbxUser._from_resource"),
-    _Read(models.PbxUser, "scope", generated.PbxUserAttributes, "scope", "PbxUser._from_resource"),
-    _Read(models.PbxUser, "group", generated.PbxUserAttributes, "group", "PbxUser._from_resource"),
-    _Read(models.PbxUser, "site", generated.PbxUserAttributes, "site", "PbxUser._from_resource"),
+    _Read(models.PbxSubscriber, "email", generated.PbxSubscriberAttributes, "email", "PbxSubscriber._from_resource"),
+    _Read(models.PbxSubscriber, "scope", generated.PbxSubscriberAttributes, "scope", "PbxSubscriber._from_resource"),
+    _Read(models.PbxSubscriber, "group", generated.PbxSubscriberAttributes, "group", "PbxSubscriber._from_resource"),
+    _Read(models.PbxSubscriber, "site", generated.PbxSubscriberAttributes, "site", "PbxSubscriber._from_resource"),
     _Read(
-        models.PbxUser, "presence", generated.PbxUserAttributes, "presence", "PbxUser._from_resource"
+        models.PbxSubscriber, "presence", generated.PbxSubscriberAttributes, "presence", "PbxSubscriber._from_resource"
     ),
     _Read(
-        models.PbxUser,
+        models.PbxSubscriber,
         "caller_id_number",
-        generated.PbxUserAttributes,
+        generated.PbxSubscriberAttributes,
         "callerIdNumber",
-        "PbxUser._from_resource",
+        "PbxSubscriber._from_resource",
     ),
     _Read(
-        models.PbxUser,
+        models.PbxSubscriber,
         "caller_id_name",
-        generated.PbxUserAttributes,
+        generated.PbxSubscriberAttributes,
         "callerIdName",
-        "PbxUser._from_resource",
+        "PbxSubscriber._from_resource",
     ),
     _Read(
-        models.PbxUser, "time_zone", generated.PbxUserAttributes, "timeZone", "PbxUser._from_resource"
+        models.PbxSubscriber, "time_zone", generated.PbxSubscriberAttributes, "timeZone", "PbxSubscriber._from_resource"
     ),
     _Read(
-        models.PbxUser, "created_at", generated.PbxUserAttributes, "createdAt", "PbxUser._from_resource"
+        models.PbxSubscriber, "created_at", generated.PbxSubscriberAttributes, "createdAt", "PbxSubscriber._from_resource"
     ),
     _Read(
-        models.PbxUser, "updated_at", generated.PbxUserAttributes, "updatedAt", "PbxUser._from_resource"
+        models.PbxSubscriber, "updated_at", generated.PbxSubscriberAttributes, "updatedAt", "PbxSubscriber._from_resource"
     ),
+    _Read(models.PbxSubscriber, "kind", generated.PbxSubscriberAttributes, "kind", "PbxSubscriber._from_resource"),
     _Read(
-        models.PbxUser,
+        models.PbxSubscriber,
         "customer_id",
-        generated.PbxUserRelationships,
+        generated.PbxSubscriberRelationships,
         "customer",
-        "PbxUser._from_resource",
+        "PbxSubscriber._from_resource",
     ),
     # The to-MANY linkage read, and the only one in this table: `device_ids`
     # walks devices -> data -> [id], so the member it reads is `devices`.
     _Read(
-        models.PbxUser,
+        models.PbxSubscriber,
         "device_ids",
-        generated.PbxUserRelationships,
+        generated.PbxSubscriberRelationships,
         "devices",
-        "PbxUser._from_resource",
+        "PbxSubscriber._from_resource",
     ),
     # -- PbxDevice._from_resource reads a PbxDeviceResource (id) + its ------
     # PbxDeviceAttributes, plus both relationship linkages.
@@ -930,7 +928,7 @@ _READS: tuple[_Read, ...] = (
         "CallRecord._from_resource",
     ),
     # -- Recording._from_resource reads a RecordingResource (id) + its ------
-    # RecordingAttributes. KEBAB-CASE keys, the same reason PbxUser's are:
+    # RecordingAttributes. KEBAB-CASE keys, the same reason PbxSubscriber's are:
     # this is this endpoint's own spelling, not the camelCase call-records
     # block.
     _Read(models.Recording, "id", generated.RecordingResource, "id", "Recording._from_resource"),
@@ -1223,7 +1221,7 @@ _EXCLUDED: dict[tuple[type, str], str] = {
     (models.FaxAccountUser, "raw"): "holds the whole source mapping this object was built from",
     (models.WebhookEndpoint, "raw"): "holds the whole source mapping this object was built from",
     (models.WebhookDelivery, "raw"): "holds the whole source mapping this object was built from",
-    (models.PbxUser, "raw"): "holds the whole source mapping this object was built from",
+    (models.PbxSubscriber, "raw"): "holds the whole source mapping this object was built from",
     (models.PbxDevice, "raw"): "holds the whole source mapping this object was built from",
     (models.CallRecord, "raw"): "holds the whole source mapping this object was built from",
     (models.Recording, "raw"): "holds the whole source mapping this object was built from",
@@ -1268,7 +1266,7 @@ _MODELS: tuple[type, ...] = (
     models.FaxAccountUser,
     models.WebhookEndpoint,
     models.WebhookDelivery,
-    models.PbxUser,
+    models.PbxSubscriber,
     models.PbxDevice,
     models.CallRecord,
     models.Recording,
@@ -1320,7 +1318,7 @@ def test_every_field_a_model_reads_is_covered_by_the_read_table() -> None:
 
 
 def test_every_field_a_model_reads_exists_in_the_generated_types() -> None:
-    assert len(_READS) == 198, f"{len(_READS)} reads were checked, not 198 — the sweep is broken"
+    assert len(_READS) == 199, f"{len(_READS)} reads were checked, not 199 — the sweep is broken"
 
     failures: list[str] = []
     for read in _READS:

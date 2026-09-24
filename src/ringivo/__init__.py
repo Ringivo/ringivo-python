@@ -36,11 +36,12 @@ needs `fax:read`; granting and withdrawing needs `fax-accounts:write`.
 customer's `id` is what `customer=` takes on the `client.pbx` lists. It
 needs `customers:read`, which only an account-wide credential can hold.
 
-`client.pbx` is your customers' phone systems: `pbx.users` are the
-subscribers, `pbx.devices` are the registrations their phones have made, and
+`client.pbx` is your customers' phone systems: `pbx.subscribers` are every
+extension on them — people and machines, told apart by `kind` —
+`pbx.devices` are the registrations their phones have made, and
 `pbx.call_records` is the call log — newest first, and the date range decides
-which months are read. `pbx.users.call()` asks a subscriber's phone to ring
-and dial somebody. Reads need `pbx-users:read` (users AND devices) or
+which months are read. `pbx.subscribers.call()` asks a subscriber's phone to
+ring and dial somebody. Reads need `pbx-users:read` (subscribers AND devices) or
 `pbx-call-records:read`; the call needs `pbx-calls:write`.
 
 Webhooks have two namespaces. `client.webhook_endpoints` registers where the
@@ -71,7 +72,7 @@ from .async_pbx import (
     AsyncPbx,
     AsyncPbxCallRecords,
     AsyncPbxDevices,
-    AsyncPbxUsers,
+    AsyncPbxSubscribers,
 )
 from .async_webhook_deliveries import AsyncWebhookDeliveries
 from .async_webhook_endpoints import AsyncWebhookEndpoints
@@ -104,8 +105,8 @@ from .models import (
     PbxCall,
     PbxDevice,
     PbxDevicePage,
-    PbxUser,
-    PbxUserPage,
+    PbxSubscriber,
+    PbxSubscriberPage,
     Recording,
     Transcript,
     WebhookDelivery,
@@ -113,7 +114,7 @@ from .models import (
     WebhookEndpoint,
     WebhookEndpointPage,
 )
-from .pbx import Pbx, PbxCallRecords, PbxDevices, PbxUsers
+from .pbx import Pbx, PbxCallRecords, PbxDevices, PbxSubscribers
 from .webhook_deliveries import WebhookDeliveries
 from .webhook_endpoints import WebhookEndpoints
 
@@ -127,7 +128,7 @@ __all__ = [
     "AsyncPbx",
     "AsyncPbxCallRecords",
     "AsyncPbxDevices",
-    "AsyncPbxUsers",
+    "AsyncPbxSubscribers",
     "AsyncRingivo",
     "AsyncWebhookDeliveries",
     "AsyncWebhookEndpoints",
@@ -157,9 +158,9 @@ __all__ = [
     "PbxDevice",
     "PbxDevicePage",
     "PbxDevices",
-    "PbxUser",
-    "PbxUserPage",
-    "PbxUsers",
+    "PbxSubscriber",
+    "PbxSubscriberPage",
+    "PbxSubscribers",
     "Recording",
     "Ringivo",
     "RingivoError",

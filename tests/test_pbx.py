@@ -16,7 +16,7 @@ in, while a call record's three instants are parsed, because those are RFC
 3339 in UTC. A test that only checked "it came back" would have nothing to
 say about either.
 
-For the write it is the BODY. `users.call()` makes a real phone ring, so
+For the write it is the BODY. `subscribers.call()` makes a real phone ring, so
 the document it posts is pinned member by member: the type, the required
 attribute, the two optional ones that must be ABSENT rather than null when
 they were not passed, and the boolean that is always sent.
@@ -38,8 +38,8 @@ from ringivo import (
     PbxCall,
     PbxDevice,
     PbxDevicePage,
-    PbxUser,
-    PbxUserPage,
+    PbxSubscriber,
+    PbxSubscriberPage,
     Recording,
     Ringivo,
     Transcript,
@@ -48,7 +48,7 @@ from ringivo import _generated_types as generated
 
 BASE_URL = "https://api.yourprovider.example"
 TOKEN_URL = f"{BASE_URL}/oauth/token"
-USERS_URL = f"{BASE_URL}/v1/pbx/users"
+USERS_URL = f"{BASE_URL}/v1/pbx/subscribers"
 DEVICES_URL = f"{BASE_URL}/v1/pbx/devices"
 CALL_RECORDS_URL = f"{BASE_URL}/v1/pbx/call-records"
 USER_ID = "6f98cc5d-5248-5100-9967-8606e2993077"
@@ -130,10 +130,11 @@ def _user_resource(
         "timeZone": "US/Eastern",
         "createdAt": "2026-01-02 03:04:05",
         "updatedAt": "2026-09-01 10:00:00",
+        "kind": "user",
     }
     merged.update(attributes or {})
     return {
-        "type": "users",
+        "type": "subscribers",
         "id": USER_ID,
         "attributes": merged,
         "relationships": (
@@ -177,7 +178,7 @@ def _device_resource(
             if relationships is not None
             else {
                 "customer": {"data": {"type": "customers", "id": CUSTOMER_ID}},
-                "pbxUser": {"data": {"type": "users", "id": USER_ID}},
+                "pbxUser": {"data": {"type": "subscribers", "id": USER_ID}},
             }
         ),
     }
@@ -227,7 +228,7 @@ def _call_record_resource(
             else {
                 "customer": {"data": {"type": "customers", "id": CUSTOMER_ID}},
                 "fromPbxUser": {"data": None},
-                "toPbxUser": {"data": {"type": "users", "id": USER_ID}},
+                "toPbxUser": {"data": {"type": "subscribers", "id": USER_ID}},
             }
         ),
     }
@@ -306,16 +307,16 @@ def _transcript_resource(
     return {"type": "transcripts", "id": resource_id, "attributes": merged}
 
 
-# -- users.list ------------------------------------------------------------
+# -- subscribers.list ------------------------------------------------------
 
 
-def test_users_list_builds_the_filter_and_page_query(
+def test_subscribers_list_builds_the_filter_and_page_query(
     respx_mock: respx.MockRouter, client: Ringivo
 ) -> None:
     route = respx_mock.get(USERS_URL).mock(return_value=httpx.Response(200, json={"data": []}))
 
     with client:
-        client.pbx.users.list(
+        client.pbx.subscribers.list(
             customer=CUSTOMER_ID,
             user="101",
             search="perkins",
@@ -326,7 +327,7 @@ def test_users_list_builds_the_filter_and_page_query(
     request = route.calls.last.request
     params = request.url.params
 
-    assert request.url.path == "/v1/pbx/users"
+    assert request.url.path == "/v1/pbx/subscribers"
     assert params["filter[customer]"] == CUSTOMER_ID
     assert params["filter[user]"] == "101"
     assert params["filter[search]"] == "perkins"
@@ -335,10 +336,61 @@ def test_users_list_builds_the_filter_and_page_query(
     # An unset filter is absent, not empty: `filter[search]=` would be a
     # search for the empty string rather than "no opinion".
     assert "page[before]" not in params
+    assert "filter[kind]" not in params
+    assert "filter[hasDevices]" not in params
     assert request.headers["accept"] == JSONAPI
 
 
-def test_users_list_reads_the_rows_and_the_next_cursor_from_page_meta(
+@pytest.mark.parametrize(
+    ("kind", "sent"),
+    [
+        ("user", "user"),
+        ("callQueue,autoAttendant", "callQueue,autoAttendant"),
+        (["callQueue", "autoAttendant"], "callQueue,autoAttendant"),
+        (("aiAgent",), "aiAgent"),
+    ],
+)
+def test_subscribers_list_sends_kind_as_one_comma_list(
+    respx_mock: respx.MockRouter, client: Ringivo, kind: str | list[str] | tuple[str, ...], sent: str
+) -> None:
+    route = respx_mock.get(USERS_URL).mock(return_value=httpx.Response(200, json={"data": []}))
+
+    with client:
+        client.pbx.subscribers.list(kind=kind)
+
+    assert route.calls.last.request.url.params["filter[kind]"] == sent
+
+
+def test_subscribers_list_with_an_empty_kind_list_sends_no_kind(
+    respx_mock: respx.MockRouter, client: Ringivo
+) -> None:
+    # `filter[kind]=` would be a 400 for the empty word; an empty list means
+    # "every kind", which is the parameter left off.
+    route = respx_mock.get(USERS_URL).mock(return_value=httpx.Response(200, json={"data": []}))
+
+    with client:
+        client.pbx.subscribers.list(kind=[])
+
+    assert "filter[kind]" not in route.calls.last.request.url.params
+
+
+@pytest.mark.parametrize(("has_devices", "sent"), [(True, "true"), (False, "false")])
+def test_subscribers_list_sends_has_devices_both_ways(
+    respx_mock: respx.MockRouter, client: Ringivo, has_devices: bool, sent: str
+) -> None:
+    # `False` is falsy and "not asked for" is not: dropping it would turn
+    # "who has no phone" into "everybody".
+    route = respx_mock.get(USERS_URL).mock(return_value=httpx.Response(200, json={"data": []}))
+
+    with client:
+        client.pbx.subscribers.list(kind="user", has_devices=has_devices)
+
+    params = route.calls.last.request.url.params
+    assert params["filter[hasDevices]"] == sent
+    assert params["filter[kind]"] == "user"
+
+
+def test_subscribers_list_reads_the_rows_and_the_next_cursor_from_page_meta(
     respx_mock: respx.MockRouter, client: Ringivo
 ) -> None:
     respx_mock.get(USERS_URL).mock(
@@ -353,9 +405,9 @@ def test_users_list_reads_the_rows_and_the_next_cursor_from_page_meta(
     )
 
     with client:
-        page = client.pbx.users.list()
+        page = client.pbx.subscribers.list()
 
-    assert isinstance(page, PbxUserPage)
+    assert isinstance(page, PbxSubscriberPage)
     assert len(page) == 1
     assert list(page)[0].id == USER_ID
     assert page[0].user == "101"
@@ -363,7 +415,7 @@ def test_users_list_reads_the_rows_and_the_next_cursor_from_page_meta(
     assert page.next_url is not None and "page%5Bafter%5D" in page.next_url
 
 
-def test_users_list_walks_the_cursor_to_the_last_page(
+def test_subscribers_list_walks_the_cursor_to_the_last_page(
     respx_mock: respx.MockRouter, client: Ringivo
 ) -> None:
     # The whole-collection walk the README documents: follow `next_cursor`
@@ -388,10 +440,10 @@ def test_users_list_walks_the_cursor_to_the_last_page(
     route = respx_mock.get(USERS_URL).mock(side_effect=pages)
 
     with client:
-        collected: list[PbxUser] = []
+        collected: list[PbxSubscriber] = []
         after: str | None = None
         while True:
-            page = client.pbx.users.list(after=after)
+            page = client.pbx.subscribers.list(after=after)
             collected.extend(page)
             if page.next_cursor is None:
                 break
@@ -404,18 +456,18 @@ def test_users_list_walks_the_cursor_to_the_last_page(
     assert route.calls[1].request.url.params["page[after]"] == "cursor-2"
 
 
-# -- users.get -------------------------------------------------------------
+# -- subscribers.get -------------------------------------------------------
 
 
-def test_users_get_reads_a_jsonapi_document_into_the_public_dataclass(
+def test_subscribers_get_reads_a_jsonapi_document_into_the_public_dataclass(
     respx_mock: respx.MockRouter, client: Ringivo
 ) -> None:
     respx_mock.get(USER_URL).mock(return_value=httpx.Response(200, json={"data": _user_resource()}))
 
     with client:
-        user = client.pbx.users.get(USER_ID)
+        user = client.pbx.subscribers.get(USER_ID)
 
-    assert isinstance(user, PbxUser)
+    assert isinstance(user, PbxSubscriber)
     assert user.id == USER_ID
     assert user.user == "101"
     assert user.domain == "acme.example"
@@ -432,7 +484,23 @@ def test_users_get_reads_a_jsonapi_document_into_the_public_dataclass(
     assert user.time_zone == "US/Eastern"
     assert user.customer_id == CUSTOMER_ID
     assert user.device_ids == (DEVICE_ID,)
-    assert user.raw["type"] == "users"
+    assert user.kind == "user"
+    assert user.raw["type"] == "subscribers"
+
+
+def test_a_kind_this_client_has_no_word_for_parses_as_itself(
+    respx_mock: respx.MockRouter, client: Ringivo
+) -> None:
+    # `kind` is WIDE ON PURPOSE, like `CallRecord.direction`: a word the API
+    # adds later must arrive as itself, not fail the read.
+    respx_mock.get(USER_URL).mock(
+        return_value=httpx.Response(200, json={"data": _user_resource(attributes={"kind": "pagingGroup"})})
+    )
+
+    with client:
+        subscriber = client.pbx.subscribers.get(USER_ID)
+
+    assert subscriber.kind == "pagingGroup"
 
 
 def test_a_pbx_users_timestamps_are_served_as_text_rather_than_guessed_at(
@@ -445,7 +513,7 @@ def test_a_pbx_users_timestamps_are_served_as_text_rather_than_guessed_at(
     respx_mock.get(USER_URL).mock(return_value=httpx.Response(200, json={"data": _user_resource()}))
 
     with client:
-        user = client.pbx.users.get(USER_ID)
+        user = client.pbx.subscribers.get(USER_ID)
 
     assert user.created_at == "2026-01-02 03:04:05"
     assert user.updated_at == "2026-09-01 10:00:00"
@@ -473,7 +541,7 @@ def test_a_user_relationship_without_linkage_is_no_id_rather_than_a_crash(
     )
 
     with client:
-        user = client.pbx.users.get(USER_ID)
+        user = client.pbx.subscribers.get(USER_ID)
 
     assert user.customer_id is None
     assert user.device_ids is None
@@ -499,7 +567,7 @@ def test_a_user_with_no_devices_registered_reads_an_empty_tuple(
     )
 
     with client:
-        user = client.pbx.users.get(USER_ID)
+        user = client.pbx.subscribers.get(USER_ID)
 
     assert user.device_ids == ()
 
@@ -512,14 +580,14 @@ def test_a_pbx_user_id_stays_inside_its_own_path_segment(
     )
 
     with client:
-        client.pbx.users.get("../../faxes/secret")
+        client.pbx.subscribers.get("../../faxes/secret")
 
-    assert route.calls.last.request.url.raw_path == b"/v1/pbx/users/..%2F..%2Ffaxes%2Fsecret"
+    assert route.calls.last.request.url.raw_path == b"/v1/pbx/subscribers/..%2F..%2Ffaxes%2Fsecret"
 
 
 def test_an_empty_pbx_user_id_is_refused_by_its_own_name(client: Ringivo) -> None:
-    with client, pytest.raises(ValueError, match="a PBX user id is required"):
-        client.pbx.users.get("")
+    with client, pytest.raises(ValueError, match="a PBX subscriber id is required"):
+        client.pbx.subscribers.get("")
 
 
 def test_a_pbx_user_outside_your_customers_domains_raises_a_typed_404(
@@ -535,7 +603,7 @@ def test_a_pbx_user_outside_your_customers_domains_raises_a_typed_404(
     )
 
     with client, pytest.raises(ApiError) as caught:
-        client.pbx.users.get(USER_ID)
+        client.pbx.subscribers.get(USER_ID)
 
     assert caught.value.status_code == 404
     assert caught.value.code == "not_found"
@@ -563,7 +631,7 @@ def test_a_credential_that_reaches_no_phone_system_is_refused_rather_than_emptie
     )
 
     with client, pytest.raises(ApiError) as caught:
-        client.pbx.users.list()
+        client.pbx.subscribers.list()
 
     assert caught.value.status_code == 400
     assert caught.value.code == "invalid_query"
@@ -733,7 +801,7 @@ def test_call_records_list_builds_every_filter_and_the_page_query(
     # repeated `fields[call-records][]=` pair like `filter[id][]`.
     assert params["fields[call-records]"] == "direction,startedAt,origCallId,terminatedTo"
     assert params["filter[user]"] == USER_ID
-    # The id `users.call()` answered with.
+    # The id `subscribers.call()` answered with.
     assert params["filter[callId]"] == CALL_ID
     assert params["filter[includeHidden]"] == "true"
     assert params["page[after]"] == "0198c4a1"
@@ -1380,7 +1448,7 @@ def test_a_call_record_outside_your_customers_domains_raises_a_typed_404_on_tran
     assert caught.value.code == "not_found"
 
 
-# -- users.call (click-to-dial) --------------------------------------------
+# -- subscribers.call (click-to-dial) --------------------------------------
 
 
 def test_call_posts_a_jsonapi_document_under_the_users_own_path(
@@ -1393,12 +1461,12 @@ def test_call_posts_a_jsonapi_document_under_the_users_own_path(
     )
 
     with client:
-        placed = client.pbx.users.call(USER_ID, destination="+13025046250")
+        placed = client.pbx.subscribers.call(USER_ID, destination="+13025046250")
 
     request = route.calls.last.request
     body = json.loads(request.content)
 
-    assert request.url.path == f"/v1/pbx/users/{USER_ID}/calls"
+    assert request.url.path == f"/v1/pbx/subscribers/{USER_ID}/calls"
     assert request.headers["content-type"] == JSONAPI
     assert request.headers["accept"] == JSONAPI
     assert body["data"]["type"] == "calls"
@@ -1437,7 +1505,7 @@ def test_call_sends_every_optional_attribute_it_was_given(
     )
 
     with client:
-        placed = client.pbx.users.call(
+        placed = client.pbx.subscribers.call(
             USER_ID,
             destination="1002",
             caller_id="+14075550101",
@@ -1479,7 +1547,7 @@ def test_call_reads_the_202_into_the_public_dataclass(
     )
 
     with client:
-        placed = client.pbx.users.call(
+        placed = client.pbx.subscribers.call(
             USER_ID,
             destination="+13025046250",
             caller_id="+14075550101",
@@ -1524,7 +1592,7 @@ def test_a_device_that_is_not_this_users_is_refused_with_a_pointer(
     )
 
     with client, pytest.raises(ApiError) as caught:
-        client.pbx.users.call(
+        client.pbx.subscribers.call(
             USER_ID, destination="+13025046250", device="0198c7f2-dead-7000-8000-000000000000"
         )
 
@@ -1556,7 +1624,7 @@ def test_a_switch_that_refuses_the_call_arrives_as_a_502(
     )
 
     with client, pytest.raises(ApiError) as caught:
-        client.pbx.users.call(USER_ID, destination="+13025046250")
+        client.pbx.subscribers.call(USER_ID, destination="+13025046250")
 
     assert caught.value.status_code == 502
     assert caught.value.errors[0].meta == {"vendor_status": 400}
@@ -1565,8 +1633,8 @@ def test_a_switch_that_refuses_the_call_arrives_as_a_502(
 def test_an_empty_pbx_user_id_is_refused_before_a_phone_can_ring(client: Ringivo) -> None:
     # The escaper runs before the request is built, which matters more here
     # than on a read: nothing may reach the switch on a malformed id.
-    with client, pytest.raises(ValueError, match="a PBX user id is required"):
-        client.pbx.users.call("", destination="+13025046250")
+    with client, pytest.raises(ValueError, match="a PBX subscriber id is required"):
+        client.pbx.subscribers.call("", destination="+13025046250")
 
 
 def test_the_pbx_user_id_stays_inside_its_own_path_segment_on_a_call(
@@ -1577,9 +1645,9 @@ def test_the_pbx_user_id_stays_inside_its_own_path_segment_on_a_call(
     )
 
     with client:
-        client.pbx.users.call("../../faxes/secret", destination="+13025046250")
+        client.pbx.subscribers.call("../../faxes/secret", destination="+13025046250")
 
     assert (
         route.calls.last.request.url.raw_path
-        == b"/v1/pbx/users/..%2F..%2Ffaxes%2Fsecret/calls"
+        == b"/v1/pbx/subscribers/..%2F..%2Ffaxes%2Fsecret/calls"
     )

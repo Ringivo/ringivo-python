@@ -1811,48 +1811,25 @@ class PbxCallDocumentResponse(TypedDict):
     data: PbxCallResource
 
 
-class PbxUserAttributes(TypedDict):
-    user: NotRequired[str | None]
-    domain: NotRequired[str | None]
-    displayName: NotRequired[str | None]
-    firstName: NotRequired[str | None]
-    lastName: NotRequired[str | None]
-    email: NotRequired[str | None]
-    scope: NotRequired[str | None]
-    group: NotRequired[str | None]
-    site: NotRequired[str | None]
-    presence: NotRequired[str | None]
-    callerIdNumber: NotRequired[str | None]
-    callerIdName: NotRequired[str | None]
-    timeZone: NotRequired[str | None]
-    createdAt: NotRequired[str | None]
-    updatedAt: NotRequired[str | None]
+PbxSubscriberKind: TypeAlias = Literal[
+    'user',
+    'autoAttendant',
+    'callQueue',
+    'aiAgent',
+    'conference',
+    'department',
+    'site',
+    'ringGroup',
+    'trunk',
+    'timeOfDay',
+    'domain',
+    'system',
+]
 
 
-class PbxUserRelationships(TypedDict):
+class PbxSubscriberRelationships(TypedDict):
     customer: NotRequired[RelationshipToOne]
     devices: NotRequired[RelationshipToMany]
-
-
-class PbxUserResource(TypedDict):
-    type: Literal['users']
-    id: str
-    attributes: NotRequired[PbxUserAttributes]
-    relationships: NotRequired[PbxUserRelationships]
-    links: NotRequired[ResourceLinks]
-    meta: NotRequired[ResourceMeta]
-
-
-class PbxUserDocumentResponse(TypedDict):
-    data: PbxUserResource
-    links: NotRequired[ResourceLinks]
-    meta: NotRequired[DocumentMeta]
-
-
-class PbxUserCollectionDocument(TypedDict):
-    data: list[PbxUserResource]
-    links: NotRequired[CollectionLinks]
-    meta: NotRequired[DocumentMeta]
 
 
 class PbxDeviceAttributes(TypedDict):
@@ -2121,3 +2098,43 @@ class Data27(TypedDict):
 
 class PbxCallRequest(TypedDict):
     data: Data27
+
+
+class PbxSubscriberAttributes(TypedDict):
+    user: NotRequired[str | None]
+    domain: NotRequired[str | None]
+    displayName: NotRequired[str | None]
+    firstName: NotRequired[str | None]
+    lastName: NotRequired[str | None]
+    email: NotRequired[str | None]
+    scope: NotRequired[str | None]
+    group: NotRequired[str | None]
+    site: NotRequired[str | None]
+    presence: NotRequired[str | None]
+    callerIdNumber: NotRequired[str | None]
+    callerIdName: NotRequired[str | None]
+    timeZone: NotRequired[str | None]
+    createdAt: NotRequired[str | None]
+    updatedAt: NotRequired[str | None]
+    kind: NotRequired[PbxSubscriberKind]
+
+
+class PbxSubscriberResource(TypedDict):
+    type: Literal['subscribers']
+    id: str
+    attributes: NotRequired[PbxSubscriberAttributes]
+    relationships: NotRequired[PbxSubscriberRelationships]
+    links: NotRequired[ResourceLinks]
+    meta: NotRequired[ResourceMeta]
+
+
+class PbxSubscriberDocumentResponse(TypedDict):
+    data: PbxSubscriberResource
+    links: NotRequired[ResourceLinks]
+    meta: NotRequired[DocumentMeta]
+
+
+class PbxSubscriberCollectionDocument(TypedDict):
+    data: list[PbxSubscriberResource]
+    links: NotRequired[CollectionLinks]
+    meta: NotRequired[DocumentMeta]
