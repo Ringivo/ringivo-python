@@ -25,6 +25,8 @@ from ringivo import (
     PbxDevice,
     PbxUser,
     PbxUserPage,
+    Recording,
+    Transcript,
 )
 
 BASE_URL = "https://api.yourprovider.example"
@@ -39,12 +41,15 @@ DEVICE_ID = "92e7c8b3-9d9f-5286-86ac-f0d0c035e6c0"
 DEVICE_URL = f"{DEVICES_URL}/{DEVICE_ID}"
 CALL_RECORD_ID = "e4837703-48c1-5c9e-8699-bbaafb17bb84"
 CALL_RECORD_URL = f"{CALL_RECORDS_URL}/{CALL_RECORD_ID}"
+CALL_RECORD_RECORDINGS_URL = f"{CALL_RECORD_URL}/recordings"
+CALL_RECORD_TRANSCRIPTS_URL = f"{CALL_RECORD_URL}/transcripts"
+RECORDING_ID = "0198c9aa-1111-7000-8000-0000000000b1"
 CALL_ID = "0198c7f2-1111-7000-8000-000000000001"
 CUSTOMER_ID = "0198c4a1-2b3c-7d4e-8f50-1a2b3c4d5e6f"
 TENANT = "0198c4a1-3d4e-7f50-a1b2-c3d4e5f6a7b8"
 JSONAPI = "application/vnd.api+json"
 
-SCOPES = ["pbx-users:read", "pbx-call-records:read", "pbx-calls:write"]
+SCOPES = ["pbx-users:read", "pbx-call-records:read", "pbx-transcripts:read", "pbx-calls:write"]
 
 
 @pytest.fixture(autouse=True)
@@ -211,6 +216,45 @@ def _call_resource(*, attributes: dict[str, object] | None = None) -> dict[str, 
     }
     merged.update(attributes or {})
     return {"type": "calls", "id": CALL_ID, "attributes": merged}
+
+
+def _recording_resource(
+    *, resource_id: str = RECORDING_ID, attributes: dict[str, object] | None = None
+) -> dict[str, object]:
+    """One `recordings` resource object, KEBAB-CASE attributes and all —
+    this endpoint's own spelling, unlike the camelCase call-records block.
+    """
+    merged: dict[str, object] = {
+        "ccc-id": "00b1",
+        "duration": 64,
+        "byte-size": 512000,
+        "sha256": "a" * 64,
+        "superseded": False,
+        "content-url": f"{BASE_URL}/v1/pbx/recordings-content/signed-token",
+        "expires-at": "2026-09-12T15:00:00Z",
+    }
+    merged.update(attributes or {})
+    return {"type": "recordings", "id": resource_id, "attributes": merged}
+
+
+def _transcript_resource(
+    *, resource_id: str = RECORDING_ID, attributes: dict[str, object] | None = None
+) -> dict[str, object]:
+    """One `transcripts` resource object in the `ready` state."""
+    merged: dict[str, object] = {
+        "ccc-id": "00b1",
+        "status": "ready",
+        "language": "en-US",
+        "duration": 64,
+        "byte-size": 2048,
+        "sha256": "b" * 64,
+        "provider": "deepgram",
+        "model": "nova-3",
+        "content-url": f"{BASE_URL}/v1/pbx/transcripts-content/signed-token",
+        "expires-at": "2026-09-12T15:00:00Z",
+    }
+    merged.update(attributes or {})
+    return {"type": "transcripts", "id": resource_id, "attributes": merged}
 
 
 # -- users -----------------------------------------------------------------
@@ -654,6 +698,185 @@ async def test_an_empty_call_record_id_is_refused_by_its_own_name(client: AsyncR
     async with client:
         with pytest.raises(ValueError, match="a call record id is required"):
             await client.pbx.call_records.get("")
+
+
+# -- call_records.recordings ------------------------------------------------
+
+
+@pytest.mark.anyio
+async def test_call_records_recordings_reads_every_field_into_the_public_dataclass(
+    respx_mock: respx.MockRouter, client: AsyncRingivo
+) -> None:
+    respx_mock.get(CALL_RECORD_RECORDINGS_URL).mock(
+        return_value=httpx.Response(200, json={"data": [_recording_resource()]})
+    )
+
+    async with client:
+        recordings = await client.pbx.call_records.recordings(CALL_RECORD_ID)
+
+    assert isinstance(recordings, tuple)
+    assert len(recordings) == 1
+    recording = recordings[0]
+    assert isinstance(recording, Recording)
+    assert recording.id == RECORDING_ID
+    assert recording.ccc_id == "00b1"
+    assert recording.duration == 64
+    assert recording.byte_size == 512000
+    assert recording.sha256 == "a" * 64
+    assert recording.superseded is False
+    assert recording.content_url == f"{BASE_URL}/v1/pbx/recordings-content/signed-token"
+    assert recording.expires_at == datetime(2026, 9, 12, 15, 0, tzinfo=timezone.utc)
+
+
+@pytest.mark.anyio
+async def test_call_records_recordings_with_no_captures_is_an_empty_tuple_not_an_error(
+    respx_mock: respx.MockRouter, client: AsyncRingivo
+) -> None:
+    respx_mock.get(CALL_RECORD_RECORDINGS_URL).mock(
+        return_value=httpx.Response(200, json={"data": []})
+    )
+
+    async with client:
+        recordings = await client.pbx.call_records.recordings(CALL_RECORD_ID)
+
+    assert recordings == ()
+
+
+@pytest.mark.anyio
+async def test_an_empty_call_record_id_is_refused_by_recordings(client: AsyncRingivo) -> None:
+    async with client:
+        with pytest.raises(ValueError, match="a call record id is required"):
+            await client.pbx.call_records.recordings("")
+
+
+@pytest.mark.anyio
+async def test_a_call_record_outside_your_customers_domains_raises_a_typed_404_on_recordings(
+    respx_mock: respx.MockRouter, client: AsyncRingivo
+) -> None:
+    # 404 rather than 403, the same posture get() has: telling the two apart
+    # would tell a caller that the call exists somewhere on the platform.
+    respx_mock.get(CALL_RECORD_RECORDINGS_URL).mock(
+        return_value=httpx.Response(
+            404,
+            json={"errors": [{"status": "404", "title": "Not found", "code": "not_found"}]},
+        )
+    )
+
+    async with client:
+        with pytest.raises(ApiError) as caught:
+            await client.pbx.call_records.recordings(CALL_RECORD_ID)
+
+    assert caught.value.status_code == 404
+    assert caught.value.code == "not_found"
+
+
+# -- call_records.transcripts ------------------------------------------------
+
+
+@pytest.mark.anyio
+async def test_call_records_transcripts_reads_the_ready_state_into_the_public_dataclass(
+    respx_mock: respx.MockRouter, client: AsyncRingivo
+) -> None:
+    respx_mock.get(CALL_RECORD_TRANSCRIPTS_URL).mock(
+        return_value=httpx.Response(200, json={"data": [_transcript_resource()]})
+    )
+
+    async with client:
+        transcripts = await client.pbx.call_records.transcripts(CALL_RECORD_ID)
+
+    assert isinstance(transcripts, tuple)
+    assert len(transcripts) == 1
+    transcript = transcripts[0]
+    assert isinstance(transcript, Transcript)
+    assert transcript.id == RECORDING_ID
+    assert transcript.ccc_id == "00b1"
+    assert transcript.status == "ready"
+    assert transcript.language == "en-US"
+    assert transcript.duration == 64
+    assert transcript.byte_size == 2048
+    assert transcript.sha256 == "b" * 64
+    assert transcript.provider == "deepgram"
+    assert transcript.model == "nova-3"
+    assert transcript.content_url == f"{BASE_URL}/v1/pbx/transcripts-content/signed-token"
+    assert transcript.expires_at == datetime(2026, 9, 12, 15, 0, tzinfo=timezone.utc)
+
+
+@pytest.mark.anyio
+async def test_call_records_transcripts_reads_the_pending_state_with_every_other_field_none(
+    respx_mock: respx.MockRouter, client: AsyncRingivo
+) -> None:
+    respx_mock.get(CALL_RECORD_TRANSCRIPTS_URL).mock(
+        return_value=httpx.Response(
+            200,
+            json={
+                "data": [
+                    _transcript_resource(
+                        attributes={
+                            "status": "pending",
+                            "language": None,
+                            "duration": None,
+                            "byte-size": None,
+                            "sha256": None,
+                            "provider": None,
+                            "model": None,
+                            "content-url": None,
+                            "expires-at": None,
+                        }
+                    )
+                ]
+            },
+        )
+    )
+
+    async with client:
+        transcripts = await client.pbx.call_records.transcripts(CALL_RECORD_ID)
+
+    transcript = transcripts[0]
+    assert transcript.status == "pending"
+    assert transcript.language is None
+    assert transcript.content_url is None
+    assert transcript.expires_at is None
+
+
+@pytest.mark.anyio
+async def test_call_records_transcripts_with_no_captures_is_an_empty_tuple_not_an_error(
+    respx_mock: respx.MockRouter, client: AsyncRingivo
+) -> None:
+    respx_mock.get(CALL_RECORD_TRANSCRIPTS_URL).mock(
+        return_value=httpx.Response(200, json={"data": []})
+    )
+
+    async with client:
+        transcripts = await client.pbx.call_records.transcripts(CALL_RECORD_ID)
+
+    assert transcripts == ()
+
+
+@pytest.mark.anyio
+async def test_an_empty_call_record_id_is_refused_by_transcripts(client: AsyncRingivo) -> None:
+    async with client:
+        with pytest.raises(ValueError, match="a call record id is required"):
+            await client.pbx.call_records.transcripts("")
+
+
+@pytest.mark.anyio
+async def test_a_call_record_outside_your_customers_domains_raises_a_typed_404_on_transcripts(
+    respx_mock: respx.MockRouter, client: AsyncRingivo
+) -> None:
+    # 404 rather than 403, the same posture get() and recordings() have.
+    respx_mock.get(CALL_RECORD_TRANSCRIPTS_URL).mock(
+        return_value=httpx.Response(
+            404,
+            json={"errors": [{"status": "404", "title": "Not found", "code": "not_found"}]},
+        )
+    )
+
+    async with client:
+        with pytest.raises(ApiError) as caught:
+            await client.pbx.call_records.transcripts(CALL_RECORD_ID)
+
+    assert caught.value.status_code == 404
+    assert caught.value.code == "not_found"
 
 
 # -- users.call (click-to-dial) --------------------------------------------

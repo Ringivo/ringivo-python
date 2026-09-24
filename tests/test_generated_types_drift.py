@@ -929,6 +929,110 @@ _READS: tuple[_Read, ...] = (
         "toPbxUser",
         "CallRecord._from_resource",
     ),
+    # -- Recording._from_resource reads a RecordingResource (id) + its ------
+    # RecordingAttributes. KEBAB-CASE keys, the same reason PbxUser's are:
+    # this is this endpoint's own spelling, not the camelCase call-records
+    # block.
+    _Read(models.Recording, "id", generated.RecordingResource, "id", "Recording._from_resource"),
+    _Read(
+        models.Recording, "ccc_id", generated.RecordingAttributes, "ccc-id", "Recording._from_resource"
+    ),
+    _Read(
+        models.Recording,
+        "duration",
+        generated.RecordingAttributes,
+        "duration",
+        "Recording._from_resource",
+    ),
+    _Read(
+        models.Recording,
+        "byte_size",
+        generated.RecordingAttributes,
+        "byte-size",
+        "Recording._from_resource",
+    ),
+    _Read(
+        models.Recording, "sha256", generated.RecordingAttributes, "sha256", "Recording._from_resource"
+    ),
+    _Read(
+        models.Recording,
+        "superseded",
+        generated.RecordingAttributes,
+        "superseded",
+        "Recording._from_resource",
+    ),
+    _Read(
+        models.Recording,
+        "content_url",
+        generated.RecordingAttributes,
+        "content-url",
+        "Recording._from_resource",
+    ),
+    _Read(
+        models.Recording,
+        "expires_at",
+        generated.RecordingAttributes,
+        "expires-at",
+        "Recording._from_resource",
+    ),
+    # -- Transcript._from_resource reads a TranscriptResource (id) + its ----
+    # TranscriptAttributes. `id` is the RECORDING's id (one to one), and the
+    # attribute keys are the same KEBAB-CASE spelling `Recording` reads.
+    _Read(models.Transcript, "id", generated.TranscriptResource, "id", "Transcript._from_resource"),
+    _Read(
+        models.Transcript, "ccc_id", generated.TranscriptAttributes, "ccc-id", "Transcript._from_resource"
+    ),
+    _Read(
+        models.Transcript, "status", generated.TranscriptAttributes, "status", "Transcript._from_resource"
+    ),
+    _Read(
+        models.Transcript,
+        "language",
+        generated.TranscriptAttributes,
+        "language",
+        "Transcript._from_resource",
+    ),
+    _Read(
+        models.Transcript,
+        "duration",
+        generated.TranscriptAttributes,
+        "duration",
+        "Transcript._from_resource",
+    ),
+    _Read(
+        models.Transcript,
+        "byte_size",
+        generated.TranscriptAttributes,
+        "byte-size",
+        "Transcript._from_resource",
+    ),
+    _Read(
+        models.Transcript, "sha256", generated.TranscriptAttributes, "sha256", "Transcript._from_resource"
+    ),
+    _Read(
+        models.Transcript,
+        "provider",
+        generated.TranscriptAttributes,
+        "provider",
+        "Transcript._from_resource",
+    ),
+    _Read(
+        models.Transcript, "model", generated.TranscriptAttributes, "model", "Transcript._from_resource"
+    ),
+    _Read(
+        models.Transcript,
+        "content_url",
+        generated.TranscriptAttributes,
+        "content-url",
+        "Transcript._from_resource",
+    ),
+    _Read(
+        models.Transcript,
+        "expires_at",
+        generated.TranscriptAttributes,
+        "expires-at",
+        "Transcript._from_resource",
+    ),
     # -- PbxCall._from_resource reads a PbxCallResource (id) + its ----------
     # PbxCallAttributes. This resource has NO relationships block at all:
     # a call request is answered before the call exists, so there is nothing
@@ -1122,6 +1226,8 @@ _EXCLUDED: dict[tuple[type, str], str] = {
     (models.PbxUser, "raw"): "holds the whole source mapping this object was built from",
     (models.PbxDevice, "raw"): "holds the whole source mapping this object was built from",
     (models.CallRecord, "raw"): "holds the whole source mapping this object was built from",
+    (models.Recording, "raw"): "holds the whole source mapping this object was built from",
+    (models.Transcript, "raw"): "holds the whole source mapping this object was built from",
     (models.PbxCall, "raw"): "holds the whole source mapping this object was built from",
     (models.Customer, "raw"): "holds the whole source mapping this object was built from",
 }
@@ -1165,6 +1271,8 @@ _MODELS: tuple[type, ...] = (
     models.PbxUser,
     models.PbxDevice,
     models.CallRecord,
+    models.Recording,
+    models.Transcript,
     models.PbxCall,
     models.Customer,
 )
@@ -1192,7 +1300,7 @@ def test_every_field_a_model_reads_is_covered_by_the_read_table() -> None:
     them, in both directions, or this whole test proves nothing about that
     model.
     """
-    assert len(_MODELS) == 13, f"only {[m.__name__ for m in _MODELS]} was searched — the sweep is broken"
+    assert len(_MODELS) == 15, f"only {[m.__name__ for m in _MODELS]} was searched — the sweep is broken"
 
     mismatches: dict[str, str] = {}
     for model in _MODELS:
@@ -1212,7 +1320,7 @@ def test_every_field_a_model_reads_is_covered_by_the_read_table() -> None:
 
 
 def test_every_field_a_model_reads_exists_in_the_generated_types() -> None:
-    assert len(_READS) == 179, f"{len(_READS)} reads were checked, not 179 — the sweep is broken"
+    assert len(_READS) == 198, f"{len(_READS)} reads were checked, not 198 — the sweep is broken"
 
     failures: list[str] = []
     for read in _READS:

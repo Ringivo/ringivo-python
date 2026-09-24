@@ -29,6 +29,8 @@ from .models import (
     PbxDevicePage,
     PbxUser,
     PbxUserPage,
+    Recording,
+    Transcript,
 )
 from .pbx import (
     _CALL_RECORD_NOUN,
@@ -38,6 +40,8 @@ from .pbx import (
     _call_record_page,
     _device_page,
     _fields_param,
+    _recordings,
+    _transcripts,
     _user_page,
 )
 
@@ -282,3 +286,44 @@ class AsyncPbxCallRecords:
             f"/v1/pbx/call-records/{_path_segment(call_record_id, noun=_CALL_RECORD_NOUN)}",
         )
         return CallRecord._from_resource(_data_object(response.json()))
+
+    async def recordings(self, call_record_id: str) -> tuple[Recording, ...]:
+        """Every capture of one call, each with a freshly minted content link.
+
+        The awaited twin of `PbxCallRecords.recordings`. NOT PAGINATED —
+        this is the captures of one call, bounded by its two legs, so there
+        is no cursor and nothing beyond this tuple to walk.
+
+        Each `Recording.content_url` is short-lived; call this again for a
+        fresh one rather than caching one past its `expires_at`.
+
+        Needs `pbx-call-records:read`, the same scope `get()` needs.
+        """
+        response = await self._client.request(
+            "GET",
+            f"/v1/pbx/call-records/{_path_segment(call_record_id, noun=_CALL_RECORD_NOUN)}/recordings",
+        )
+        return _recordings(response.json())
+
+    async def transcripts(self, call_record_id: str) -> tuple[Transcript, ...]:
+        """One item per capture of the call, with the state of its transcript.
+
+        The awaited twin of `PbxCallRecords.transcripts`. ONE ITEM PER
+        RECORDING, not one per transcript that exists — a capture with no
+        words yet still appears, as `status="pending"` with every other
+        field None. NOT PAGINATED, for the reason `recordings()` is not.
+
+        This is the collection read only: it never tells a permanent
+        failure apart from a wait, and it carries no speaker turns. Both
+        need the single-transcript endpoint, which this client does not
+        yet wrap.
+
+        Needs BOTH `pbx-call-records:read` AND `pbx-transcripts:read`,
+        asked in that order — the words of a call are a separate grant
+        from the call log itself.
+        """
+        response = await self._client.request(
+            "GET",
+            f"/v1/pbx/call-records/{_path_segment(call_record_id, noun=_CALL_RECORD_NOUN)}/transcripts",
+        )
+        return _transcripts(response.json())

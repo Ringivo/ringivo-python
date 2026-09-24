@@ -43,6 +43,8 @@ __all__ = [
     "PbxDevicePage",
     "PbxUser",
     "PbxUserPage",
+    "Recording",
+    "Transcript",
     "WebhookDelivery",
     "WebhookDeliveryPage",
     "WebhookEndpoint",
@@ -955,9 +957,11 @@ class CallRecord:
     `duration_seconds` is the call end to end and `talk_seconds` is how
     much of it anybody was talking.
 
-    `has_recording` says a recording is HELD, not that you can fetch it:
-    the media endpoint that hands the audio back is a later release. There
-    is nothing on this object to download.
+    `has_recording` says a recording is HELD; it is not itself the audio.
+    Fetch the call's captures with `pbx.call_records.recordings(record.id)`
+    — each `Recording` carries its own short-lived `content_url` to
+    download from. A transcript, when one was requested, comes back the
+    same way from `pbx.call_records.transcripts(record.id)`.
 
     `hidden` is the phone system's own flag, and it decides where a record
     can be found rather than whether it exists: hidden records are left out
@@ -1082,6 +1086,133 @@ class CallRecordPage:
 
     def __getitem__(self, index: int) -> CallRecord:
         return self.call_records[index]
+
+
+@dataclass(frozen=True)
+class Recording:
+    """One capture of a call, from `pbx.call_records.recordings()`.
+
+    THERE IS NO PAGE HERE, on purpose: `recordings()` answers every capture
+    of ONE call — bounded by that call's own two legs, never a growing
+    table — so this package returns a plain `tuple[Recording, ...]` rather
+    than a `...Page` with a cursor. The console's own schema calls this out
+    the same way: `RecordingCollectionDocument` carries no `links` or
+    `meta.page` member to walk.
+
+    `id` is derived from the phone system's own `(call id, capture id)`
+    pair, so it is stable across regions and a supersede reuses it rather
+    than minting a new one.
+
+    `content_url` is a signed, time-limited link to the audio, freshly
+    minted on every call to `recordings()` — do not cache it past
+    `expires_at` or hand it to anyone else; whoever holds the URL can fetch
+    the audio with no further authorization. `duration` is null when the
+    phone system never reported one for this capture, which is not the
+    same as a missing recording — `byte_size` still describes real bytes.
+
+    `superseded` is False on a first capture and becomes True once a
+    longer capture of the same call replaced the audio behind this same
+    `id` — the id does not change, but `byte_size` and `sha256` do.
+    """
+
+    id: str
+    ccc_id: str | None = None
+    duration: int | None = None
+    byte_size: int | None = None
+    sha256: str | None = None
+    superseded: bool | None = None
+    content_url: str | None = None
+    expires_at: datetime | None = None
+    raw: Mapping[str, Any] = field(default_factory=dict, repr=False)
+
+    @classmethod
+    def _from_resource(cls, resource: Mapping[str, Any]) -> Recording:
+        """Build from one `recordings` resource object.
+
+        The attribute keys are KEBAB-CASE on the wire (`ccc-id`,
+        `byte-size`, `content-url`, `expires-at`) — this endpoint's own
+        spelling, unlike the camelCase `CallRecordAttributes` block.
+        """
+        attributes = _mapping(resource, "attributes") or {}
+
+        return cls(
+            id=_text(resource, "id") or "",
+            ccc_id=_text(attributes, "ccc-id"),
+            duration=_integer(attributes, "duration"),
+            byte_size=_integer(attributes, "byte-size"),
+            sha256=_text(attributes, "sha256"),
+            superseded=_boolean(attributes, "superseded"),
+            content_url=_text(attributes, "content-url"),
+            expires_at=_parse_datetime(attributes.get("expires-at")),
+            raw=resource,
+        )
+
+
+@dataclass(frozen=True)
+class Transcript:
+    """The transcript of one capture, from `pbx.call_records.transcripts()`.
+
+    ONE ITEM PER RECORDING OF THE CALL, not one per transcript that
+    exists: a capture with no words yet still appears here, with
+    `status="pending"` and every other field None, so a caller can tell
+    "no transcript yet" from "no recording at all". There is a third
+    state, `failed`, but this collection never reports it — telling a
+    permanent failure from a wait costs a lookup this list does not pay;
+    that distinction belongs to the single-transcript endpoint, which this
+    client does not yet wrap.
+
+    NO PAGE HERE either, for the same reason `Recording` has none: this is
+    the captures of one call, and the console's own
+    `TranscriptCollectionDocument` carries no `links` or `meta.page` to
+    walk.
+
+    `id` is the RECORDING's id, not a separate transcript id — a
+    transcript is keyed one-to-one by the capture it is of, so it is the
+    same id `recordings()` published for the same capture.
+
+    `content_url` is a signed, time-limited link to the stored transcript
+    document (the speech-to-text provider's own response, not the audio) —
+    same rule as `Recording.content_url`: do not cache it past
+    `expires_at`. Every field but `id`, `ccc_id` and `status` is None while
+    `status` is `"pending"`.
+    """
+
+    id: str
+    ccc_id: str | None = None
+    status: str | None = None
+    language: str | None = None
+    duration: int | None = None
+    byte_size: int | None = None
+    sha256: str | None = None
+    provider: str | None = None
+    model: str | None = None
+    content_url: str | None = None
+    expires_at: datetime | None = None
+    raw: Mapping[str, Any] = field(default_factory=dict, repr=False)
+
+    @classmethod
+    def _from_resource(cls, resource: Mapping[str, Any]) -> Transcript:
+        """Build from one `transcripts` resource object.
+
+        KEBAB-CASE attribute keys, the same as `Recording._from_resource`
+        and for the same reason: this is that endpoint's own spelling.
+        """
+        attributes = _mapping(resource, "attributes") or {}
+
+        return cls(
+            id=_text(resource, "id") or "",
+            ccc_id=_text(attributes, "ccc-id"),
+            status=_text(attributes, "status"),
+            language=_text(attributes, "language"),
+            duration=_integer(attributes, "duration"),
+            byte_size=_integer(attributes, "byte-size"),
+            sha256=_text(attributes, "sha256"),
+            provider=_text(attributes, "provider"),
+            model=_text(attributes, "model"),
+            content_url=_text(attributes, "content-url"),
+            expires_at=_parse_datetime(attributes.get("expires-at")),
+            raw=resource,
+        )
 
 
 @dataclass(frozen=True)

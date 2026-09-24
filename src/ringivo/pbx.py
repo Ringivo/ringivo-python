@@ -60,6 +60,8 @@ from .models import (
     PbxDevicePage,
     PbxUser,
     PbxUserPage,
+    Recording,
+    Transcript,
 )
 
 if TYPE_CHECKING:  # pragma: no cover - import cycle broken for the type only
@@ -426,6 +428,71 @@ class PbxCallRecords:
         )
         return CallRecord._from_resource(_data_object(response.json()))
 
+    def recordings(self, call_record_id: str) -> tuple[Recording, ...]:
+        """Every capture of one call, each with a freshly minted content link.
+
+        NOT PAGINATED, and deliberately so: this is the captures of ONE
+        call — bounded by its two legs, not a walk over a growing table —
+        so there is no `after`/`before` cursor to pass and nothing beyond
+        this tuple to walk. The console's own schema agrees:
+        `RecordingCollectionDocument` carries no `links.next` or
+        `meta.page` at all.
+
+        Each `Recording.content_url` is short-lived. Call this again for a
+        fresh one rather than caching a URL past its `expires_at`.
+
+        A call outside your customers' domains answers 404, not 403 — the
+        same posture `get()` has, so a stranger's call cannot be told apart
+        from one that does not exist anywhere.
+
+        Needs `pbx-call-records:read` — the same scope `get()` and `list()`
+        need. Recording media is not a second resource to be granted: it is
+        the audio of a call log entry you can already read.
+        """
+        response = self._client.request(
+            "GET",
+            f"/v1/pbx/call-records/{_path_segment(call_record_id, noun=_CALL_RECORD_NOUN)}/recordings",
+        )
+        return _recordings(response.json())
+
+    def transcripts(self, call_record_id: str) -> tuple[Transcript, ...]:
+        """One item per capture of the call, with the state of its transcript.
+
+        ONE ITEM PER RECORDING, not one per transcript that exists: a
+        capture with no words yet still appears, as a `Transcript` with
+        `status="pending"` and every other field None, so you can tell "no
+        transcript yet" from "no recording at all". NOT PAGINATED, for the
+        same reason `recordings()` is not: the console's own
+        `TranscriptCollectionDocument` carries no `links.next` or
+        `meta.page`.
+
+        Each `Transcript.content_url` is short-lived, the same rule
+        `Recording.content_url` follows: call this again for a fresh one.
+
+        This is the collection read only — one HTTP call, one indexed
+        query — and it never distinguishes a permanent failure from a
+        wait; both currently read `pending` on the tuple this returns.
+        Telling the two apart, and reading the turns of the conversation,
+        needs the single-transcript endpoint, which this client does not
+        yet wrap.
+
+        A call outside your customers' domains answers 404, not 403 — the
+        same posture `get()` and `recordings()` have.
+
+        Needs BOTH `pbx-call-records:read` AND `pbx-transcripts:read`,
+        asked in that order: the first decides whether you may see the
+        call at all, and the second — a separate grant, because the words
+        of a call are searchable and cheap to mine at scale in a way the
+        call log itself is not — decides whether you may see that anyone
+        spoke. A caller without it learns nothing about which captures
+        have words.
+        """
+        response = self._client.request(
+            "GET",
+            f"/v1/pbx/call-records/{_path_segment(call_record_id, noun=_CALL_RECORD_NOUN)}/transcripts",
+        )
+        return _transcripts(response.json())
+
 
 def _call_document(
     *,
@@ -494,6 +561,28 @@ def _call_record_page(document: Any) -> CallRecordPage:
         next_cursor=_next_cursor(document),
         raw=document,
     )
+
+
+def _recordings(document: Any) -> tuple[Recording, ...]:
+    """One `GET .../recordings` body, as the tuple this package hands back.
+
+    A plain tuple, not a page: see `Recording`'s own docstring for why —
+    this is the captures of one call, and the wire shape carries nothing
+    to page through.
+    """
+    if not isinstance(document, Mapping):
+        document = {}
+    return tuple(Recording._from_resource(item) for item in _resources(document))
+
+
+def _transcripts(document: Any) -> tuple[Transcript, ...]:
+    """One `GET .../transcripts` body, as the tuple this package hands back.
+
+    Same NOT-PAGED shape as `_recordings`, for the same reason.
+    """
+    if not isinstance(document, Mapping):
+        document = {}
+    return tuple(Transcript._from_resource(item) for item in _resources(document))
 
 
 def _fields_param(fields: Sequence[str] | None) -> str | None:
