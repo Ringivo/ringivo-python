@@ -340,8 +340,8 @@ Data1 = TypedDict(
         'direction': NotRequired[FaxDirection],
         'from': NotRequired[str | None],
         'to': NotRequired[str | None],
-        'client_reference': NotRequired[str | None],
-        'created_at': NotRequired[str | None],
+        'clientReference': NotRequired[str | None],
+        'createdAt': NotRequired[str | None],
     },
 )
 
@@ -361,8 +361,8 @@ class CancelFaxResult(TypedDict):
 
 class MediaLink(TypedDict):
     url: str
-    expires_at: str
-    byte_size: int
+    expiresAt: str
+    byteSize: int
     sha256: str
 
 
@@ -527,13 +527,13 @@ class PhoneNumberVoice(TypedDict):
 
 
 class PhoneNumberAssignRequest(TypedDict):
-    customer_id: str
+    customerId: str
 
 
 class PhoneNumberRouteRequest(TypedDict):
-    target_type: NotRequired[Literal['pbx', 'fax', 'sip_trunk']]
-    fax_account: NotRequired[str]
-    sip_trunk: NotRequired[str]
+    targetType: NotRequired[Literal['pbx', 'fax', 'sip_trunk']]
+    faxAccount: NotRequired[str]
+    sipTrunk: NotRequired[str]
 
 
 class WebhookEndpointAttributes(TypedDict):
@@ -861,8 +861,15 @@ class MessagingEnablementRelationships(TypedDict):
 InboundMessageKind: TypeAlias = Literal['sms', 'mms']
 
 
-class InboundMessageMediaPart(TypedDict):
+class MessageReceivedMediaPart(TypedDict):
     content_type: NotRequired[str]
+    filename: NotRequired[str | None]
+    encoding: NotRequired[str]
+    bytes: NotRequired[int]
+
+
+class InboundMessageMediaPart(TypedDict):
+    contentType: NotRequired[str]
     filename: NotRequired[str | None]
     encoding: NotRequired[str]
     bytes: NotRequired[int]
@@ -1357,7 +1364,7 @@ class PortOrderRequestLinkSendRequest(TypedDict):
 
 class Data19(TypedDict):
     id: NotRequired[str]
-    sent_to: NotRequired[str]
+    sentTo: NotRequired[str]
 
 
 class PortOrderRequestLinkSent(TypedDict):
@@ -1517,7 +1524,7 @@ SipTrunkTransport: TypeAlias = Literal['udp', 'tcp', 'tls']
 class SipTrunkRegistration(TypedDict):
     state: NotRequired[Literal['registered', 'not_registered']]
     contacts: NotRequired[int]
-    expires_at: NotRequired[str | None]
+    expiresAt: NotRequired[str | None]
 
 
 class SipTrunkAttributes(TypedDict):
@@ -2056,7 +2063,7 @@ MessageReceivedEventData = TypedDict(
         'from': NotRequired[str],
         'to': NotRequired[str],
         'body': NotRequired[str | None],
-        'media': NotRequired[list[InboundMessageMediaPart]],
+        'media': NotRequired[list[MessageReceivedMediaPart]],
         'received_at': NotRequired[str],
     },
 )

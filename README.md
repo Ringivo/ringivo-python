@@ -819,6 +819,30 @@ failure — a stale timestamp, the wrong secret, a malformed header. During a
 secret rotation the header carries two signatures and either secret
 verifies, so a rotation costs you no deliveries.
 
+## Upgrading to 0.14.x: the API's v1 naming cleanup
+
+The API renamed its last snake_case names on the resource surface to
+camelCase, with no alias. The ones this client touches are four `faxes`
+filters, the `fax-account-users` filter, two `webhook-endpoints` filters, the
+`webhook-deliveries` filter, the send acknowledgement's `clientReference` and
+`createdAt`, and the media link's `expiresAt` and `byteSize`. **Your code does
+not change:** the arguments and attributes keep their Python names
+(`fax_account=`, `created_after=`, `Fax.client_reference`,
+`MediaLink.expires_at`).
+
+**0.14.x works against the API on both sides of that deploy, so upgrade
+before it.** It asks with the new filter names; an API that has not taken
+the rename refuses them with a 400, and this client then asks once more with
+the old names and remembers which spelling worked (and switches back the same
+way when the API changes under a running process). It reads the send
+acknowledgement and the media link in either spelling. An older client stops
+filtering on the day the API is renamed: every renamed filter it sends is
+refused with a 400.
+
+**The next minor release removes the fallback** and sends the new names
+only. The raw bodies in `.raw` and anything you read through
+`client.request()` carry whatever the API sent — camelCase once it is renamed.
+
 ## When something is refused
 
 ```python

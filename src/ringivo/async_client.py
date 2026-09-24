@@ -50,6 +50,7 @@ from typing import Any
 
 import httpx
 
+from . import _bridge
 from ._version import __version__
 from .async_auth import AsyncClientCredentialsAuth
 from .async_customers import AsyncCustomers
@@ -61,7 +62,7 @@ from .async_webhook_deliveries import AsyncWebhookDeliveries
 from .async_webhook_endpoints import AsyncWebhookEndpoints
 from .auth import USER_AGENT
 from .client import JSONAPI_MEDIA_TYPE, _clean_params
-from .errors import raise_for_response
+from .errors import ApiError, raise_for_response
 
 __all__ = ["AsyncRingivo"]
 
@@ -180,6 +181,9 @@ class AsyncRingivo:
             follow_redirects=True,
         )
 
+        # Which filter spelling the API took last — see `_request_filtered()`.
+        self._legacy_filters = False
+
         self.faxes = AsyncFaxes(self)
         self.fax_accounts = AsyncFaxAccounts(self)
         self.fax_account_users = AsyncFaxAccountUsers(self)
@@ -293,6 +297,24 @@ class AsyncRingivo:
     # for; renaming without leaving this behind would break exactly the
     # people the public name is meant to serve.
     _request = request
+
+    async def _request_filtered(self, path: str, params: Mapping[str, Any]) -> httpx.Response:
+        """The awaited twin of `Ringivo._request_filtered` — the v1 naming
+        cleanup bridge (see `ringivo._bridge`)."""
+        if not _bridge.carries_renamed_filter(params):
+            return await self.request("GET", path, params=params)
+
+        first = _bridge.spelled(params, legacy=self._legacy_filters)
+        try:
+            return await self.request("GET", path, params=first)
+        except ApiError as error:
+            if not _bridge.is_unknown_filter_refusal(error, first):
+                raise
+
+        other = not self._legacy_filters
+        response = await self.request("GET", path, params=_bridge.spelled(params, legacy=other))
+        self._legacy_filters = other
+        return response
 
     async def _download(self, url: str) -> bytes:
         """Follow a pre-signed URL and return the bytes behind it.

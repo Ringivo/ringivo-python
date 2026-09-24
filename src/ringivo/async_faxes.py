@@ -214,21 +214,21 @@ class AsyncFaxes:
             "page[before]": before,
             "page[size]": page_size,
             "include": include,
-            "filter[fax_account]": fax_account,
+            "filter[faxAccount]": fax_account,
             "filter[direction]": direction,
             "filter[status]": status,
             "filter[from]": from_,
             "filter[to]": to,
-            "filter[client_reference]": client_reference,
-            "filter[created_after]": created_after,
-            "filter[created_before]": created_before,
+            "filter[clientReference]": client_reference,
+            "filter[createdAfter]": created_after,
+            "filter[createdBefore]": created_before,
             "filter[read]": read,
             "filter[archived]": archived,
         }
         for name, value in (tags or {}).items():
             params[f"filter[tag][{name}]"] = value
 
-        response = await self._client.request("GET", "/v1/faxes", params=params)
+        response = await self._client._request_filtered("/v1/faxes", params)
         document = response.json()
         if not isinstance(document, Mapping):
             document = {}

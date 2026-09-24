@@ -84,8 +84,8 @@ def _accepted(**overrides: object) -> dict[str, object]:
         "direction": "outbound",
         "from": "+14075550100",
         "to": "+13025556789",
-        "client_reference": "chart-4471",
-        "created_at": "2026-08-16T11:02:31+00:00",
+        "clientReference": "chart-4471",
+        "createdAt": "2026-08-16T11:02:31+00:00",
     }
     data.update(overrides)
     return {"data": data}
@@ -632,8 +632,8 @@ def test_media_mints_a_link_and_then_downloads_it_without_the_bearer(
             200,
             json={
                 "url": download_url,
-                "expires_at": "2026-08-16T11:07:31+00:00",
-                "byte_size": 40960,
+                "expiresAt": "2026-08-16T11:07:31+00:00",
+                "byteSize": 40960,
                 "sha256": "c" * 64,
             },
         )
@@ -663,8 +663,8 @@ def test_media_link_hands_back_the_capability_and_its_facts(
             200,
             json={
                 "url": f"{BASE_URL}/media/0198c4a1/document.tiff?signature=abc",
-                "expires_at": "2026-08-16T11:07:31+00:00",
-                "byte_size": 128,
+                "expiresAt": "2026-08-16T11:07:31+00:00",
+                "byteSize": 128,
                 "sha256": "d" * 64,
             },
         )

@@ -8,10 +8,10 @@ from the return value alone.
 
 Two things about this resource shape the assertions below. Its write body
 is ALL RELATIONSHIPS — a grant has no attributes a caller writes — and its
-filters are spelled in snake_case (`filter[fax_account]`) while its
-relationships and attributes are camelCase. Both are asserted rather than
-assumed: a filter the API does not recognise is ignored, and an ignored
-filter reads back as a page of everything.
+account filter is `filter[faxAccount]`, camelCase like its relationships
+since the API's v1 naming cleanup. Both are asserted rather than assumed:
+a filter the API does not recognise is refused with a 400, and the 0.14
+bridge's fallback to the old spelling is pinned in test_filter_bridge.py.
 """
 
 from __future__ import annotations
@@ -110,12 +110,11 @@ def test_list_builds_the_filter_and_page_query(
 
     params = route.calls.last.request.url.params
 
-    # snake_case, and asserted as such. The API spells these two filters
-    # `filter[fax_account]` and `filter[user]` while the relationships they
-    # filter on are `faxAccount` and `user` — camelCasing the first one here
-    # would send a filter the server ignores, and an ignored filter reads
-    # back as a page of every grant in scope.
-    assert params["filter[fax_account]"] == ACCOUNT_ID
+    # camelCase since the API's v1 naming cleanup, like the relationships
+    # the two filters narrow (`faxAccount`, `user`). The old spelling is
+    # never sent first; see test_filter_bridge.py for when it is sent at all.
+    assert params["filter[faxAccount]"] == ACCOUNT_ID
+    assert "filter[fax_account]" not in params
     assert params["filter[user]"] == USER_ID
     assert params["page[size]"] == "50"
     assert params["page[after]"] == "0198c4a1"
@@ -137,7 +136,7 @@ def test_list_asks_for_one_account_without_naming_a_user(
 
     params = route.calls.last.request.url.params
 
-    assert params["filter[fax_account]"] == ACCOUNT_ID
+    assert params["filter[faxAccount]"] == ACCOUNT_ID
     assert "filter[user]" not in params
 
 

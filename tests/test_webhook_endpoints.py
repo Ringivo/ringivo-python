@@ -118,12 +118,12 @@ def test_list_builds_the_filter_and_page_query(
 
     params = route.calls.last.request.url.params
 
-    assert params["filter[scope_type]"] == "fax_account"
-    assert params["filter[scope_id]"] == ACCOUNT_ID
+    assert params["filter[scopeType]"] == "fax_account"
+    assert params["filter[scopeId]"] == ACCOUNT_ID
     assert params["filter[active]"] == "true"
     assert params["page[size]"] == "50"
     assert params["page[after]"] == "0198c4a1"
-    # An unset filter is absent, not empty: `filter[scope_type]=` would be a
+    # An unset filter is absent, not empty: `filter[scopeType]=` would be a
     # 400 rather than "no opinion".
     assert "page[before]" not in params
     assert route.calls.last.request.headers["accept"] == JSONAPI

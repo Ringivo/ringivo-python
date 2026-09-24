@@ -184,8 +184,10 @@ _READS: tuple[_Read, ...] = (
     _Read(models.Fax, "documents", generated.FaxAttributes, "documents", "Fax._from_resource"),
     _Read(models.Fax, "created_at", generated.FaxAttributes, "createdAt", "Fax._from_resource"),
     _Read(models.Fax, "completed_at", generated.FaxAttributes, "completedAt", "Fax._from_resource"),
-    # -- Fax._from_acknowledgement reads the flat, already-snake_cased ------
-    # `data` object `send()` answers — Data1 (SendFaxAccepted), the fuller
+    # -- Fax._from_acknowledgement reads the flat plain-JSON ------------------
+    # `data` object `send()` answers (camelCase since the API's v1 naming
+    # cleanup; the snake_case fallback the 0.14 bridge also reads is not in
+    # the generated types and is not listed here) — Data1 (SendFaxAccepted), the fuller
     # of the two acknowledgement shapes. `cancel()`'s answer is Data2, a
     # strict subset (id + status only); the other fields simply read back
     # None for a cancelled fax, which is correct, not a gap.
@@ -198,16 +200,16 @@ _READS: tuple[_Read, ...] = (
         models.Fax,
         "client_reference",
         generated.Data1,
-        "client_reference",
+        "clientReference",
         "Fax._from_acknowledgement",
     ),
-    _Read(models.Fax, "created_at", generated.Data1, "created_at", "Fax._from_acknowledgement"),
-    # -- MediaLink._from_json reads the generated MediaLink verbatim --------
-    # (same names on both sides: this endpoint's JSON is already
-    # snake_cased, unlike the JSON:API attribute blocks above).
+    _Read(models.Fax, "created_at", generated.Data1, "createdAt", "Fax._from_acknowledgement"),
+    # -- MediaLink._from_json reads the generated MediaLink ------------------
+    # (camelCase since the v1 naming cleanup, like the attribute blocks
+    # above; the bridge's snake_case fallback is not listed, as above).
     _Read(MediaLinkModel, "url", generated.MediaLink, "url", "MediaLink._from_json"),
-    _Read(MediaLinkModel, "expires_at", generated.MediaLink, "expires_at", "MediaLink._from_json"),
-    _Read(MediaLinkModel, "byte_size", generated.MediaLink, "byte_size", "MediaLink._from_json"),
+    _Read(MediaLinkModel, "expires_at", generated.MediaLink, "expiresAt", "MediaLink._from_json"),
+    _Read(MediaLinkModel, "byte_size", generated.MediaLink, "byteSize", "MediaLink._from_json"),
     _Read(MediaLinkModel, "sha256", generated.MediaLink, "sha256", "MediaLink._from_json"),
     # -- FaxAccount._from_resource reads a FaxAccountResource (id) + its ----
     # FaxAccountAttributes, plus the customer LINKAGE off its relationships.

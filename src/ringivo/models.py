@@ -82,6 +82,19 @@ def _integer(source: Mapping[str, Any], key: str) -> int | None:
     return value if isinstance(value, int) and not isinstance(value, bool) else None
 
 
+def _bridged(source: Mapping[str, Any], key: str, legacy: str) -> Mapping[str, Any]:
+    """`source`, with `legacy`'s value under `key` when only `legacy` arrived.
+
+    THE v1 NAMING CLEANUP BRIDGE, and temporary: the API renamed a few
+    plain-JSON members from snake_case to camelCase, and for one release
+    this package reads whichever of the two spellings arrived — the new one
+    when both do. The next release deletes this and reads `key` alone.
+    """
+    if key in source or legacy not in source:
+        return source
+    return {**source, key: source[legacy]}
+
+
 def _boolean(source: Mapping[str, Any], key: str) -> bool | None:
     value = source.get(key)
     return value if isinstance(value, bool) else None
@@ -263,18 +276,21 @@ class Fax:
     ) -> Fax:
         """Build from the flat `data` object `send` and `cancel` answer.
 
-        Their bodies are snake_cased plain JSON, not JSON:API documents —
-        which is why this is a second constructor rather than a flag on the
-        first one.
+        Their bodies are plain JSON, not JSON:API documents — which is why
+        this is a second constructor rather than a flag on the first one.
+        The members are camelCase since the API's v1 naming cleanup; the
+        snake_case names they replaced are read as a fallback for this one
+        release, so it works on either side of that deploy.
         """
+        wire = _bridged(_bridged(payload, "clientReference", "client_reference"), "createdAt", "created_at")
         return cls(
             id=_text(payload, "id") or "",
             status=_text(payload, "status"),
             direction=_text(payload, "direction"),
             from_=_text(payload, "from"),
             to=_text(payload, "to"),
-            client_reference=_text(payload, "client_reference"),
-            created_at=_parse_datetime(payload.get("created_at")),
+            client_reference=_text(wire, "clientReference"),
+            created_at=_parse_datetime(wire.get("createdAt")),
             idempotent_replay=idempotent_replay,
             raw=payload,
         )
@@ -326,10 +342,13 @@ class MediaLink:
 
     @classmethod
     def _from_json(cls, payload: Mapping[str, Any]) -> MediaLink:
+        # camelCase since the API's v1 naming cleanup; the snake_case names
+        # are read as a fallback for this one release (see `Fax._from_acknowledgement`).
+        wire = _bridged(_bridged(payload, "expiresAt", "expires_at"), "byteSize", "byte_size")
         return cls(
             url=_text(payload, "url") or "",
-            expires_at=_parse_datetime(payload.get("expires_at")),
-            byte_size=_integer(payload, "byte_size"),
+            expires_at=_parse_datetime(wire.get("expiresAt")),
+            byte_size=_integer(wire, "byteSize"),
             sha256=_text(payload, "sha256"),
             raw=payload,
         )
