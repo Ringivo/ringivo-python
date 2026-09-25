@@ -216,10 +216,28 @@ to move it and no argument that would try.
 
 **Numbers are attached through the routing API, not here.** A number points
 at one destination, and that rule belongs to the number:
-`POST /v1/phone-numbers/{id}/routing` with `target_type: fax`, through
-`client.request()`. `numbers()` reads back what is pointed at this account —
-all of them, walking the pages for you, because a half-list of a fax
-account's numbers looks exactly like a full one.
+`POST /v1/phone-numbers/{id}/routing` with `targetType: fax` and the
+account's id in `faxAccount`, through `client.request()`. `numbers()` reads
+back what is pointed at this account — all of them, walking the pages for
+you, because a half-list of a fax account's numbers looks exactly like a
+full one.
+
+```python
+    client.request(
+        "POST",
+        f"/v1/phone-numbers/{number_id}/routing",
+        json={"targetType": "fax", "faxAccount": account.id},
+    )
+```
+
+Send these camelCase names. `client.request()` does not go through the
+filter-name bridge, and the API refuses the old `target_type`/`fax_account`
+body with a 422 rather than routing the number to the PBX. **The body is not
+portable across the API's v1 naming cleanup** (see "Upgrading to 0.15.x"
+below): an API that has not taken the rename reads only
+`target_type`/`fax_account`, ignores `targetType`, and routes the number to
+the customer's PBX with a 204. Check where the number routes after the
+call if you cannot be sure which API you are talking to.
 
 ### Retention: two rules, either of them off
 
