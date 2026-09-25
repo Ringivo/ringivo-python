@@ -99,10 +99,10 @@ class WebhookDeliveries:
             "page[before]": before,
             "page[size]": page_size,
             "filter[endpoint]": endpoint,
-            "filter[event_type]": event_type,
+            "filter[eventType]": event_type,
             "filter[status]": status,
         }
-        document = self._client.request("GET", "/v1/webhook-deliveries", params=params).json()
+        document = self._client._request_filtered("/v1/webhook-deliveries", params).json()
         return _page(document)
 
     def get(self, webhook_delivery_id: str) -> WebhookDelivery:

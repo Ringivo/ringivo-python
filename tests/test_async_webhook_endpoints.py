@@ -91,8 +91,8 @@ async def test_list_builds_the_filter_and_page_query(
     params = route.calls.last.request.url.params
 
     assert isinstance(page, WebhookEndpointPage)
-    assert params["filter[scope_type]"] == "customer"
-    assert params["filter[scope_id]"] == ACCOUNT_ID
+    assert params["filter[scopeType]"] == "customer"
+    assert params["filter[scopeId]"] == ACCOUNT_ID
     # `False` is a question, not an omission: "which endpoints are off?".
     assert params["filter[active]"] == "false"
     assert params["page[size]"] == "50"

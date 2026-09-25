@@ -96,7 +96,7 @@ async def test_list_builds_the_filter_and_page_query(
 
     assert isinstance(page, WebhookDeliveryPage)
     assert params["filter[endpoint]"] == ENDPOINT_ID
-    assert params["filter[event_type]"] == "fax.delivered"
+    assert params["filter[eventType]"] == "fax.delivered"
     assert params["filter[status]"] == "pending"
     assert params["page[size]"] == "100"
     assert "page[after]" not in params

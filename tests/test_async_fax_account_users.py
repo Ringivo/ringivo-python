@@ -90,7 +90,7 @@ async def test_list_builds_the_filter_and_page_query(
     assert isinstance(page, FaxAccountUserPage)
     # snake_case, the API's own spelling — see the sync twin's test for why
     # camelCasing it here would read back as a page of everything.
-    assert params["filter[fax_account]"] == ACCOUNT_ID
+    assert params["filter[faxAccount]"] == ACCOUNT_ID
     assert params["filter[user]"] == USER_ID
     assert params["page[size]"] == "50"
     assert "page[after]" not in params

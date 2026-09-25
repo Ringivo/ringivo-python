@@ -117,11 +117,11 @@ class WebhookEndpoints:
             "page[after]": after,
             "page[before]": before,
             "page[size]": page_size,
-            "filter[scope_type]": scope_type,
-            "filter[scope_id]": scope_id,
+            "filter[scopeType]": scope_type,
+            "filter[scopeId]": scope_id,
             "filter[active]": active,
         }
-        document = self._client.request("GET", "/v1/webhook-endpoints", params=params).json()
+        document = self._client._request_filtered("/v1/webhook-endpoints", params).json()
         return _page(document)
 
     def get(self, webhook_endpoint_id: str) -> WebhookEndpoint:

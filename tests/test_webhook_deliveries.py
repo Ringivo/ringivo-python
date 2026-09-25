@@ -117,7 +117,7 @@ def test_list_builds_the_filter_and_page_query(
     params = route.calls.last.request.url.params
 
     assert params["filter[endpoint]"] == ENDPOINT_ID
-    assert params["filter[event_type]"] == "fax.received"
+    assert params["filter[eventType]"] == "fax.received"
     assert params["filter[status]"] == "dead"
     assert params["page[size]"] == "100"
     assert params["page[after]"] == "0198c4a1"

@@ -216,10 +216,28 @@ to move it and no argument that would try.
 
 **Numbers are attached through the routing API, not here.** A number points
 at one destination, and that rule belongs to the number:
-`POST /v1/phone-numbers/{id}/routing` with `target_type: fax`, through
-`client.request()`. `numbers()` reads back what is pointed at this account —
-all of them, walking the pages for you, because a half-list of a fax
-account's numbers looks exactly like a full one.
+`POST /v1/phone-numbers/{id}/routing` with `targetType: fax` and the
+account's id in `faxAccount`, through `client.request()`. `numbers()` reads
+back what is pointed at this account — all of them, walking the pages for
+you, because a half-list of a fax account's numbers looks exactly like a
+full one.
+
+```python
+    client.request(
+        "POST",
+        f"/v1/phone-numbers/{number_id}/routing",
+        json={"targetType": "fax", "faxAccount": account.id},
+    )
+```
+
+Send these camelCase names. `client.request()` does not go through the
+filter-name bridge, and the API refuses the old `target_type`/`fax_account`
+body with a 422 rather than routing the number to the PBX. **The body is not
+portable across the API's v1 naming cleanup** (see "Upgrading to 0.15.x"
+below): an API that has not taken the rename reads only
+`target_type`/`fax_account`, ignores `targetType`, and routes the number to
+the customer's PBX with a 204. Check where the number routes after the
+call if you cannot be sure which API you are talking to.
 
 ### Retention: two rules, either of them off
 
@@ -818,6 +836,30 @@ Two rules decide whether this works:
 failure — a stale timestamp, the wrong secret, a malformed header. During a
 secret rotation the header carries two signatures and either secret
 verifies, so a rotation costs you no deliveries.
+
+## Upgrading to 0.15.x: the API's v1 naming cleanup
+
+The API renamed its last snake_case names on the resource surface to
+camelCase, with no alias. The ones this client touches are four `faxes`
+filters, the `fax-account-users` filter, two `webhook-endpoints` filters, the
+`webhook-deliveries` filter, the send acknowledgement's `clientReference` and
+`createdAt`, and the media link's `expiresAt` and `byteSize`. **Your code does
+not change:** the arguments and attributes keep their Python names
+(`fax_account=`, `created_after=`, `Fax.client_reference`,
+`MediaLink.expires_at`).
+
+**0.15.x works against the API on both sides of that deploy, so upgrade
+before it.** It asks with the new filter names; an API that has not taken
+the rename refuses them with a 400, and this client then asks once more with
+the old names and remembers which spelling worked (and switches back the same
+way when the API changes under a running process). It reads the send
+acknowledgement and the media link in either spelling. An older client stops
+filtering on the day the API is renamed: every renamed filter it sends is
+refused with a 400.
+
+**The next minor release removes the fallback** and sends the new names
+only. The raw bodies in `.raw` and anything you read through
+`client.request()` carry whatever the API sent — camelCase once it is renamed.
 
 ## When something is refused
 

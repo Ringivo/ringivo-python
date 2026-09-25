@@ -103,23 +103,18 @@ class FaxAccountUsers:
 
         Needs `fax:read`.
         """
-        # THE FILTER NAMES ARE snake_case AND THE REST OF THIS RESOURCE IS
-        # NOT. `filter[fax_account]` is the API's own spelling, while the
-        # relationship it filters on is `faxAccount` and every attribute is
-        # camelCase too. The asymmetry is real and deliberate on the
-        # server's side — filters are query parameters, not document
-        # members — so "correcting" either half here would send a filter
-        # the API ignores, which reads back as a page of everything.
+        # `filter[faxAccount]`, camelCase like the relationship it filters
+        # on, since the API's v1 naming cleanup. An API from before that
+        # rename refuses it with a 400, and `_request_filtered` then asks
+        # once more as `filter[fax_account]` — the 0.15 bridge.
         params: dict[str, Any] = {
             "page[after]": after,
             "page[before]": before,
             "page[size]": page_size,
-            "filter[fax_account]": fax_account,
+            "filter[faxAccount]": fax_account,
             "filter[user]": user,
         }
-        document = self._client.request(
-            "GET", "/v1/fax-account-users", params=params
-        ).json()
+        document = self._client._request_filtered("/v1/fax-account-users", params).json()
         return _page(document)
 
     def get(self, fax_account_user_id: str) -> FaxAccountUser:

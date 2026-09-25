@@ -56,17 +56,17 @@ class AsyncFaxAccountUsers:
         """One page of grants, newest first. Needs `fax:read`.
 
         The awaited twin of `FaxAccountUsers.list`, and the same arguments
-        mean the same things — including the snake_cased filter names,
-        which are the API's own spelling and not a slip.
+        mean the same things — including the v1 naming cleanup bridge on
+        `filter[faxAccount]`.
         """
         params: dict[str, Any] = {
             "page[after]": after,
             "page[before]": before,
             "page[size]": page_size,
-            "filter[fax_account]": fax_account,
+            "filter[faxAccount]": fax_account,
             "filter[user]": user,
         }
-        response = await self._client.request("GET", "/v1/fax-account-users", params=params)
+        response = await self._client._request_filtered("/v1/fax-account-users", params)
         return _page(response.json())
 
     async def get(self, fax_account_user_id: str) -> FaxAccountUser:

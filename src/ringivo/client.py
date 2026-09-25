@@ -75,10 +75,11 @@ from typing import Any
 
 import httpx
 
+from . import _bridge
 from ._version import __version__
 from .auth import USER_AGENT, ClientCredentialsAuth
 from .customers import Customers
-from .errors import raise_for_response
+from .errors import ApiError, raise_for_response
 from .fax_account_users import FaxAccountUsers
 from .fax_accounts import FaxAccounts
 from .faxes import Faxes
@@ -210,6 +211,9 @@ class Ringivo:
             follow_redirects=True,
         )
 
+        # Which filter spelling the API took last — see `_request_filtered()`.
+        self._legacy_filters = False
+
         self.faxes = Faxes(self)
         self.fax_accounts = FaxAccounts(self)
         self.fax_account_users = FaxAccountUsers(self)
@@ -323,6 +327,31 @@ class Ringivo:
     # for; renaming without leaving this behind would break exactly the
     # people the public name is meant to serve.
     _request = request
+
+    def _request_filtered(self, path: str, params: Mapping[str, Any]) -> httpx.Response:
+        """A `GET` whose filters may carry a name the v1 naming cleanup renamed.
+
+        The bridge release's one piece of temporary machinery (see
+        `ringivo._bridge`): the query goes out in the spelling the API took
+        last — the new camelCase names until an API says otherwise — and a
+        400 for an unknown filter key naming one of them is answered by
+        asking once more in the other spelling, which is then remembered.
+        Any other error reaches the caller untouched.
+        """
+        if not _bridge.carries_renamed_filter(params):
+            return self.request("GET", path, params=params)
+
+        first = _bridge.spelled(params, legacy=self._legacy_filters)
+        try:
+            return self.request("GET", path, params=first)
+        except ApiError as error:
+            if not _bridge.is_unknown_filter_refusal(error, first):
+                raise
+
+        other = not self._legacy_filters
+        response = self.request("GET", path, params=_bridge.spelled(params, legacy=other))
+        self._legacy_filters = other
+        return response
 
     def _download(self, url: str) -> bytes:
         """Follow a pre-signed URL and return the bytes behind it.
