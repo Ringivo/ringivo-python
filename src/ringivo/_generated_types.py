@@ -303,8 +303,8 @@ class FaxUpdateRequest(TypedDict):
 
 
 class CoverPageRequest(TypedDict):
-    to_name: NotRequired[str]
-    from_name: NotRequired[str]
+    toName: NotRequired[str]
+    fromName: NotRequired[str]
     subject: NotRequired[str]
     message: NotRequired[str]
 
@@ -312,12 +312,12 @@ class CoverPageRequest(TypedDict):
 SendFaxMultipartRequest = TypedDict(
     'SendFaxMultipartRequest',
     {
-        'fax_account': str,
+        'faxAccount': str,
         'to': str,
         'from': NotRequired[str],
         'resolution': NotRequired[FaxResolution],
-        'cover_page': NotRequired[CoverPageRequest | None],
-        'client_reference': NotRequired[str],
+        'coverPage': NotRequired[CoverPageRequest | None],
+        'clientReference': NotRequired[str],
         'tags': NotRequired[Tags],
         'documents': list[bytes],
     },
@@ -327,12 +327,12 @@ SendFaxMultipartRequest = TypedDict(
 SendFaxUrlRequest = TypedDict(
     'SendFaxUrlRequest',
     {
-        'fax_account': str,
+        'faxAccount': str,
         'to': str,
         'from': NotRequired[str],
         'resolution': NotRequired[FaxResolution],
-        'cover_page': NotRequired[CoverPageRequest | None],
-        'client_reference': NotRequired[str],
+        'coverPage': NotRequired[CoverPageRequest | None],
+        'clientReference': NotRequired[str],
         'tags': NotRequired[Tags],
         'documents': list[str],
     },
@@ -664,34 +664,47 @@ FaxEventData = TypedDict(
     'FaxEventData',
     {
         'id': NotRequired[str],
+        'faxAccountId': NotRequired[str],
         'fax_account_id': NotRequired[str],
+        'tenantId': NotRequired[str],
         'tenant_id': NotRequired[str],
+        'customerId': NotRequired[str | None],
         'customer_id': NotRequired[str | None],
         'direction': NotRequired[FaxDirection],
         'status': NotRequired[FaxStatus],
+        'failureCode': NotRequired[FaxFailureCode],
         'failure_code': NotRequired[FaxFailureCode],
         'from': NotRequired[str | None],
         'to': NotRequired[str | None],
         'region': NotRequired[str | None],
+        'pagesTotal': NotRequired[int | None],
         'pages_total': NotRequired[int | None],
+        'pagesTransferred': NotRequired[int | None],
         'pages_transferred': NotRequired[int | None],
         'partial': NotRequired[bool | None],
+        'attemptCount': NotRequired[int | None],
         'attempt_count': NotRequired[int | None],
+        'clientReference': NotRequired[str | None],
         'client_reference': NotRequired[str | None],
         'tags': NotRequired[Tags],
+        'createdAt': NotRequired[str | None],
         'created_at': NotRequired[str | None],
+        'completedAt': NotRequired[str | None],
         'completed_at': NotRequired[str | None],
     },
 )
 
 
 class FaxReceivedEventData(FaxEventData):
+    renderFailed: NotRequired[bool]
     render_failed: NotRequired[bool]
 
 
 class WebhookEventEnvelope(TypedDict):
+    eventId: NotRequired[str]
     event_id: str
     type: WebhookEventType
+    occurredAt: NotRequired[str]
     occurred_at: str
 
 
@@ -705,14 +718,21 @@ class FaxReceivedEvent(WebhookEventEnvelope):
 
 class CallRecordingAvailableEventData(TypedDict):
     id: NotRequired[str]
+    customerId: NotRequired[str | None]
     customer_id: NotRequired[str | None]
+    callId: NotRequired[str]
     call_id: NotRequired[str]
+    cccId: NotRequired[str]
     ccc_id: NotRequired[str]
+    durationSeconds: NotRequired[int | None]
     duration_seconds: NotRequired[int | None]
+    byteSize: NotRequired[int]
     byte_size: NotRequired[int]
     sha256: NotRequired[str]
     superseded: NotRequired[bool]
+    recordedAt: NotRequired[str | None]
     recorded_at: NotRequired[str | None]
+    endedAt: NotRequired[str | None]
     ended_at: NotRequired[str | None]
 
 
@@ -722,16 +742,22 @@ class CallRecordingAvailableEvent(WebhookEventEnvelope):
 
 class CallTranscriptAvailableEventData(TypedDict):
     id: NotRequired[str]
+    recordingId: NotRequired[str]
     recording_id: NotRequired[str]
+    customerId: NotRequired[str | None]
     customer_id: NotRequired[str | None]
+    callId: NotRequired[str]
     call_id: NotRequired[str]
+    cccId: NotRequired[str]
     ccc_id: NotRequired[str]
     language: NotRequired[str]
+    durationSeconds: NotRequired[int | None]
     duration_seconds: NotRequired[int | None]
 
 
 class WebhookHeartbeatEventData(TypedDict):
     region: NotRequired[str]
+    emittedAt: NotRequired[str]
     emitted_at: NotRequired[str]
     sequence: NotRequired[int]
     nonce: NotRequired[str]
@@ -747,11 +773,15 @@ class CallTranscriptAvailableEvent(WebhookEventEnvelope):
 
 
 class PbxChangeEventData(TypedDict):
+    intentId: NotRequired[str]
     intent_id: NotRequired[str]
+    tenantId: NotRequired[str]
     tenant_id: NotRequired[str]
+    targetId: NotRequired[str]
     target_id: NotRequired[str]
     table: NotRequired[str]
     fields: NotRequired[list[str]]
+    submittedAt: NotRequired[str]
     submitted_at: NotRequired[str]
 
 
@@ -873,6 +903,7 @@ InboundMessageKind: TypeAlias = Literal['sms', 'mms']
 
 
 class MessageReceivedMediaPart(TypedDict):
+    contentType: NotRequired[str]
     content_type: NotRequired[str]
     filename: NotRequired[str | None]
     encoding: NotRequired[str]
@@ -2067,13 +2098,16 @@ MessageReceivedEventData = TypedDict(
     'MessageReceivedEventData',
     {
         'id': NotRequired[str],
+        'tenantId': NotRequired[str],
         'tenant_id': NotRequired[str],
+        'customerId': NotRequired[str | None],
         'customer_id': NotRequired[str | None],
         'kind': NotRequired[InboundMessageKind],
         'from': NotRequired[str],
         'to': NotRequired[str],
         'body': NotRequired[str | None],
         'media': NotRequired[list[MessageReceivedMediaPart]],
+        'receivedAt': NotRequired[str],
         'received_at': NotRequired[str],
     },
 )
@@ -2082,7 +2116,9 @@ MessageReceivedEventData = TypedDict(
 PortOrderStatusChangedEventData = TypedDict(
     'PortOrderStatusChangedEventData',
     {
+        'portOrderId': NotRequired[str],
         'port_order_id': NotRequired[str],
+        'tenantId': NotRequired[str],
         'tenant_id': NotRequired[str],
         'from': NotRequired[PortOrderStatus],
         'to': NotRequired[PortOrderStatus],
@@ -2091,7 +2127,9 @@ PortOrderStatusChangedEventData = TypedDict(
 
 
 class PortOrderBillExtractionSettledEventData(TypedDict):
+    portOrderId: NotRequired[str]
     port_order_id: NotRequired[str]
+    tenantId: NotRequired[str]
     tenant_id: NotRequired[str]
     status: NotRequired[PortOrderBillExtractionStatus]
 
