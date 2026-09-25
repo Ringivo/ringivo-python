@@ -136,7 +136,7 @@ async def test_send_uploads_the_pages_as_a_multipart_body(
     assert request.headers["content-type"].startswith("multipart/form-data")
     # The four endpoints that are not JSON:API say so, and this is one.
     assert request.headers["accept"] == "application/json"
-    assert 'name="fax_account"' in body
+    assert 'name="faxAccount"' in body
     assert ACCOUNT_ID in body
     assert 'name="to"' in body
     # `documents[]` is how the spec says to spell the file parts.
@@ -233,13 +233,13 @@ async def test_send_with_urls_posts_flat_json_and_never_a_jsonapi_document(
 
     assert request.headers["content-type"].startswith("application/json")
     assert sent == {
-        "fax_account": ACCOUNT_ID,
+        "faxAccount": ACCOUNT_ID,
         "to": "+13025556789",
         "from": "+14075550100",
         "resolution": "fine",
-        "client_reference": "chart-4471",
+        "clientReference": "chart-4471",
         "tags": {"clinic": "north"},
-        "cover_page": {"to_name": "Dr Ruiz", "subject": "Records"},
+        "coverPage": {"toName": "Dr Ruiz", "subject": "Records"},
         "documents": ["https://records.acme-vet.example/charts/4471.pdf"],
     }
     # A body carrying `data` is refused outright rather than half-obeyed.
@@ -264,7 +264,9 @@ async def test_send_sends_tags_and_cover_page_as_json_typed_parts(
     body = route.calls.last.request.content.decode("utf-8", "replace")
 
     assert 'name="tags"\r\nContent-Type: application/json\r\n\r\n{"clinic": "north"}' in body
-    assert 'name="cover_page"\r\nContent-Type: application/json' in body
+    assert 'name="coverPage"\r\nContent-Type: application/json' in body
+    # The documented snake_case cover-page keys go out camelCase.
+    assert '{"toName": "Dr Ruiz"}' in body
     # A form field, not an upload: no filename, or a server reads it as a page.
     assert 'name="tags"; filename' not in body
 
