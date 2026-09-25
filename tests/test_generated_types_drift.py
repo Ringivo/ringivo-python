@@ -936,7 +936,7 @@ _READS: tuple[_Read, ...] = (
     # block.
     _Read(models.Recording, "id", generated.RecordingResource, "id", "Recording._from_resource"),
     _Read(
-        models.Recording, "ccc_id", generated.RecordingAttributes, "ccc-id", "Recording._from_resource"
+        models.Recording, "ccc_id", generated.RecordingAttributes, "cccId", "Recording._from_resource"
     ),
     _Read(
         models.Recording,
@@ -949,7 +949,7 @@ _READS: tuple[_Read, ...] = (
         models.Recording,
         "byte_size",
         generated.RecordingAttributes,
-        "byte-size",
+        "byteSize",
         "Recording._from_resource",
     ),
     _Read(
@@ -966,14 +966,14 @@ _READS: tuple[_Read, ...] = (
         models.Recording,
         "content_url",
         generated.RecordingAttributes,
-        "content-url",
+        "contentUrl",
         "Recording._from_resource",
     ),
     _Read(
         models.Recording,
         "expires_at",
         generated.RecordingAttributes,
-        "expires-at",
+        "expiresAt",
         "Recording._from_resource",
     ),
     # -- Transcript._from_resource reads a TranscriptResource (id) + its ----
@@ -981,7 +981,7 @@ _READS: tuple[_Read, ...] = (
     # attribute keys are the same KEBAB-CASE spelling `Recording` reads.
     _Read(models.Transcript, "id", generated.TranscriptResource, "id", "Transcript._from_resource"),
     _Read(
-        models.Transcript, "ccc_id", generated.TranscriptAttributes, "ccc-id", "Transcript._from_resource"
+        models.Transcript, "ccc_id", generated.TranscriptAttributes, "cccId", "Transcript._from_resource"
     ),
     _Read(
         models.Transcript, "status", generated.TranscriptAttributes, "status", "Transcript._from_resource"
@@ -1004,7 +1004,7 @@ _READS: tuple[_Read, ...] = (
         models.Transcript,
         "byte_size",
         generated.TranscriptAttributes,
-        "byte-size",
+        "byteSize",
         "Transcript._from_resource",
     ),
     _Read(
@@ -1024,14 +1024,14 @@ _READS: tuple[_Read, ...] = (
         models.Transcript,
         "content_url",
         generated.TranscriptAttributes,
-        "content-url",
+        "contentUrl",
         "Transcript._from_resource",
     ),
     _Read(
         models.Transcript,
         "expires_at",
         generated.TranscriptAttributes,
-        "expires-at",
+        "expiresAt",
         "Transcript._from_resource",
     ),
     # -- PbxCall._from_resource reads a PbxCallResource (id) + its ----------

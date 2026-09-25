@@ -95,6 +95,20 @@ def _bridged(source: Mapping[str, Any], key: str, legacy: str) -> Mapping[str, A
     return {**source, key: source[legacy]}
 
 
+def _media_bridged(attributes: Mapping[str, Any]) -> Mapping[str, Any]:
+    """A `recordings`/`transcripts` attribute block with each camelCase key
+    filled from its old kebab-case spelling when only that arrived — the
+    same temporary bridge as `_bridged`, for the PBX media rename."""
+    for key, legacy in (
+        ("cccId", "ccc-id"),
+        ("byteSize", "byte-size"),
+        ("contentUrl", "content-url"),
+        ("expiresAt", "expires-at"),
+    ):
+        attributes = _bridged(attributes, key, legacy)
+    return attributes
+
+
 def _boolean(source: Mapping[str, Any], key: str) -> bool | None:
     value = source.get(key)
     return value if isinstance(value, bool) else None
@@ -1162,21 +1176,22 @@ class Recording:
     def _from_resource(cls, resource: Mapping[str, Any]) -> Recording:
         """Build from one `recordings` resource object.
 
-        The attribute keys are KEBAB-CASE on the wire (`ccc-id`,
-        `byte-size`, `content-url`, `expires-at`) — this endpoint's own
-        spelling, unlike the camelCase `CallRecordAttributes` block.
+        The attribute keys are camelCase (`cccId`, `byteSize`, `contentUrl`,
+        `expiresAt`). They were KEBAB-CASE until the API renamed them, and
+        the API still sends both during its transition window, so an old
+        kebab-case-only response is bridged (`_media_bridged`).
         """
-        attributes = _mapping(resource, "attributes") or {}
+        attributes = _media_bridged(_mapping(resource, "attributes") or {})
 
         return cls(
             id=_text(resource, "id") or "",
-            ccc_id=_text(attributes, "ccc-id"),
+            ccc_id=_text(attributes, "cccId"),
             duration=_integer(attributes, "duration"),
-            byte_size=_integer(attributes, "byte-size"),
+            byte_size=_integer(attributes, "byteSize"),
             sha256=_text(attributes, "sha256"),
             superseded=_boolean(attributes, "superseded"),
-            content_url=_text(attributes, "content-url"),
-            expires_at=_parse_datetime(attributes.get("expires-at")),
+            content_url=_text(attributes, "contentUrl"),
+            expires_at=_parse_datetime(attributes.get("expiresAt")),
             raw=resource,
         )
 
@@ -1227,23 +1242,23 @@ class Transcript:
     def _from_resource(cls, resource: Mapping[str, Any]) -> Transcript:
         """Build from one `transcripts` resource object.
 
-        KEBAB-CASE attribute keys, the same as `Recording._from_resource`
-        and for the same reason: this is that endpoint's own spelling.
+        camelCase attribute keys, bridged from the old kebab-case ones the
+        same way as `Recording._from_resource`.
         """
-        attributes = _mapping(resource, "attributes") or {}
+        attributes = _media_bridged(_mapping(resource, "attributes") or {})
 
         return cls(
             id=_text(resource, "id") or "",
-            ccc_id=_text(attributes, "ccc-id"),
+            ccc_id=_text(attributes, "cccId"),
             status=_text(attributes, "status"),
             language=_text(attributes, "language"),
             duration=_integer(attributes, "duration"),
-            byte_size=_integer(attributes, "byte-size"),
+            byte_size=_integer(attributes, "byteSize"),
             sha256=_text(attributes, "sha256"),
             provider=_text(attributes, "provider"),
             model=_text(attributes, "model"),
-            content_url=_text(attributes, "content-url"),
-            expires_at=_parse_datetime(attributes.get("expires-at")),
+            content_url=_text(attributes, "contentUrl"),
+            expires_at=_parse_datetime(attributes.get("expiresAt")),
             raw=resource,
         )
 
