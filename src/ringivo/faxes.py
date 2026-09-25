@@ -108,7 +108,8 @@ class Faxes:
             resolution: `fine` or `standard`.
             client_reference: Your own reference, echoed back on the fax.
             tags: Your own flat labels. Replaced wholesale on a write.
-            cover_page: `to_name`, `from_name`, `subject`, `message`.
+            cover_page: `to_name`, `from_name`, `subject`, `message` (the
+                camelCase `toName`/`fromName` are accepted too).
             idempotency_key: Your key for this send. **A fresh UUID is
                 generated when you do not pass one**, which makes a single
                 call safe; pass your own — and reuse it — if you intend to
@@ -137,13 +138,13 @@ class Faxes:
                 f"counted together; got {count}"
             )
 
-        fields: dict[str, Any] = {"fax_account": fax_account, "to": to}
+        fields: dict[str, Any] = {"faxAccount": fax_account, "to": to}
         if from_ is not None:
             fields["from"] = from_
         if resolution is not None:
             fields["resolution"] = resolution
         if client_reference is not None:
-            fields["client_reference"] = client_reference
+            fields["clientReference"] = client_reference
 
         headers = {"Idempotency-Key": idempotency_key or str(uuid.uuid4())}
 
@@ -151,7 +152,7 @@ class Faxes:
             if tags is not None:
                 fields["tags"] = dict(tags)
             if cover_page is not None:
-                fields["cover_page"] = dict(cover_page)
+                fields["coverPage"] = _cover_page_wire(cover_page)
             fields["documents"] = list(urls)
             response = self._client.request(
                 "POST",
@@ -162,13 +163,13 @@ class Faxes:
             )
         else:
             parts: list[tuple[str, Any]] = []
-            # `tags` and `cover_page` are JSON-typed parts, as the spec's
+            # `tags` and `coverPage` are JSON-typed parts, as the spec's
             # multipart `encoding` says — a filename of None makes them form
             # fields rather than uploads while keeping the content type.
             if tags is not None:
                 parts.append(("tags", (None, jsonlib.dumps(dict(tags)), _JSON)))
             if cover_page is not None:
-                parts.append(("cover_page", (None, jsonlib.dumps(dict(cover_page)), _JSON)))
+                parts.append(("coverPage", (None, jsonlib.dumps(_cover_page_wire(cover_page)), _JSON)))
             for index, document in enumerate(documents):
                 parts.append(("documents[]", _upload(document, index)))
 
@@ -324,6 +325,16 @@ class Faxes:
         one has none any more; both are an `ApiError` with status 404.
         """
         return self._client._download(self.media_link(fax_id, format=format).url)
+
+
+_COVER_PAGE_WIRE_NAMES = {"to_name": "toName", "from_name": "fromName"}
+
+
+def _cover_page_wire(cover_page: Mapping[str, Any]) -> dict[str, Any]:
+    """The cover page with the API's camelCase field names. Callers may keep
+    passing the snake_case keys this package documented (`to_name`,
+    `from_name`); they are renamed on the way out."""
+    return {_COVER_PAGE_WIRE_NAMES.get(key, key): value for key, value in cover_page.items()}
 
 
 def _documents(file: Path | bytes | Sequence[Path | bytes] | None) -> tuple[Path | bytes, ...]:
