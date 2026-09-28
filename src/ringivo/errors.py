@@ -29,8 +29,11 @@ a new release.
 
 from __future__ import annotations
 
+import re
 from collections.abc import Mapping
 from dataclasses import dataclass, field
+from datetime import datetime, timezone
+from email.utils import parsedate_to_datetime
 from typing import Any
 
 import httpx
@@ -39,8 +42,11 @@ __all__ = [
     "ApiError",
     "ApiErrorDetail",
     "AuthenticationError",
+    "RecordingAudioMissingError",
     "RingivoError",
     "SignatureVerificationError",
+    "TranscriptRequestLimitedError",
+    "TranscriptionCappedError",
 ]
 
 
@@ -119,11 +125,21 @@ class ApiError(RingivoError):
         status_code: int,
         errors: tuple[ApiErrorDetail, ...] = (),
         body: bytes = b"",
+        retry_after: int | None = None,
     ) -> None:
         super().__init__(message)
         self.status_code = status_code
         self.errors = errors
         self.body = body
+        #: How many seconds the server asked you to wait, when it asked.
+        #:
+        #: This is `Retry-After` (RFC 9110 section 10.2.3), given to you as
+        #: SECONDS whichever of the header's two legal forms arrived — a
+        #: count, or an absolute date converted for you. None means the
+        #: server said nothing, or said something malformed: use your own
+        #: backoff. It is never a number invented here, because a caller
+        #: would read that as the server's instruction.
+        self.retry_after = retry_after
 
     @property
     def code(self) -> str | None:
@@ -139,6 +155,42 @@ class AuthenticationError(ApiError):
     token was force-refreshed and the request retried. A second 401 means
     the credential, not the token, is the problem.
     """
+
+
+class RecordingAudioMissingError(ApiError):
+    """A 409 `recording_audio_missing`: there is no audio for this capture.
+
+    Raised by `pbx.call_records.request_transcript()`. The platform holds no
+    audio for the capture, so it cannot be transcribed. Asking again does not
+    help.
+    """
+
+
+class TranscriptionCappedError(ApiError):
+    """A 429 `transcription_capped`: the daily transcription budget is spent.
+
+    Raised by `pbx.call_records.request_transcript()`. `retry_after` gives
+    the seconds until the budget resets at 00:00 UTC. Nothing was started.
+    """
+
+
+class TranscriptRequestLimitedError(ApiError):
+    """A 429 `transcript_request_limited`: this call was asked about too often.
+
+    Raised by `pbx.call_records.request_transcript()`. The limit counts asks
+    per CALL, across all of its captures (3 a day by default). `retry_after`
+    gives the seconds until one more ask is accepted. Nothing was started.
+    """
+
+
+#: The refusals that get a class of their own, by the API's `code`. The code
+#: is the stable vocabulary, so it decides — not the status alone, which a
+#: 429 shares with the plain rate limiter.
+_BY_CODE: Mapping[str, type[ApiError]] = {
+    "recording_audio_missing": RecordingAudioMissingError,
+    "transcription_capped": TranscriptionCappedError,
+    "transcript_request_limited": TranscriptRequestLimitedError,
+}
 
 
 class SignatureVerificationError(RingivoError):
@@ -203,6 +255,36 @@ def _message(status_code: int, errors: tuple[ApiErrorDetail, ...], body: bytes) 
     return f"{prefix}: {excerpt}" if excerpt else prefix
 
 
+_DELAY_SECONDS = re.compile(r"[0-9]+")
+
+
+def _retry_after_seconds(value: str | None) -> int | None:
+    """The seconds a `Retry-After` asks for, or None if it did not say one.
+
+    RFC 9110 gives the header two forms, `delay-seconds` and an absolute
+    `HTTP-date`, and the server picks. Both are read, and both come back as
+    seconds. `delay-seconds` must be digits and nothing else — `-5` and
+    `1.5` are malformed, and a malformed header is None, never 0, because 0
+    reads as "retry now" and the server never said that. A date already past
+    is 0, never negative.
+    """
+    if value is None:
+        return None
+
+    trimmed = value.strip()
+    if _DELAY_SECONDS.fullmatch(trimmed):
+        return int(trimmed)
+
+    try:
+        when = parsedate_to_datetime(trimmed)
+    except (TypeError, ValueError, IndexError):
+        return None
+    if when.tzinfo is None:
+        when = when.replace(tzinfo=timezone.utc)
+
+    return max(0, round((when - datetime.now(timezone.utc)).total_seconds()))
+
+
 def raise_for_response(response: httpx.Response) -> None:
     """Raise the typed exception this response deserves, or return.
 
@@ -216,6 +298,17 @@ def raise_for_response(response: httpx.Response) -> None:
     body = response.content
     errors = _errors_from_response(response)
     message = _message(response.status_code, errors, body)
-    failure = AuthenticationError if response.status_code == 401 else ApiError
+    code = errors[0].code if errors else None
+    failure: type[ApiError]
+    if response.status_code == 401:
+        failure = AuthenticationError
+    else:
+        failure = _BY_CODE.get(code or "", ApiError)
 
-    raise failure(message, status_code=response.status_code, errors=errors, body=body)
+    raise failure(
+        message,
+        status_code=response.status_code,
+        errors=errors,
+        body=body,
+        retry_after=_retry_after_seconds(response.headers.get("retry-after")),
+    )

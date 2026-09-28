@@ -1034,6 +1034,40 @@ _READS: tuple[_Read, ...] = (
         "expiresAt",
         "Transcript._from_resource",
     ),
+    # Only the single-transcript endpoint serves `segments`, so it is read off
+    # the attributes that endpoint's schema composes, not the list's.
+    _Read(
+        models.Transcript,
+        "segments",
+        generated.TranscriptWithSegmentsAttributes,
+        "segments",
+        "Transcript._from_resource",
+    ),
+    # -- TranscriptSegment._from_json reads one TranscriptSegment ----------
+    _Read(
+        models.TranscriptSegment,
+        "speaker",
+        generated.TranscriptSegment,
+        "speaker",
+        "TranscriptSegment._from_json",
+    ),
+    _Read(
+        models.TranscriptSegment,
+        "start",
+        generated.TranscriptSegment,
+        "start",
+        "TranscriptSegment._from_json",
+    ),
+    _Read(
+        models.TranscriptSegment, "end", generated.TranscriptSegment, "end", "TranscriptSegment._from_json"
+    ),
+    _Read(
+        models.TranscriptSegment,
+        "text",
+        generated.TranscriptSegment,
+        "text",
+        "TranscriptSegment._from_json",
+    ),
     # -- PbxCall._from_resource reads a PbxCallResource (id) + its ----------
     # PbxCallAttributes. This resource has NO relationships block at all:
     # a call request is answered before the call exists, so there is nothing
@@ -1229,6 +1263,7 @@ _EXCLUDED: dict[tuple[type, str], str] = {
     (models.CallRecord, "raw"): "holds the whole source mapping this object was built from",
     (models.Recording, "raw"): "holds the whole source mapping this object was built from",
     (models.Transcript, "raw"): "holds the whole source mapping this object was built from",
+    (models.TranscriptSegment, "raw"): "holds the whole source mapping this object was built from",
     (models.PbxCall, "raw"): "holds the whole source mapping this object was built from",
     (models.Customer, "raw"): "holds the whole source mapping this object was built from",
 }
@@ -1274,6 +1309,7 @@ _MODELS: tuple[type, ...] = (
     models.CallRecord,
     models.Recording,
     models.Transcript,
+    models.TranscriptSegment,
     models.PbxCall,
     models.Customer,
 )
@@ -1301,7 +1337,7 @@ def test_every_field_a_model_reads_is_covered_by_the_read_table() -> None:
     them, in both directions, or this whole test proves nothing about that
     model.
     """
-    assert len(_MODELS) == 15, f"only {[m.__name__ for m in _MODELS]} was searched — the sweep is broken"
+    assert len(_MODELS) == 16, f"only {[m.__name__ for m in _MODELS]} was searched — the sweep is broken"
 
     mismatches: dict[str, str] = {}
     for model in _MODELS:
@@ -1321,7 +1357,7 @@ def test_every_field_a_model_reads_is_covered_by_the_read_table() -> None:
 
 
 def test_every_field_a_model_reads_exists_in_the_generated_types() -> None:
-    assert len(_READS) == 199, f"{len(_READS)} reads were checked, not 199 — the sweep is broken"
+    assert len(_READS) == 204, f"{len(_READS)} reads were checked, not 204 — the sweep is broken"
 
     failures: list[str] = []
     for read in _READS:

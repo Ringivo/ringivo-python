@@ -41,6 +41,7 @@ from .pbx import (
     _device_page,
     _fields_param,
     _recordings,
+    _transcript_path,
     _transcripts,
     _kind_param,
     _subscriber_page,
@@ -318,13 +319,13 @@ class AsyncPbxCallRecords:
 
         The awaited twin of `PbxCallRecords.transcripts`. ONE ITEM PER
         RECORDING, not one per transcript that exists — a capture with no
-        words yet still appears, as `status="pending"` with every other
-        field None. NOT PAGINATED, for the reason `recordings()` is not.
+        words yet still appears, as `status="not_requested"` or
+        `"pending"` with every other field None. NOT PAGINATED, for the
+        reason `recordings()` is not.
 
-        This is the collection read only: it never tells a permanent
-        failure apart from a wait, and it carries no speaker turns. Both
-        need the single-transcript endpoint, which this client does not
-        yet wrap.
+        This is the collection read only, and it carries no speaker turns:
+        `transcript()` reads one capture with its turns, and
+        `request_transcript()` asks for one.
 
         Needs BOTH `pbx-call-records:read` AND `pbx-transcripts:read`,
         asked in that order — the words of a call are a separate grant
@@ -335,3 +336,31 @@ class AsyncPbxCallRecords:
             f"/v1/pbx/call-records/{_path_segment(call_record_id, noun=_CALL_RECORD_NOUN)}/transcripts",
         )
         return _transcripts(response.json())
+
+    async def transcript(self, call_record_id: str, recording_id: str) -> Transcript:
+        """Read one capture's transcript, with its speaker turns.
+
+        The awaited twin of `PbxCallRecords.transcript`. A 404 carries a
+        `code` that says which kind of nothing: `transcript_not_requested`,
+        `transcript_pending`, `transcript_failed` or `not_found`.
+
+        Needs BOTH `pbx-call-records:read` AND `pbx-transcripts:read`.
+        """
+        response = await self._client.request("GET", _transcript_path(call_record_id, recording_id))
+        return Transcript._from_resource(_data_object(response.json()))
+
+    async def request_transcript(self, call_record_id: str, recording_id: str) -> Transcript:
+        """Ask for one capture's transcript. The work is asynchronous.
+
+        The awaited twin of `PbxCallRecords.request_transcript`: a 202 is a
+        `pending` transcript, a 200 the `ready` one, and it is safe to
+        repeat. Raises `RecordingAudioMissingError` (409),
+        `TranscriptionCappedError` (429) or `TranscriptRequestLimitedError`
+        (429); both 429s carry `retry_after` in seconds.
+
+        Needs `pbx-call-records:read` AND `pbx-transcripts:write`.
+        """
+        response = await self._client.request(
+            "POST", _transcript_path(call_record_id, recording_id)
+        )
+        return Transcript._from_resource(_data_object(response.json()))

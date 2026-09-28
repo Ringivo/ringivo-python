@@ -26,7 +26,11 @@ from ringivo import (
     PbxSubscriber,
     PbxSubscriberPage,
     Recording,
+    RecordingAudioMissingError,
     Transcript,
+    TranscriptionCappedError,
+    TranscriptRequestLimitedError,
+    TranscriptSegment,
 )
 
 BASE_URL = "https://api.yourprovider.example"
@@ -895,6 +899,105 @@ async def test_a_call_record_outside_your_customers_domains_raises_a_typed_404_o
 
     assert caught.value.status_code == 404
     assert caught.value.code == "not_found"
+
+
+# -- call_records.transcript / request_transcript -----------------------------
+
+CALL_RECORD_TRANSCRIPT_URL = f"{CALL_RECORD_TRANSCRIPTS_URL}/{RECORDING_ID}"
+
+
+def _refusal(status: int, code: str, *, retry_after: str | None = None) -> httpx.Response:
+    return httpx.Response(
+        status,
+        headers={"Retry-After": retry_after} if retry_after is not None else None,
+        json={"errors": [{"status": str(status), "title": "Refused", "code": code}]},
+    )
+
+
+@pytest.mark.anyio
+async def test_call_records_transcript_reads_one_transcript_with_its_segments(
+    respx_mock: respx.MockRouter, client: AsyncRingivo
+) -> None:
+    segments = [{"speaker": "Speaker 1", "start": 0.08, "end": 2, "text": "Hello."}]
+    respx_mock.get(CALL_RECORD_TRANSCRIPT_URL).mock(
+        return_value=httpx.Response(
+            200, json={"data": _transcript_resource(attributes={"segments": segments})}
+        )
+    )
+
+    async with client:
+        transcript = await client.pbx.call_records.transcript(CALL_RECORD_ID, RECORDING_ID)
+
+    assert transcript.id == RECORDING_ID
+    assert transcript.status == "ready"
+    assert transcript.segments == (
+        TranscriptSegment(speaker="Speaker 1", start=0.08, end=2.0, text="Hello.", raw=segments[0]),
+    )
+
+
+@pytest.mark.anyio
+async def test_request_transcript_posts_no_body_and_reads_the_pending_answer(
+    respx_mock: respx.MockRouter, client: AsyncRingivo
+) -> None:
+    route = respx_mock.post(CALL_RECORD_TRANSCRIPT_URL).mock(
+        return_value=httpx.Response(
+            202,
+            json={
+                "data": _transcript_resource(
+                    attributes={"status": "pending", "content-url": None, "expires-at": None}
+                )
+            },
+        )
+    )
+
+    async with client:
+        transcript = await client.pbx.call_records.request_transcript(CALL_RECORD_ID, RECORDING_ID)
+
+    request = route.calls.last.request
+    assert request.method == "POST"
+    assert request.content == b""
+    assert transcript.status == "pending"
+    assert transcript.content_url is None
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize(
+    ("status", "code", "retry_after", "expected_type", "expected_wait"),
+    [
+        (409, "recording_audio_missing", None, RecordingAudioMissingError, None),
+        (429, "transcription_capped", "3600", TranscriptionCappedError, 3600),
+        (429, "transcript_request_limited", "120", TranscriptRequestLimitedError, 120),
+    ],
+)
+async def test_request_transcript_refusals_are_typed(
+    respx_mock: respx.MockRouter,
+    client: AsyncRingivo,
+    status: int,
+    code: str,
+    retry_after: str | None,
+    expected_type: type[ApiError],
+    expected_wait: int | None,
+) -> None:
+    respx_mock.post(CALL_RECORD_TRANSCRIPT_URL).mock(
+        return_value=_refusal(status, code, retry_after=retry_after)
+    )
+
+    async with client:
+        with pytest.raises(expected_type) as caught:
+            await client.pbx.call_records.request_transcript(CALL_RECORD_ID, RECORDING_ID)
+
+    assert caught.value.status_code == status
+    assert caught.value.code == code
+    assert caught.value.retry_after == expected_wait
+
+
+@pytest.mark.anyio
+async def test_an_empty_recording_id_is_refused_by_its_own_name(client: AsyncRingivo) -> None:
+    async with client:
+        with pytest.raises(ValueError, match="a recording id is required"):
+            await client.pbx.call_records.transcript(CALL_RECORD_ID, "")
+        with pytest.raises(ValueError, match="a recording id is required"):
+            await client.pbx.call_records.request_transcript(CALL_RECORD_ID, "")
 
 
 # -- subscribers.call (click-to-dial) --------------------------------------

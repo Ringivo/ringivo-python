@@ -284,6 +284,26 @@ class AsyncFaxes:
         payload = response.json()
         return MediaLink._from_json(payload if isinstance(payload, Mapping) else {})
 
+    async def thumbnail_link(self, fax_id: str) -> MediaLink:
+        """Mint a short-lived download URL for a fax's first-page preview.
+
+        The preview is a PNG of the first page, made when the fax was
+        converted. Follow `url` with a plain GET and no `Authorization`
+        header, the same way as a `media_link()` URL. Every call mints a
+        fresh capability and records who asked, so do not cache the URL past
+        `expires_at` or pass it on.
+
+        A fax that is not yours, or that has no preview, is an `ApiError`
+        with status 404.
+        """
+        response = await self._client.request(
+            "GET",
+            f"/v1/faxes/{_path_segment(fax_id)}/thumbnail",
+            accept=_JSON,
+        )
+        payload = response.json()
+        return MediaLink._from_json(payload if isinstance(payload, Mapping) else {})
+
     async def media(self, fax_id: str, *, format: str = "pdf") -> bytes:
         """The document's bytes: mint the link, then follow it.
 
