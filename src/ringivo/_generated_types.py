@@ -1298,6 +1298,10 @@ class PortOrderNumberInput1(TypedDict, closed=True):
 PortOrderNumberInput: TypeAlias = str | PortOrderNumberInput1
 
 
+class Meta(TypedDict):
+    cancelSignedLoa: NotRequired[bool]
+
+
 class Attributes8(TypedDict):
     label: NotRequired[str | None]
     endUserName: NotRequired[str | None]
@@ -1328,6 +1332,7 @@ class Data13(TypedDict):
 
 
 class PortOrderUpdateRequest(TypedDict):
+    meta: NotRequired[Meta]
     data: Data13
 
 
