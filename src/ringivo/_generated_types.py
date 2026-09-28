@@ -116,7 +116,7 @@ ErrorCode: TypeAlias = Literal[
     'transcript_failed',
     'transcript_not_requested',
     'recording_audio_missing',
-    'transcription_capped',
+    'transcription_daily_limit_reached',
     'transcript_request_limited',
     'transcription_unavailable',
 ]
