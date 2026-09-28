@@ -24,7 +24,7 @@ they were not passed, and the boolean that is always sent.
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Any, cast, get_args
 
 import httpx
@@ -41,8 +41,12 @@ from ringivo import (
     PbxSubscriber,
     PbxSubscriberPage,
     Recording,
+    RecordingAudioMissingError,
     Ringivo,
     Transcript,
+    TranscriptionCappedError,
+    TranscriptRequestLimitedError,
+    TranscriptSegment,
 )
 from ringivo import _generated_types as generated
 
@@ -1446,6 +1450,295 @@ def test_a_call_record_outside_your_customers_domains_raises_a_typed_404_on_tran
 
     assert caught.value.status_code == 404
     assert caught.value.code == "not_found"
+
+
+# -- call_records.transcript / request_transcript -----------------------------
+
+CALL_RECORD_TRANSCRIPT_URL = f"{CALL_RECORD_TRANSCRIPTS_URL}/{RECORDING_ID}"
+
+_SEGMENTS = [
+    {"speaker": "Speaker 1", "start": 0.08, "end": 2.4, "text": "Acme Dental, how can I help?"},
+    {"speaker": "Speaker 2", "start": 2.6, "end": 5, "text": "I need to move my appointment."},
+]
+
+_PENDING = {
+    "status": "pending",
+    "language": None,
+    "duration": None,
+    "byteSize": None,
+    "sha256": None,
+    "provider": None,
+    "model": None,
+    "contentUrl": None,
+    "expiresAt": None,
+}
+
+
+def _refusal(status: int, code: str, *, retry_after: str | None = None) -> httpx.Response:
+    return httpx.Response(
+        status,
+        headers={"Retry-After": retry_after} if retry_after is not None else None,
+        json={"errors": [{"status": str(status), "title": "Refused", "code": code}]},
+    )
+
+
+def test_call_records_transcript_reads_one_transcript_with_its_segments(
+    respx_mock: respx.MockRouter, client: Ringivo
+) -> None:
+    route = respx_mock.get(CALL_RECORD_TRANSCRIPT_URL).mock(
+        return_value=httpx.Response(
+            200, json={"data": _transcript_resource(attributes={"segments": _SEGMENTS})}
+        )
+    )
+
+    with client:
+        transcript = client.pbx.call_records.transcript(CALL_RECORD_ID, RECORDING_ID)
+
+    assert route.calls.last.request.headers["accept"] == JSONAPI
+    assert isinstance(transcript, Transcript)
+    assert transcript.id == RECORDING_ID
+    assert transcript.status == "ready"
+    assert transcript.content_url == f"{BASE_URL}/v1/pbx/transcripts-content/signed-token"
+    segments = transcript.segments
+    assert segments is not None
+    assert [(s.speaker, s.start, s.end, s.text) for s in segments] == [
+        ("Speaker 1", 0.08, 2.4, "Acme Dental, how can I help?"),
+        ("Speaker 2", 2.6, 5.0, "I need to move my appointment."),
+    ]
+    assert all(isinstance(s, TranscriptSegment) for s in segments)
+    # A whole second arrives as a JSON integer; it is still a float here.
+    assert isinstance(segments[1].end, float)
+    assert segments[0].raw == _SEGMENTS[0]
+
+
+def test_call_records_transcript_with_no_turns_is_an_empty_tuple(
+    respx_mock: respx.MockRouter, client: Ringivo
+) -> None:
+    respx_mock.get(CALL_RECORD_TRANSCRIPT_URL).mock(
+        return_value=httpx.Response(200, json={"data": _transcript_resource(attributes={"segments": []})})
+    )
+
+    with client:
+        transcript = client.pbx.call_records.transcript(CALL_RECORD_ID, RECORDING_ID)
+
+    assert transcript.segments == ()
+
+
+def test_the_transcripts_list_carries_no_segments_rather_than_an_empty_tuple(
+    respx_mock: respx.MockRouter, client: Ringivo
+) -> None:
+    # None is "this endpoint does not serve turns", () is "nobody spoke".
+    respx_mock.get(CALL_RECORD_TRANSCRIPTS_URL).mock(
+        return_value=httpx.Response(200, json={"data": [_transcript_resource()]})
+    )
+
+    with client:
+        transcripts = client.pbx.call_records.transcripts(CALL_RECORD_ID)
+
+    assert transcripts[0].segments is None
+
+
+@pytest.mark.parametrize(
+    "code", ["transcript_not_requested", "transcript_pending", "transcript_failed", "not_found"]
+)
+def test_call_records_transcript_hands_every_404_code_through(
+    respx_mock: respx.MockRouter, client: Ringivo, code: str
+) -> None:
+    respx_mock.get(CALL_RECORD_TRANSCRIPT_URL).mock(return_value=_refusal(404, code))
+
+    with client, pytest.raises(ApiError) as caught:
+        client.pbx.call_records.transcript(CALL_RECORD_ID, RECORDING_ID)
+
+    assert caught.value.status_code == 404
+    assert caught.value.code == code
+
+
+def test_request_transcript_posts_no_body_to_the_captures_own_url(
+    respx_mock: respx.MockRouter, client: Ringivo
+) -> None:
+    route = respx_mock.post(CALL_RECORD_TRANSCRIPT_URL).mock(
+        return_value=httpx.Response(202, json={"data": _transcript_resource(attributes=_PENDING)})
+    )
+
+    with client:
+        transcript = client.pbx.call_records.request_transcript(CALL_RECORD_ID, RECORDING_ID)
+
+    request = route.calls.last.request
+    assert request.method == "POST"
+    assert request.url.path == f"/v1/pbx/call-records/{CALL_RECORD_ID}/transcripts/{RECORDING_ID}"
+    assert request.content == b""
+    assert request.headers["accept"] == JSONAPI
+    assert transcript.id == RECORDING_ID
+    assert transcript.status == "pending"
+    assert transcript.content_url is None
+
+
+def test_request_transcript_of_a_transcribed_capture_hands_back_the_ready_transcript(
+    respx_mock: respx.MockRouter, client: Ringivo
+) -> None:
+    respx_mock.post(CALL_RECORD_TRANSCRIPT_URL).mock(
+        return_value=httpx.Response(200, json={"data": _transcript_resource()})
+    )
+
+    with client:
+        transcript = client.pbx.call_records.request_transcript(CALL_RECORD_ID, RECORDING_ID)
+
+    assert transcript.status == "ready"
+    assert transcript.content_url == f"{BASE_URL}/v1/pbx/transcripts-content/signed-token"
+
+
+def test_a_capture_with_no_audio_is_a_typed_409(
+    respx_mock: respx.MockRouter, client: Ringivo
+) -> None:
+    respx_mock.post(CALL_RECORD_TRANSCRIPT_URL).mock(
+        return_value=_refusal(409, "recording_audio_missing")
+    )
+
+    with client, pytest.raises(RecordingAudioMissingError) as caught:
+        client.pbx.call_records.request_transcript(CALL_RECORD_ID, RECORDING_ID)
+
+    assert isinstance(caught.value, ApiError)
+    assert caught.value.status_code == 409
+    assert caught.value.code == "recording_audio_missing"
+
+
+def test_a_spent_daily_budget_is_a_typed_429_with_its_retry_after(
+    respx_mock: respx.MockRouter, client: Ringivo
+) -> None:
+    respx_mock.post(CALL_RECORD_TRANSCRIPT_URL).mock(
+        return_value=_refusal(429, "transcription_capped", retry_after="3600")
+    )
+
+    with client, pytest.raises(TranscriptionCappedError) as caught:
+        client.pbx.call_records.request_transcript(CALL_RECORD_ID, RECORDING_ID)
+
+    assert isinstance(caught.value, ApiError)
+    assert caught.value.status_code == 429
+    assert caught.value.code == "transcription_capped"
+    assert caught.value.retry_after == 3600
+
+
+def test_a_call_asked_about_too_often_is_a_typed_429_with_its_retry_after(
+    respx_mock: respx.MockRouter, client: Ringivo
+) -> None:
+    respx_mock.post(CALL_RECORD_TRANSCRIPT_URL).mock(
+        return_value=_refusal(429, "transcript_request_limited", retry_after="120")
+    )
+
+    with client, pytest.raises(TranscriptRequestLimitedError) as caught:
+        client.pbx.call_records.request_transcript(CALL_RECORD_ID, RECORDING_ID)
+
+    assert caught.value.status_code == 429
+    assert caught.value.code == "transcript_request_limited"
+    assert caught.value.retry_after == 120
+
+
+def test_a_429_with_no_retry_after_says_nothing_rather_than_zero(
+    respx_mock: respx.MockRouter, client: Ringivo
+) -> None:
+    respx_mock.post(CALL_RECORD_TRANSCRIPT_URL).mock(
+        return_value=_refusal(429, "transcript_request_limited")
+    )
+
+    with client, pytest.raises(TranscriptRequestLimitedError) as caught:
+        client.pbx.call_records.request_transcript(CALL_RECORD_ID, RECORDING_ID)
+
+    assert caught.value.retry_after is None
+
+
+@pytest.mark.parametrize(
+    ("header", "expected"),
+    [("0", 0), (" 42 ", 42), ("-5", None), ("1.5", None), ("soon", None), ("", None)],
+)
+def test_retry_after_is_seconds_or_nothing_never_a_guess(
+    respx_mock: respx.MockRouter, client: Ringivo, header: str, expected: int | None
+) -> None:
+    respx_mock.post(CALL_RECORD_TRANSCRIPT_URL).mock(
+        return_value=_refusal(429, "transcription_capped", retry_after=header)
+    )
+
+    with client, pytest.raises(TranscriptionCappedError) as caught:
+        client.pbx.call_records.request_transcript(CALL_RECORD_ID, RECORDING_ID)
+
+    assert caught.value.retry_after == expected
+
+
+def test_a_retry_after_http_date_becomes_seconds_from_now(
+    respx_mock: respx.MockRouter, client: Ringivo
+) -> None:
+    from email.utils import format_datetime
+
+    later = datetime.now(timezone.utc).replace(microsecond=0) + timedelta(seconds=90)
+    respx_mock.post(CALL_RECORD_TRANSCRIPT_URL).mock(
+        return_value=_refusal(429, "transcription_capped", retry_after=format_datetime(later, usegmt=True))
+    )
+
+    with client, pytest.raises(TranscriptionCappedError) as caught:
+        client.pbx.call_records.request_transcript(CALL_RECORD_ID, RECORDING_ID)
+
+    assert caught.value.retry_after is not None
+    assert 80 <= caught.value.retry_after <= 90
+
+
+def test_a_retry_after_date_already_past_is_zero_not_negative(
+    respx_mock: respx.MockRouter, client: Ringivo
+) -> None:
+    respx_mock.post(CALL_RECORD_TRANSCRIPT_URL).mock(
+        return_value=_refusal(429, "transcription_capped", retry_after="Wed, 21 Oct 2015 07:28:00 GMT")
+    )
+
+    with client, pytest.raises(TranscriptionCappedError) as caught:
+        client.pbx.call_records.request_transcript(CALL_RECORD_ID, RECORDING_ID)
+
+    assert caught.value.retry_after == 0
+
+
+def test_an_ordinary_refusal_is_still_a_plain_api_error(
+    respx_mock: respx.MockRouter, client: Ringivo
+) -> None:
+    respx_mock.post(CALL_RECORD_TRANSCRIPT_URL).mock(return_value=_refusal(404, "transcript_failed"))
+
+    with client, pytest.raises(ApiError) as caught:
+        client.pbx.call_records.request_transcript(CALL_RECORD_ID, RECORDING_ID)
+
+    assert type(caught.value) is ApiError
+    assert caught.value.code == "transcript_failed"
+    assert caught.value.retry_after is None
+
+
+@pytest.mark.parametrize("method", ["transcript", "request_transcript"])
+def test_an_empty_recording_id_is_refused_by_its_own_name(client: Ringivo, method: str) -> None:
+    with client, pytest.raises(ValueError, match="a recording id is required"):
+        getattr(client.pbx.call_records, method)(CALL_RECORD_ID, "")
+
+
+@pytest.mark.parametrize("method", ["transcript", "request_transcript"])
+def test_an_empty_call_record_id_is_refused_by_the_single_transcript_calls(
+    client: Ringivo, method: str
+) -> None:
+    with client, pytest.raises(ValueError, match="a call record id is required"):
+        getattr(client.pbx.call_records, method)("", RECORDING_ID)
+
+
+@pytest.mark.parametrize("method", ["GET", "POST"])
+def test_both_ids_stay_inside_their_own_path_segments_on_a_single_transcript(
+    respx_mock: respx.MockRouter, client: Ringivo, method: str
+) -> None:
+    route = respx_mock.route(host="api.yourprovider.example").mock(
+        return_value=httpx.Response(200, json={"data": _transcript_resource()})
+    )
+
+    with client:
+        call = client.pbx.call_records.transcript if method == "GET" else (
+            client.pbx.call_records.request_transcript
+        )
+        call("../users/secret", "../x")
+
+    assert route.calls.last.request.method == method
+    assert (
+        route.calls.last.request.url.raw_path
+        == b"/v1/pbx/call-records/..%2Fusers%2Fsecret/transcripts/..%2Fx"
+    )
 
 
 # -- subscribers.call (click-to-dial) --------------------------------------

@@ -662,6 +662,33 @@ async def test_media_link_hands_back_the_capability_and_its_facts(
 
 
 @pytest.mark.anyio
+async def test_thumbnail_link_mints_the_first_page_preview_link(
+    respx_mock: respx.MockRouter, client: AsyncRingivo
+) -> None:
+    route = respx_mock.get(f"{FAX_URL}/thumbnail").mock(
+        return_value=httpx.Response(
+            200,
+            json={
+                "url": f"{FAX_URL}/thumbnail/content?expires=1787057037&signature=abc",
+                "expiresAt": "2026-08-16T11:07:31+00:00",
+                "byteSize": 128,
+                "sha256": "d" * 64,
+            },
+        )
+    )
+
+    async with client:
+        link = await client.faxes.thumbnail_link(FAX_ID)
+
+    request = route.calls.last.request
+    assert request.headers["accept"] == "application/json"
+    assert "format" not in request.url.params
+    assert link.url.endswith("signature=abc")
+    assert link.byte_size == 128
+    assert link.expires_at == datetime(2026, 8, 16, 11, 7, 31, tzinfo=timezone.utc)
+
+
+@pytest.mark.anyio
 async def test_a_fax_with_no_rendered_document_yet_is_a_typed_404(
     respx_mock: respx.MockRouter, client: AsyncRingivo
 ) -> None:

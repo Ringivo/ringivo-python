@@ -1,5 +1,6 @@
 """Your customers' phone systems: who is on them, what is registered, what
-was called — and one write, which asks a phone to ring.
+was called — and two writes: one asks a phone to ring, and one asks for a
+call's transcript.
 
 -- WHY ONE NAMESPACE WITH THREE COLLECTIONS INSIDE IT --------------------------
 `client.pbx.subscribers`, `client.pbx.devices` and `client.pbx.call_records` are
@@ -19,10 +20,10 @@ That refusal arrives as an `ApiError`, like any other.
 
 -- THIS SURFACE DOES NOT WRITE THE PHONE SYSTEM --------------------------------
 Every attribute on `subscribers` and `devices` is read-only, which is why
-neither has a `create()`, an `update()` or a `delete()`. The one write in
-this module is `subscribers.call()`, and it does not write the phone system
-either: it
-asks the switch to place a call and gets an acknowledgement back.
+neither has a `create()`, an `update()` or a `delete()`. The two writes in
+this module do not write the phone system either. `subscribers.call()` asks
+the switch to place a call, and `call_records.request_transcript()` asks it
+to transcribe one capture of a call. Each gets an acknowledgement back.
 
 -- THE TWO SCOPES ARE NOT THE THREE COLLECTIONS --------------------------------
 `pbx-users:read` reaches BOTH `subscribers` and `devices` — a registration is
@@ -31,7 +32,9 @@ read as part of the subscriber it belongs to, not as a resource of its own.
 sensitivity from a directory: who called whom, and for how long, is the
 half a reseller most often wants to withhold. `subscribers.call()` needs
 `pbx-calls:write`, which is a third scope again, for the obvious reason
-that it makes somebody's phone ring.
+that it makes somebody's phone ring. The words of a call are separate
+again: reading a transcript needs `pbx-transcripts:read` beside
+`pbx-call-records:read`, and asking for one needs `pbx-transcripts:write`.
 
 -- TIMESTAMPS: TEXT ON TWO OF THEM, INSTANTS ON THE THIRD ----------------------
 A subscriber's and a device's timestamps are served as the phone system stores
@@ -75,6 +78,7 @@ __all__ = ["Pbx", "PbxCallRecords", "PbxDevices", "PbxSubscribers"]
 _SUBSCRIBER_NOUN = "PBX subscriber"
 _DEVICE_NOUN = "PBX device"
 _CALL_RECORD_NOUN = "call record"
+_RECORDING_NOUN = "recording"
 
 #: The `type` member the click-to-dial request and its answer both carry.
 #: A call REQUEST is its own resource — it is not a `subscribers` write and not a
@@ -482,21 +486,19 @@ class PbxCallRecords:
 
         ONE ITEM PER RECORDING, not one per transcript that exists: a
         capture with no words yet still appears, as a `Transcript` with
-        `status="pending"` and every other field None, so you can tell "no
-        transcript yet" from "no recording at all". NOT PAGINATED, for the
-        same reason `recordings()` is not: the console's own
-        `TranscriptCollectionDocument` carries no `links.next` or
+        `status="not_requested"` or `"pending"` and every other field None,
+        so you can tell "no transcript yet" from "no recording at all". NOT
+        PAGINATED, for the same reason `recordings()` is not: the console's
+        own `TranscriptCollectionDocument` carries no `links.next` or
         `meta.page`.
 
         Each `Transcript.content_url` is short-lived, the same rule
         `Recording.content_url` follows: call this again for a fresh one.
 
-        This is the collection read only — one HTTP call, one indexed
-        query — and it never distinguishes a permanent failure from a
-        wait; both currently read `pending` on the tuple this returns.
-        Telling the two apart, and reading the turns of the conversation,
-        needs the single-transcript endpoint, which this client does not
-        yet wrap.
+        This is the collection read only: `status` is `ready`, `pending` or
+        `not_requested`, and it carries no speaker turns. `transcript()`
+        reads one capture with its turns, and says when a transcription
+        permanently gave up. `request_transcript()` asks for one.
 
         A call outside your customers' domains answers 404, not 403 — the
         same posture `get()` and `recordings()` have.
@@ -514,6 +516,65 @@ class PbxCallRecords:
             f"/v1/pbx/call-records/{_path_segment(call_record_id, noun=_CALL_RECORD_NOUN)}/transcripts",
         )
         return _transcripts(response.json())
+
+    def transcript(self, call_record_id: str, recording_id: str) -> Transcript:
+        """Read one capture's transcript, with its speaker turns.
+
+        `recording_id` is the `id` of an item from `transcripts()` or
+        `recordings()` — the same id on both. The answer carries `segments`,
+        the turns of the conversation in the order they were spoken.
+
+        A 404 is not always "no such thing", and `ApiError.code` says which:
+        `transcript_not_requested` (nobody asked — call
+        `request_transcript()`), `transcript_pending` (asked for, not written
+        yet — ask again in a few minutes), `transcript_failed`
+        (transcription gave up; there is nothing to wait for) or `not_found`
+        (no such call of yours, or no such capture of it).
+
+        Needs BOTH `pbx-call-records:read` AND `pbx-transcripts:read`.
+        """
+        response = self._client.request("GET", _transcript_path(call_record_id, recording_id))
+        return Transcript._from_resource(_data_object(response.json()))
+
+    def request_transcript(self, call_record_id: str, recording_id: str) -> Transcript:
+        """Ask for one capture's transcript. The work is asynchronous.
+
+        Returns at once. A 202 answers a `Transcript` with
+        `status == "pending"`: poll `transcript()` or `transcripts()` until
+        it is `ready`, or subscribe to the `call_transcript.available`
+        webhook. A capture that is already transcribed answers 200 with the
+        `ready` transcript, and starts nothing new.
+
+        IT IS SAFE TO REPEAT. A capture already asked for answers 202 again
+        and starts no second transcription.
+
+        Raises:
+            RecordingAudioMissingError: 409 — there is no audio for this
+                capture, so it cannot be transcribed.
+            TranscriptionCappedError: 429 — the daily transcription budget
+                is spent. `retry_after` is the seconds until it resets at
+                00:00 UTC.
+            TranscriptRequestLimitedError: 429 — this call was asked about
+                the maximum number of times in the window (3 a day by
+                default, counted across all of the call's captures).
+                `retry_after` is the seconds until one more ask is accepted.
+            ApiError: 404 with `code == "transcript_failed"` when this
+                capture's transcription already gave up, or `not_found`;
+                503 `transcription_unavailable` when transcription on demand
+                is not available.
+
+        Needs `pbx-call-records:read` AND `pbx-transcripts:write`.
+        """
+        response = self._client.request("POST", _transcript_path(call_record_id, recording_id))
+        return Transcript._from_resource(_data_object(response.json()))
+
+
+def _transcript_path(call_record_id: str, recording_id: str) -> str:
+    """`/v1/pbx/call-records/{callRecord}/transcripts/{recording}`, each id
+    escaped inside its own segment and an empty one refused by its name."""
+    call = _path_segment(call_record_id, noun=_CALL_RECORD_NOUN)
+    recording = _path_segment(recording_id, noun=_RECORDING_NOUN)
+    return f"/v1/pbx/call-records/{call}/transcripts/{recording}"
 
 
 def _call_document(

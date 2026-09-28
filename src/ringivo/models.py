@@ -45,6 +45,7 @@ __all__ = [
     "PbxSubscriberPage",
     "Recording",
     "Transcript",
+    "TranscriptSegment",
     "WebhookDelivery",
     "WebhookDeliveryPage",
     "WebhookEndpoint",
@@ -80,6 +81,15 @@ def _text(source: Mapping[str, Any], key: str) -> str | None:
 def _integer(source: Mapping[str, Any], key: str) -> int | None:
     value = source.get(key)
     return value if isinstance(value, int) and not isinstance(value, bool) else None
+
+
+def _number(source: Mapping[str, Any], key: str) -> float | None:
+    """A JSON number as a float — an integral one included, since `5` and
+    `5.0` are the same number on the wire — or None."""
+    value = source.get(key)
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return None
+    return float(value)
 
 
 def _bridged(source: Mapping[str, Any], key: str, legacy: str) -> Mapping[str, Any]:
@@ -1198,16 +1208,22 @@ class Recording:
 
 @dataclass(frozen=True)
 class Transcript:
-    """The transcript of one capture, from `pbx.call_records.transcripts()`.
+    """The transcript of one capture of a call.
 
-    ONE ITEM PER RECORDING OF THE CALL, not one per transcript that
-    exists: a capture with no words yet still appears here, with
-    `status="pending"` and every other field None, so a caller can tell
-    "no transcript yet" from "no recording at all". There is a third
-    state, `failed`, but this collection never reports it — telling a
-    permanent failure from a wait costs a lookup this list does not pay;
-    that distinction belongs to the single-transcript endpoint, which this
-    client does not yet wrap.
+    `pbx.call_records.transcripts()` answers one of these per RECORDING of
+    the call, not one per transcript that exists: a capture with no words
+    still appears, so a caller can tell "no transcript yet" from "no
+    recording at all". `pbx.call_records.transcript()` answers one, with its
+    `segments`, and `pbx.call_records.request_transcript()` answers the one
+    it asked for.
+
+    `status` is the member to branch on. `ready` means the words are held
+    and every field is filled. `not_requested` means nobody has asked for
+    this capture's transcript — ask with `request_transcript()`. `pending`
+    means it was asked for and is on its way. Every field but `id`, `ccc_id`
+    and `status` is None unless `status` is `ready`. A transcription that
+    permanently gave up is not a status on the list: `transcript()` answers
+    it as a 404 `ApiError` with `code == "transcript_failed"`.
 
     NO PAGE HERE either, for the same reason `Recording` has none: this is
     the captures of one call, and the console's own
@@ -1221,8 +1237,11 @@ class Transcript:
     `content_url` is a signed, time-limited link to the stored transcript
     document (the speech-to-text provider's own response, not the audio) —
     same rule as `Recording.content_url`: do not cache it past
-    `expires_at`. Every field but `id`, `ccc_id` and `status` is None while
-    `status` is `"pending"`.
+    `expires_at`.
+
+    `segments` is the turns of the conversation, and only `transcript()`
+    serves them: it is None on every other answer, which means "not served
+    here", while an empty tuple means nobody spoke.
     """
 
     id: str
@@ -1236,6 +1255,7 @@ class Transcript:
     model: str | None = None
     content_url: str | None = None
     expires_at: datetime | None = None
+    segments: tuple[TranscriptSegment, ...] | None = None
     raw: Mapping[str, Any] = field(default_factory=dict, repr=False)
 
     @classmethod
@@ -1259,8 +1279,48 @@ class Transcript:
             model=_text(attributes, "model"),
             content_url=_text(attributes, "contentUrl"),
             expires_at=_parse_datetime(attributes.get("expiresAt")),
+            segments=_segments(attributes),
             raw=resource,
         )
+
+
+@dataclass(frozen=True)
+class TranscriptSegment:
+    """One turn of a conversation, from `pbx.call_records.transcript()`.
+
+    `speaker` is a label, not an identity: `Speaker 1`, `Speaker 2`, and so
+    on. It is stable within one transcript and means nothing across two.
+    `start` and `end` are seconds from the start of the recording.
+    """
+
+    speaker: str | None = None
+    start: float | None = None
+    end: float | None = None
+    text: str | None = None
+    raw: Mapping[str, Any] = field(default_factory=dict, repr=False)
+
+    @classmethod
+    def _from_json(cls, value: Mapping[str, Any]) -> TranscriptSegment:
+        return cls(
+            speaker=_text(value, "speaker"),
+            start=_number(value, "start"),
+            end=_number(value, "end"),
+            text=_text(value, "text"),
+            raw=value,
+        )
+
+
+def _segments(attributes: Mapping[str, Any]) -> tuple[TranscriptSegment, ...] | None:
+    """The `segments` member as a tuple, or None when it was not served.
+
+    None and an empty tuple mean different things: the list endpoint does
+    not serve turns at all, while an empty array is a real answer — nobody
+    spoke.
+    """
+    value = attributes.get("segments")
+    if not isinstance(value, list):
+        return None
+    return tuple(TranscriptSegment._from_json(item) for item in value if isinstance(item, Mapping))
 
 
 @dataclass(frozen=True)

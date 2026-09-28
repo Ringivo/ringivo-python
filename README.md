@@ -165,6 +165,9 @@ did:
 `media_link()` instead if you want the URL and its expiry — but do not cache
 it or pass it on: anyone holding it reads that document.
 
+`thumbnail_link()` mints the same kind of link for the first-page preview, a
+PNG — the one a list screen shows beside each fax.
+
 ### Walking the whole collection
 
 A page holds 25 rows by default, up to a ceiling of 100 with `page_size=`.
@@ -649,7 +652,7 @@ as an outside caller on an inbound call.
         print(recording.id, recording.duration, recording.content_url)
 
     for transcript in client.pbx.call_records.transcripts(call.id):
-        print(transcript.id, transcript.status)   # "ready" or "pending"
+        print(transcript.id, transcript.status)   # "ready", "pending" or "not_requested"
 ```
 
 Both answer every **capture** of one call — a call can have more than one,
@@ -665,11 +668,40 @@ that document with no further authorization.
 
 `transcripts()` answers one item per **recording**, not one per transcript
 that exists: a capture with no words yet still appears, as a `Transcript`
-with `status="pending"` and every other field `None`, so you can tell "no
-transcript yet" from "no recording at all". Needs `pbx-call-records:read`
-to fetch the call at all, and `pbx-transcripts:read` — a separate grant,
-because the words of a call are searchable and cheap to mine at scale in a
-way the call log itself is not — to see whether anyone spoke.
+with `status="not_requested"` or `"pending"` and every other field `None`,
+so you can tell "no transcript yet" from "no recording at all". Needs
+`pbx-call-records:read` to fetch the call at all, and `pbx-transcripts:read`
+— a separate grant, because the words of a call are searchable and cheap to
+mine at scale in a way the call log itself is not — to see whether anyone
+spoke.
+
+#### Asking for a transcript, and reading its turns
+
+```python
+    try:
+        asked = client.pbx.call_records.request_transcript(call.id, recording.id)
+    except (TranscriptionCappedError, TranscriptRequestLimitedError) as error:
+        print("try again in", error.retry_after, "seconds")
+
+    # later, or when the call_transcript.available webhook arrives:
+    transcript = client.pbx.call_records.transcript(call.id, recording.id)
+    for turn in transcript.segments or ():
+        print(turn.speaker, turn.start, turn.text)
+```
+
+Both exception classes are importable from `ringivo`. `request_transcript()`
+returns at once. A 202 is a `pending` transcript; a
+capture already transcribed answers the `ready` one and starts nothing new,
+so it is safe to repeat. It needs `pbx-transcripts:write`. The refusals are
+typed: `RecordingAudioMissingError` (409 — no audio for that capture),
+`TranscriptionCappedError` (429 — the daily budget is spent; it resets at
+00:00 UTC) and `TranscriptRequestLimitedError` (429 — the call was asked
+about too often, 3 times a day by default across all of its captures). Both
+429s carry `retry_after` in seconds.
+
+`transcript()` reads one capture with its `segments`, the turns of the
+conversation. Until the words are ready it is a 404 whose `code` says why:
+`transcript_not_requested`, `transcript_pending` or `transcript_failed`.
 
 ### Two kinds of timestamp, and why
 
@@ -877,6 +909,10 @@ except ApiError as error:
 
 `AuthenticationError` (a subclass) means the credential itself was refused —
 the client had already replaced its token and retried once by then.
+`error.retry_after` is the seconds a `Retry-After` header asked you to wait,
+or `None` when the server did not say. Three transcript refusals have
+subclasses of their own: `RecordingAudioMissingError`,
+`TranscriptionCappedError` and `TranscriptRequestLimitedError`.
 Connection failures, timeouts and TLS errors are httpx's own exceptions and
 are deliberately not wrapped.
 
@@ -892,6 +928,7 @@ are deliberately not wrapped.
 | `client.faxes.cancel(fax_id)` | `fax:write` | Withdraw a fax before it is answered. |
 | `client.faxes.media(fax_id, *, format="pdf")` | `fax:read` | The document's `bytes`. |
 | `client.faxes.media_link(fax_id, *, format="pdf")` | `fax:read` | The URL and its expiry, as a `MediaLink`. |
+| `client.faxes.thumbnail_link(fax_id)` | `fax:read` | The first-page preview (a PNG): its URL and expiry, as a `MediaLink`. |
 | `client.fax_accounts.list(*, customer=None, status=None, after=None, before=None, page_size=None)` | `fax:read` | A `FaxAccountPage`: iterable, with `next_cursor`. |
 | `client.fax_accounts.get(fax_account_id)` | `fax:read` | One `FaxAccount`. |
 | `client.fax_accounts.numbers(fax_account_id)` | `fax:read` | Every `FaxAccountNumber` routed to it, all pages walked. |
@@ -920,14 +957,16 @@ are deliberately not wrapped.
 | `client.pbx.call_records.list(*, customer=None, started_after=None, started_before=None, direction=None, fields=None, subscriber=None, call_id=None, include_hidden=None, after=None, before=None, page_size=None)` | `pbx-call-records:read` | A `CallRecordPage`, newest first. The date range decides which months are read; no range means the current and previous one. `fields=` asks for the extended tier — a sparse fieldset, so it narrows rather than adds. `call_id` finds the records of one `subscribers.call()`, matched only inside the range's months. |
 | `client.pbx.call_records.get(call_record_id)` | `pbx-call-records:read` | One `CallRecord`. A hidden record IS served here. |
 | `client.pbx.call_records.recordings(call_record_id)` | `pbx-call-records:read` | Every capture of that call, as a plain `tuple[Recording, ...]` — NOT paginated: this is the captures of one call, not a walk over a table. Each `Recording.content_url` is a freshly minted, short-lived link. |
-| `client.pbx.call_records.transcripts(call_record_id)` | `pbx-call-records:read` + `pbx-transcripts:read` | One `Transcript` per capture — `status="pending"` and every other field `None` for one with no words yet. Also NOT paginated. |
+| `client.pbx.call_records.transcripts(call_record_id)` | `pbx-call-records:read` + `pbx-transcripts:read` | One `Transcript` per capture — `status="not_requested"` or `"pending"` and every other field `None` for one with no words yet. Also NOT paginated. |
+| `client.pbx.call_records.transcript(call_record_id, recording_id)` | `pbx-call-records:read` + `pbx-transcripts:read` | One `Transcript`, with its `segments`. A 404 `code` says whether it was not requested, is pending, or failed. |
+| `client.pbx.call_records.request_transcript(call_record_id, recording_id)` | `pbx-call-records:read` + `pbx-transcripts:write` | Ask for one capture's transcript. Returns the `pending` (202) or `ready` (200) `Transcript`. Safe to repeat. |
 | `webhooks.verify(payload, header, secret, *, tolerance=300)` | — | Raises unless the body is genuine and fresh. |
 
 `CallRecord`, `CallRecordPage`, `Customer`, `CustomerPage`, `Fax`,
 `FaxAccount`, `FaxAccountNumber`, `FaxAccountPage`, `FaxAccountUser`,
 `FaxAccountUserPage`, `FaxDocument`, `FaxPage`, `MediaLink`, `PbxCall`,
 `PbxDevice`, `PbxDevicePage`, `PbxSubscriber`, `PbxSubscriberPage`, `Recording`,
-`Transcript`, `WebhookDelivery`, `WebhookDeliveryPage`, `WebhookEndpoint`
+`Transcript`, `TranscriptSegment`, `WebhookDelivery`, `WebhookDeliveryPage`, `WebhookEndpoint`
 and `WebhookEndpointPage` are frozen dataclasses, and each keeps the JSON
 it was built from in `.raw` — so a field the API adds after this release
 reaches you without a new SDK.
