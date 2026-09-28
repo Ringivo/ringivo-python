@@ -1163,9 +1163,6 @@ PortDocumentKind: TypeAlias = Literal['loa', 'bill']
 PortType: TypeAlias = Literal['full', 'partial'] | None
 
 
-PortNumberType: TypeAlias = Literal['landline', 'wireless', 'voip'] | None
-
-
 PortOrderTaskBillState: TypeAlias = Literal['missing', 'received']
 
 
@@ -1229,7 +1226,6 @@ class PortOrderAttributes(TypedDict):
     status: NotRequired[PortOrderStatus]
     endUserName: NotRequired[str | None]
     endUserAddress: NotRequired[str | None]
-    loaSigner: NotRequired[str | None]
     loaDate: NotRequired[str | None]
     currentProvider: NotRequired[str | None]
     accountNumber: NotRequired[str | None]
@@ -1245,10 +1241,6 @@ class PortOrderAttributes(TypedDict):
     serviceState: NotRequired[str | None]
     serviceZip: NotRequired[str | None]
     requestedFocDate: NotRequired[str | None]
-    contactName: NotRequired[str | None]
-    contactTitle: NotRequired[str | None]
-    contactEmail: NotRequired[str | None]
-    contactPhone: NotRequired[str | None]
     numbersNotTransferring: NotRequired[str | None]
     numbers: NotRequired[list[str]]
     correctionsRequired: NotRequired[bool]
@@ -1299,9 +1291,8 @@ class PortOrderCreateRequest(TypedDict):
     data: Data12
 
 
-class PortOrderNumberInput1(TypedDict):
+class PortOrderNumberInput1(TypedDict, closed=True):
     e164: str
-    numberType: NotRequired[PortNumberType]
 
 
 PortOrderNumberInput: TypeAlias = str | PortOrderNumberInput1
@@ -1311,7 +1302,6 @@ class Attributes8(TypedDict):
     label: NotRequired[str | None]
     endUserName: NotRequired[str | None]
     endUserAddress: NotRequired[str | None]
-    loaSigner: NotRequired[str | None]
     loaDate: NotRequired[str | None]
     currentProvider: NotRequired[str | None]
     accountNumber: NotRequired[str | None]
@@ -1327,10 +1317,6 @@ class Attributes8(TypedDict):
     serviceState: NotRequired[str | None]
     serviceZip: NotRequired[str | None]
     requestedFocDate: NotRequired[str | None]
-    contactName: NotRequired[str | None]
-    contactTitle: NotRequired[str | None]
-    contactEmail: NotRequired[str | None]
-    contactPhone: NotRequired[str | None]
     numbersNotTransferring: NotRequired[str | None]
     numbers: NotRequired[list[PortOrderNumberInput] | None]
 
