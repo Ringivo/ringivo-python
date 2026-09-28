@@ -95,7 +95,7 @@ _BARE_STRING_FIELDS = (
 
 
 class Pbx:
-    """The `client.pbx` namespace: three collections and one action."""
+    """The `client.pbx` namespace: three collections and two actions."""
 
     def __init__(self, client: Ringivo) -> None:
         self.subscribers = PbxSubscribers(client)
