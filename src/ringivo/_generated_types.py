@@ -722,6 +722,7 @@ class CallRecordingAvailableEventData(TypedDict):
     customer_id: NotRequired[str | None]
     callId: NotRequired[str]
     call_id: NotRequired[str]
+    callRecordId: NotRequired[str | None]
     cccId: NotRequired[str]
     ccc_id: NotRequired[str]
     durationSeconds: NotRequired[int | None]
@@ -748,6 +749,7 @@ class CallTranscriptAvailableEventData(TypedDict):
     customer_id: NotRequired[str | None]
     callId: NotRequired[str]
     call_id: NotRequired[str]
+    callRecordId: NotRequired[str | None]
     cccId: NotRequired[str]
     ccc_id: NotRequired[str]
     language: NotRequired[str]
@@ -1942,6 +1944,10 @@ class CallRecordAttributes(TypedDict):
     releaseCode: NotRequired[str | None]
     releaseText: NotRequired[str | None]
     hasRecording: NotRequired[bool]
+    recordingStatus: NotRequired[Literal['none', 'processing', 'available', 'failed']]
+    transcriptStatus: NotRequired[
+        Literal['none', 'requested', 'processing', 'available', 'failed'] | None
+    ]
     hidden: NotRequired[bool]
     vendorId: NotRequired[str | None]
     origCallId: NotRequired[str | None]
@@ -1979,6 +1985,8 @@ class RecordingAttributes(TypedDict):
     superseded: NotRequired[bool]
     contentUrl: NotRequired[str]
     expiresAt: NotRequired[str]
+    recordingStatus: NotRequired[Literal['available']]
+    callRecordId: NotRequired[str | None]
 
 
 class RecordingResource(TypedDict):
@@ -2009,6 +2017,10 @@ class TranscriptAttributes(TypedDict):
     model: NotRequired[str | None]
     contentUrl: NotRequired[str | None]
     expiresAt: NotRequired[str | None]
+    transcriptStatus: NotRequired[
+        Literal['none', 'requested', 'processing', 'available', 'failed']
+    ]
+    callRecordId: NotRequired[str | None]
 
 
 class TranscriptResource(TypedDict):
