@@ -824,7 +824,23 @@ _READS: tuple[_Read, ...] = (
     ),
     _Read(
         models.CallRecord,
-        "has_recording",
+        "recording_status",
+        generated.CallRecordAttributes,
+        "recordingStatus",
+        "CallRecord._from_resource",
+    ),
+    _Read(
+        models.CallRecord,
+        "transcript_status",
+        generated.CallRecordAttributes,
+        "transcriptStatus",
+        "CallRecord._from_resource",
+    ),
+    # The deprecated `hasRecording`, stored privately behind the warning
+    # `has_recording` property.
+    _Read(
+        models.CallRecord,
+        "_has_recording",
         generated.CallRecordAttributes,
         "hasRecording",
         "CallRecord._from_resource",
@@ -976,6 +992,27 @@ _READS: tuple[_Read, ...] = (
         "expiresAt",
         "Recording._from_resource",
     ),
+    _Read(
+        models.Recording,
+        "content_type",
+        generated.RecordingAttributes,
+        "contentType",
+        "Recording._from_resource",
+    ),
+    _Read(
+        models.Recording,
+        "recording_status",
+        generated.RecordingAttributes,
+        "recordingStatus",
+        "Recording._from_resource",
+    ),
+    _Read(
+        models.Recording,
+        "call_record_id",
+        generated.RecordingAttributes,
+        "callRecordId",
+        "Recording._from_resource",
+    ),
     # -- Transcript._from_resource reads a TranscriptResource (id) + its ----
     # TranscriptAttributes. `id` is the RECORDING's id (one to one), and the
     # attribute keys are the same KEBAB-CASE spelling `Recording` reads.
@@ -1032,6 +1069,20 @@ _READS: tuple[_Read, ...] = (
         "expires_at",
         generated.TranscriptAttributes,
         "expiresAt",
+        "Transcript._from_resource",
+    ),
+    _Read(
+        models.Transcript,
+        "transcript_status",
+        generated.TranscriptAttributes,
+        "transcriptStatus",
+        "Transcript._from_resource",
+    ),
+    _Read(
+        models.Transcript,
+        "call_record_id",
+        generated.TranscriptAttributes,
+        "callRecordId",
         "Transcript._from_resource",
     ),
     # Only the single-transcript endpoint serves `segments`, so it is read off
@@ -1357,7 +1408,7 @@ def test_every_field_a_model_reads_is_covered_by_the_read_table() -> None:
 
 
 def test_every_field_a_model_reads_exists_in_the_generated_types() -> None:
-    assert len(_READS) == 204, f"{len(_READS)} reads were checked, not 204 — the sweep is broken"
+    assert len(_READS) == 211, f"{len(_READS)} reads were checked, not 211 — the sweep is broken"
 
     failures: list[str] = []
     for read in _READS:

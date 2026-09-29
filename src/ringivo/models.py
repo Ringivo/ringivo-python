@@ -24,6 +24,8 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any
 
+from typing_extensions import deprecated
+
 __all__ = [
     "CallRecord",
     "CallRecordPage",
@@ -1014,11 +1016,30 @@ class CallRecord:
     `duration_seconds` is the call end to end and `talk_seconds` is how
     much of it anybody was talking.
 
-    `has_recording` says a recording is HELD; it is not itself the audio.
-    Fetch the call's captures with `pbx.call_records.recordings(record.id)`
-    — each `Recording` carries its own short-lived `content_url` to
-    download from. A transcript, when one was requested, comes back the
-    same way from `pbx.call_records.transcripts(record.id)`.
+    -- recording_status AND transcript_status SAY WHERE THE MEDIA STANDS --
+    `recording_status` is `none`, `processing`, `available` or `failed`.
+    `available` means a recording is HELD — it is not itself the audio:
+    fetch the call's captures with `pbx.call_records.recordings(record.id)`,
+    and each `Recording` carries its own short-lived `content_url`.
+    `processing` means the phone system captured audio and it has not
+    reached us yet (it lands about a minute after the call ends — ask
+    again). `failed` means it had not arrived 15 minutes after the call
+    ended; it can still become `available` later. `none` means nothing was
+    recorded. When a call was captured more than once, the most useful
+    answer wins.
+
+    `transcript_status` is `none`, `requested`, `processing`, `available`
+    or `failed`, and read the transcript itself with
+    `pbx.call_records.transcripts(record.id)`. It is None unless your
+    credential holds `pbx-transcripts:read`.
+
+    Match on the values you know: a value this release has no word for
+    still arrives as itself, never as None.
+
+    `has_recording` is DEPRECATED, and reading it raises a
+    `DeprecationWarning`. It is True exactly when `recording_status` is
+    `available`, so it cannot tell "on its way" from "never recorded" from
+    "lost". The API still serves it until a later, announced release.
 
     `hidden` is the phone system's own flag, and it decides where a record
     can be found rather than whether it exists: hidden records are left out
@@ -1054,7 +1075,8 @@ class CallRecord:
     talk_seconds: int | None = None
     release_code: str | None = None
     release_text: str | None = None
-    has_recording: bool | None = None
+    recording_status: str | None = None
+    transcript_status: str | None = None
     hidden: bool | None = None
     # -- EXTENDED: served only when named in fields= on list() ------------
     vendor_id: str | None = None
@@ -1071,7 +1093,20 @@ class CallRecord:
     customer_id: str | None = None
     from_subscriber_id: str | None = None
     to_subscriber_id: str | None = None
+    # The wire's deprecated `hasRecording`, behind the `has_recording`
+    # property below so that reading it can warn.
+    _has_recording: bool | None = field(default=None, repr=False)
     raw: Mapping[str, Any] = field(default_factory=dict, repr=False)
+
+    @property
+    @deprecated(
+        "CallRecord.has_recording is deprecated: read recording_status, which is "
+        "'available' exactly when has_recording is True"
+    )
+    def has_recording(self) -> bool | None:
+        """DEPRECATED — read `recording_status`. True exactly when
+        `recording_status` is `available`."""
+        return self._has_recording
 
     @classmethod
     def _from_resource(cls, resource: Mapping[str, Any]) -> CallRecord:
@@ -1099,7 +1134,8 @@ class CallRecord:
             talk_seconds=_integer(attributes, "talkSeconds"),
             release_code=_text(attributes, "releaseCode"),
             release_text=_text(attributes, "releaseText"),
-            has_recording=_boolean(attributes, "hasRecording"),
+            recording_status=_text(attributes, "recordingStatus"),
+            transcript_status=_text(attributes, "transcriptStatus"),
             hidden=_boolean(attributes, "hidden"),
             vendor_id=_text(attributes, "vendorId"),
             orig_call_id=_text(attributes, "origCallId"),
@@ -1115,6 +1151,7 @@ class CallRecord:
             customer_id=_relationship_id(resource, "customer"),
             from_subscriber_id=_relationship_id(resource, "fromSubscriber"),
             to_subscriber_id=_relationship_id(resource, "toSubscriber"),
+            _has_recording=_boolean(attributes, "hasRecording"),
             raw=resource,
         )
 
@@ -1170,6 +1207,20 @@ class Recording:
     `superseded` is False on a first capture and becomes True once a
     longer capture of the same call replaced the audio behind this same
     `id` — the id does not change, but `byte_size` and `sha256` do.
+
+    `content_type` is the media type `content_url` serves: `audio/webm`
+    (two-channel Opus — the first channel is the call's first leg, the
+    second the other party) for new recordings, `audio/wav` for older ones.
+    Pick a file extension from it, never from a guess.
+
+    `recording_status` is always `available` here — an item of this list
+    is a recording the API holds. It is the same member, with the same
+    vocabulary, as `CallRecord.recording_status`.
+
+    `call_record_id` is the ONE call record this capture belongs to — the
+    leg the phone system recorded. It need not be the record you read this
+    list through. None when that record is in a domain your credential
+    cannot read, or the phone system has not written it yet.
     """
 
     id: str
@@ -1180,6 +1231,9 @@ class Recording:
     superseded: bool | None = None
     content_url: str | None = None
     expires_at: datetime | None = None
+    content_type: str | None = None
+    recording_status: str | None = None
+    call_record_id: str | None = None
     raw: Mapping[str, Any] = field(default_factory=dict, repr=False)
 
     @classmethod
@@ -1202,6 +1256,9 @@ class Recording:
             superseded=_boolean(attributes, "superseded"),
             content_url=_text(attributes, "contentUrl"),
             expires_at=_parse_datetime(attributes.get("expiresAt")),
+            content_type=_text(attributes, "contentType"),
+            recording_status=_text(attributes, "recordingStatus"),
+            call_record_id=_text(attributes, "callRecordId"),
             raw=resource,
         )
 
@@ -1242,6 +1299,17 @@ class Transcript:
     `segments` is the turns of the conversation, and only `transcript()`
     serves them: it is None on every other answer, which means "not served
     here", while an empty tuple means nobody spoke.
+
+    `transcript_status` is the same vocabulary as
+    `CallRecord.transcript_status`: `none`, `requested`, `processing`,
+    `available` or `failed`. `status` answers "may I ask for it?" and this
+    answers "where is it?", so they differ in one case: after a request that
+    ended without words, `status` is `not_requested` (you may ask again) and
+    `transcript_status` is `failed`.
+
+    `call_record_id` is the ONE call record the capture — and so this
+    transcript — belongs to, with the same rule and the same None as
+    `Recording.call_record_id`.
     """
 
     id: str
@@ -1256,6 +1324,8 @@ class Transcript:
     content_url: str | None = None
     expires_at: datetime | None = None
     segments: tuple[TranscriptSegment, ...] | None = None
+    transcript_status: str | None = None
+    call_record_id: str | None = None
     raw: Mapping[str, Any] = field(default_factory=dict, repr=False)
 
     @classmethod
@@ -1280,6 +1350,8 @@ class Transcript:
             content_url=_text(attributes, "contentUrl"),
             expires_at=_parse_datetime(attributes.get("expiresAt")),
             segments=_segments(attributes),
+            transcript_status=_text(attributes, "transcriptStatus"),
+            call_record_id=_text(attributes, "callRecordId"),
             raw=resource,
         )
 

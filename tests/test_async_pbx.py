@@ -177,6 +177,8 @@ def _call_record_resource(*, attributes: dict[str, object] | None = None) -> dic
         "releaseCode": "end",
         "releaseText": "Orig: Bye",
         "hasRecording": False,
+        "recordingStatus": "processing",
+        "transcriptStatus": None,
         "hidden": False,
     }
     merged.update(attributes or {})
@@ -237,6 +239,10 @@ def _recording_resource(
         "superseded": False,
         "content-url": f"{BASE_URL}/v1/pbx/recordings-content/signed-token",
         "expires-at": "2026-09-12T15:00:00Z",
+        # Members added after the kebab-case rename: camelCase only.
+        "contentType": "audio/wav",
+        "recordingStatus": "available",
+        "callRecordId": CALL_RECORD_ID,
     }
     merged.update(attributes or {})
     return {"type": "recordings", "id": resource_id, "attributes": merged}
@@ -257,6 +263,9 @@ def _transcript_resource(
         "model": "nova-3",
         "content-url": f"{BASE_URL}/v1/pbx/transcripts-content/signed-token",
         "expires-at": "2026-09-12T15:00:00Z",
+        # Members added after the kebab-case rename: camelCase only.
+        "transcriptStatus": "available",
+        "callRecordId": None,
     }
     merged.update(attributes or {})
     return {"type": "transcripts", "id": resource_id, "attributes": merged}
@@ -583,7 +592,10 @@ async def test_call_records_get_reads_the_standard_tier_and_the_three_instants(
     assert record.to_number == "+13025556789"
     assert record.duration_seconds == 64
     assert record.talk_seconds == 60
-    assert record.has_recording is False
+    assert record.recording_status == "processing"
+    assert record.transcript_status is None
+    with pytest.warns(DeprecationWarning, match="read recording_status"):
+        assert record.has_recording is False
     assert record.started_at == datetime(2026, 9, 12, 14, 0, 0, tzinfo=timezone.utc)
     assert record.answered_at == datetime(2026, 9, 12, 14, 0, 4, tzinfo=timezone.utc)
     assert record.released_at == datetime(2026, 9, 12, 14, 1, 4, tzinfo=timezone.utc)
@@ -748,6 +760,9 @@ async def test_call_records_recordings_reads_every_field_into_the_public_datacla
     assert recording.superseded is False
     assert recording.content_url == f"{BASE_URL}/v1/pbx/recordings-content/signed-token"
     assert recording.expires_at == datetime(2026, 9, 12, 15, 0, tzinfo=timezone.utc)
+    assert recording.content_type == "audio/wav"
+    assert recording.recording_status == "available"
+    assert recording.call_record_id == CALL_RECORD_ID
 
 
 @pytest.mark.anyio
@@ -821,6 +836,8 @@ async def test_call_records_transcripts_reads_the_ready_state_into_the_public_da
     assert transcript.model == "nova-3"
     assert transcript.content_url == f"{BASE_URL}/v1/pbx/transcripts-content/signed-token"
     assert transcript.expires_at == datetime(2026, 9, 12, 15, 0, tzinfo=timezone.utc)
+    assert transcript.transcript_status == "available"
+    assert transcript.call_record_id is None
 
 
 @pytest.mark.anyio

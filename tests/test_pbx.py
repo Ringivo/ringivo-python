@@ -24,8 +24,10 @@ they were not passed, and the boolean that is always sent.
 
 from __future__ import annotations
 
+import dataclasses
+import warnings
 from datetime import datetime, timedelta, timezone
-from typing import Any, cast, get_args
+from typing import Any, Literal, cast, get_args, get_origin, get_type_hints
 
 import httpx
 import pytest
@@ -219,6 +221,8 @@ def _call_record_resource(
         "releaseCode": "end",
         "releaseText": "Orig: Bye",
         "hasRecording": True,
+        "recordingStatus": "available",
+        "transcriptStatus": "none",
         "hidden": False,
     }
     merged.update(attributes or {})
@@ -283,6 +287,10 @@ def _recording_resource(
         "superseded": False,
         "content-url": f"{BASE_URL}/v1/pbx/recordings-content/signed-token",
         "expires-at": "2026-09-12T15:00:00Z",
+        # Members added after the kebab-case rename: camelCase only.
+        "contentType": "audio/webm",
+        "recordingStatus": "available",
+        "callRecordId": CALL_RECORD_ID,
     }
     merged.update(attributes or {})
     return {"type": "recordings", "id": resource_id, "attributes": merged}
@@ -306,6 +314,9 @@ def _transcript_resource(
         "model": "nova-3",
         "content-url": f"{BASE_URL}/v1/pbx/transcripts-content/signed-token",
         "expires-at": "2026-09-12T15:00:00Z",
+        # Members added after the kebab-case rename: camelCase only.
+        "transcriptStatus": "available",
+        "callRecordId": CALL_RECORD_ID,
     }
     merged.update(attributes or {})
     return {"type": "transcripts", "id": resource_id, "attributes": merged}
@@ -986,7 +997,10 @@ def test_call_records_get_reads_the_standard_tier_into_the_public_dataclass(
     assert record.release_code == "end"
     assert record.release_text == "Orig: Bye"
     assert record.hidden is False
-    assert record.has_recording is True
+    assert record.recording_status == "available"
+    assert record.transcript_status == "none"
+    with pytest.warns(DeprecationWarning, match="recording_status"):
+        assert record.has_recording is True
     assert record.customer_id == CUSTOMER_ID
     # An outside caller has no subscriber to point at, and the API says so
     # with an explicit null linkage rather than by leaving the member out.
@@ -1104,6 +1118,150 @@ def test_the_direction_vocabulary_is_the_consoles() -> None:
     # that stayed inside one domain, never a call between two domains. This
     # pins the regenerated spec enum to that word.
     assert get_args(generated.CallDirection) == ("inbound", "outbound", "internal")
+
+
+# -- recording and transcript status -----------------------------------------
+
+
+def _enum(typed_dict: type, key: str) -> tuple[object, ...]:
+    """The enum values the regenerated spec allows for one member, `None`
+    included when the member is nullable."""
+    hint = get_type_hints(typed_dict)[key]
+    if get_origin(hint) is Literal:
+        return get_args(hint)
+    literal, none = get_args(hint)  # `Literal[...] | None`
+    assert none is type(None), hint
+    return (*get_args(literal), None)
+
+
+def test_the_status_vocabularies_are_the_consoles() -> None:
+    # Pins the regenerated spec enums to the words the docs and README name,
+    # so a spec sync that adds or renames one fails here rather than in a
+    # caller's `match`.
+    assert _enum(generated.CallRecordAttributes, "recordingStatus") == (
+        "none",
+        "processing",
+        "available",
+        "failed",
+    )
+    assert _enum(generated.CallRecordAttributes, "transcriptStatus") == (
+        "none",
+        "requested",
+        "processing",
+        "available",
+        "failed",
+        None,
+    )
+    assert _enum(generated.RecordingAttributes, "recordingStatus") == ("available",)
+    assert _enum(generated.RecordingAttributes, "contentType") == ("audio/webm", "audio/wav")
+    assert _enum(generated.TranscriptAttributes, "transcriptStatus") == (
+        "none",
+        "requested",
+        "processing",
+        "available",
+        "failed",
+    )
+
+
+@pytest.mark.parametrize(
+    ("recording_status", "has_recording"),
+    [
+        ("none", False),
+        ("processing", False),
+        ("available", True),
+        ("failed", False),
+        # A value this release has no word for arrives as itself.
+        ("archived", False),
+    ],
+)
+def test_call_records_get_reads_every_recording_status(
+    respx_mock: respx.MockRouter, client: Ringivo, recording_status: str, has_recording: bool
+) -> None:
+    respx_mock.get(CALL_RECORD_URL).mock(
+        return_value=httpx.Response(
+            200,
+            json={
+                "data": _call_record_resource(
+                    attributes={
+                        "recordingStatus": recording_status,
+                        "hasRecording": has_recording,
+                    }
+                )
+            },
+        )
+    )
+
+    with client:
+        record = client.pbx.call_records.get(CALL_RECORD_ID)
+
+    assert record.recording_status == recording_status
+
+
+@pytest.mark.parametrize(
+    "transcript_status",
+    ["none", "requested", "processing", "available", "failed", "archived", None],
+)
+def test_call_records_get_reads_every_transcript_status(
+    respx_mock: respx.MockRouter, client: Ringivo, transcript_status: str | None
+) -> None:
+    # None is the API's answer to a credential without `pbx-transcripts:read`.
+    respx_mock.get(CALL_RECORD_URL).mock(
+        return_value=httpx.Response(
+            200,
+            json={"data": _call_record_resource(attributes={"transcriptStatus": transcript_status})},
+        )
+    )
+
+    with client:
+        record = client.pbx.call_records.get(CALL_RECORD_ID)
+
+    assert record.transcript_status == transcript_status
+
+
+def test_a_call_record_from_an_older_api_reads_no_status_rather_than_a_guess(
+    respx_mock: respx.MockRouter, client: Ringivo
+) -> None:
+    resource = _call_record_resource()
+    attributes = cast(dict[str, object], resource["attributes"])
+    del attributes["recordingStatus"]
+    del attributes["transcriptStatus"]
+    respx_mock.get(CALL_RECORD_URL).mock(
+        return_value=httpx.Response(200, json={"data": resource})
+    )
+
+    with client:
+        record = client.pbx.call_records.get(CALL_RECORD_ID)
+
+    assert record.recording_status is None
+    assert record.transcript_status is None
+
+
+def test_has_recording_is_deprecated_and_still_reads_the_wire(
+    respx_mock: respx.MockRouter, client: Ringivo
+) -> None:
+    respx_mock.get(CALL_RECORD_URL).mock(
+        return_value=httpx.Response(
+            200,
+            json={
+                "data": _call_record_resource(
+                    attributes={"hasRecording": False, "recordingStatus": "processing"}
+                )
+            },
+        )
+    )
+
+    with client:
+        record = client.pbx.call_records.get(CALL_RECORD_ID)
+
+    with pytest.warns(DeprecationWarning, match="read recording_status") as caught:
+        assert record.has_recording is False
+    # The warning names the caller's line, not this package's.
+    assert caught[0].filename == __file__
+    # Only READING it warns: printing, comparing and copying a record do not.
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        repr(record)
+        assert record == dataclasses.replace(record)
 
 
 def test_a_missed_call_carries_no_answered_at(
@@ -1251,6 +1409,42 @@ def test_call_records_recordings_reads_every_field_into_the_public_dataclass(
     assert recording.superseded is False
     assert recording.content_url == f"{BASE_URL}/v1/pbx/recordings-content/signed-token"
     assert recording.expires_at == datetime(2026, 9, 12, 15, 0, tzinfo=timezone.utc)
+    assert recording.content_type == "audio/webm"
+    assert recording.recording_status == "available"
+    assert recording.call_record_id == CALL_RECORD_ID
+
+
+@pytest.mark.parametrize("content_type", ["audio/webm", "audio/wav"])
+def test_a_recordings_content_type_is_read_as_served(
+    respx_mock: respx.MockRouter, client: Ringivo, content_type: str
+) -> None:
+    respx_mock.get(CALL_RECORD_RECORDINGS_URL).mock(
+        return_value=httpx.Response(
+            200, json={"data": [_recording_resource(attributes={"contentType": content_type})]}
+        )
+    )
+
+    with client:
+        (recording,) = client.pbx.call_records.recordings(CALL_RECORD_ID)
+
+    assert recording.content_type == content_type
+
+
+def test_a_recording_whose_call_record_cannot_be_named_reads_no_call_record_id(
+    respx_mock: respx.MockRouter, client: Ringivo
+) -> None:
+    # Null when that record is in a domain the credential cannot read, or
+    # the phone system has not written it yet.
+    respx_mock.get(CALL_RECORD_RECORDINGS_URL).mock(
+        return_value=httpx.Response(
+            200, json={"data": [_recording_resource(attributes={"callRecordId": None})]}
+        )
+    )
+
+    with client:
+        (recording,) = client.pbx.call_records.recordings(CALL_RECORD_ID)
+
+    assert recording.call_record_id is None
 
 
 def test_call_records_recordings_returns_every_capture_in_the_servers_own_order(
@@ -1355,6 +1549,33 @@ def test_call_records_transcripts_reads_the_ready_state_into_the_public_dataclas
     assert transcript.model == "nova-3"
     assert transcript.content_url == f"{BASE_URL}/v1/pbx/transcripts-content/signed-token"
     assert transcript.expires_at == datetime(2026, 9, 12, 15, 0, tzinfo=timezone.utc)
+    assert transcript.transcript_status == "available"
+    assert transcript.call_record_id == CALL_RECORD_ID
+
+
+def test_a_failed_transcript_may_be_asked_for_again(
+    respx_mock: respx.MockRouter, client: Ringivo
+) -> None:
+    # The one case where `status` and `transcript_status` differ: a request
+    # that ended without words is `not_requested` (ask again) and `failed`.
+    respx_mock.get(CALL_RECORD_TRANSCRIPTS_URL).mock(
+        return_value=httpx.Response(
+            200,
+            json={
+                "data": [
+                    _transcript_resource(
+                        attributes={"status": "not_requested", "transcriptStatus": "failed"}
+                    )
+                ]
+            },
+        )
+    )
+
+    with client:
+        (transcript,) = client.pbx.call_records.transcripts(CALL_RECORD_ID)
+
+    assert transcript.status == "not_requested"
+    assert transcript.transcript_status == "failed"
 
 
 def test_call_records_transcripts_reads_the_pending_state_with_every_other_field_none(

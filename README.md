@@ -602,9 +602,19 @@ integer carrying both, and an integer this API has no word for arrives as
 its own digits in `direction` rather than as null, so match on the values
 you know and let the rest fall through — the set is not closed.
 
-`call.has_recording` says a recording is held; it is not itself the audio.
-Fetch the call's captures with `call_records.recordings(call.id)` — see
+`call.recording_status` says where the call's recording stands: `none`,
+`processing`, `available` or `failed`. `available` means a recording is
+held; it is not itself the audio. Fetch the call's captures with
+`call_records.recordings(call.id)` — see
 [Recordings and transcripts](#recordings-and-transcripts) below.
+`call.transcript_status` does the same for the transcript, and is `None`
+unless your credential holds `pbx-transcripts:read`.
+
+`call.has_recording` is **deprecated** in 0.18.0, and reading it raises a
+`DeprecationWarning`. It is `True` exactly when `recording_status` is
+`available`, so it cannot tell "on its way" from "never recorded" from
+"lost". Read `recording_status` instead. The API still serves the old
+member until a later, announced release.
 
 **A `*_number` field is E.164 or nothing.** `call.from_number`,
 `call.to_number` and `call.dialed_number` carry `+14075550101` or `None` —
@@ -637,7 +647,7 @@ reads back `None`.
 
 | Tier | Attributes |
 |---|---|
-| Standard (always served) | `type`, `disposition`, `tenant_id`, `domain`, `territory`, `from_number`, `from_extension`, `from_name`, `to_number`, `dialed_number`, `routed_by_extension`, `answering_extension`, `started_at`, `answered_at`, `released_at`, `duration_seconds`, `talk_seconds`, `release_code`, `release_text`, `has_recording`, `hidden` |
+| Standard (always served) | `direction`, `disposition`, `tenant_id`, `domain`, `territory`, `from_number`, `from_extension`, `from_name`, `to_number`, `dialed_number`, `routed_by_extension`, `answering_extension`, `started_at`, `answered_at`, `released_at`, `duration_seconds`, `talk_seconds`, `release_code`, `release_text`, `recording_status`, `transcript_status`, `has_recording` (deprecated), `hidden` |
 | Extended (needs `fields=`) | `vendor_id`, `orig_call_id`, `term_call_id`, `by_action`, `terminated_to`, `codec`, `hostname`, `raw_from_uri`, `raw_from_user`, `raw_to_user`, `raw_request_user` |
 
 `call.customer_id`, `call.from_subscriber_id` and `call.to_subscriber_id` come
@@ -649,7 +659,7 @@ as an outside caller on an inbound call.
 
 ```python
     for recording in client.pbx.call_records.recordings(call.id):
-        print(recording.id, recording.duration, recording.content_url)
+        print(recording.id, recording.duration, recording.content_type, recording.content_url)
 
     for transcript in client.pbx.call_records.transcripts(call.id):
         print(transcript.id, transcript.status)   # "ready", "pending" or "not_requested"
@@ -665,6 +675,21 @@ cursor and nothing beyond the tuple you get back.
 time-limited links minted fresh on every call. Do not cache one past its
 `expires_at` or hand it to anyone else — whoever holds the URL can fetch
 that document with no further authorization.
+
+**Save a recording with the extension its `content_type` names.** New
+recordings are `audio/webm` (two-channel Opus: the first channel is the
+call's first leg, the second the other party). Older ones may still be
+`audio/wav`. Do not assume `.wav`.
+
+`recording.call_record_id` and `transcript.call_record_id` name the ONE
+call record the capture belongs to — the leg the phone system recorded. It
+need not be the record you listed it through, and it is `None` when that
+record is in a domain your credential cannot read or is not written yet.
+`recording.recording_status` is always `available`, and
+`transcript.transcript_status` uses the call record's vocabulary. It
+differs from `transcript.status` in one case: after a request that ended
+without words, `status` is `not_requested` (you may ask again) and
+`transcript_status` is `failed`.
 
 `transcripts()` answers one item per **recording**, not one per transcript
 that exists: a capture with no words yet still appears, as a `Transcript`
@@ -702,6 +727,57 @@ about too often, 3 times a day by default across all of its captures). Both
 `transcript()` reads one capture with its `segments`, the turns of the
 conversation. Until the words are ready it is a 404 whose `code` says why:
 `transcript_not_requested`, `transcript_pending` or `transcript_failed`.
+
+#### Waiting for a recording: webhooks, or polling the status
+
+A recording lands about a minute after the call ends, and a transcript
+later still. There are two ways to learn that it is ready.
+
+**Webhooks (preferred).** Subscribe an endpoint to
+`call_recording.available` and `call_transcript.available` (see
+[Webhook endpoints](#webhook-endpoints)). The event body names what arrived
+but carries no link to it. Read its `callRecordId` and ask for the media:
+
+```python
+    event = json.loads(request.body)          # after webhooks.verify()
+    if event["type"] == "call_recording.available":
+        call_record_id = event["data"]["callRecordId"]
+        if call_record_id is not None:
+            recordings = client.pbx.call_records.recordings(call_record_id)
+        else:  # the call record was not written yet: find it by call id
+            page = client.pbx.call_records.list(call_id=event["data"]["callId"])
+```
+
+`callRecordId` and `contentType` are new in these payloads, so they are
+**camelCase only**: they have no snake_case twin. The older members still
+carry both spellings during the naming transition window (`callId` and
+`call_id`, for example); read the camelCase ones.
+
+**Polling.** If you cannot receive webhooks, read the call record again
+until `recording_status` settles:
+
+```python
+    import time
+
+    for _ in range(20):
+        call = client.pbx.call_records.get(call.id)
+        if call.recording_status != "processing":
+            break
+        time.sleep(30)
+
+    if call.recording_status == "available":
+        recordings = client.pbx.call_records.recordings(call.id)
+    elif call.recording_status == "failed":
+        ...  # not here 15 minutes after the call ended; treat it as lost
+    else:
+        ...  # "none": nothing was recorded
+```
+
+`failed` is not final: if a slow conversion completes later, the recording
+lands, the status becomes `available` and `call_recording.available` is
+sent as usual. Poll `transcript_status` the same way after
+`request_transcript()`: it moves from `requested` to `processing` to
+`available` or `failed`.
 
 ### Two kinds of timestamp, and why
 
@@ -954,7 +1030,7 @@ are deliberately not wrapped.
 | `client.pbx.subscribers.call(subscriber_id, *, destination, caller_id=None, auto_answer=False, device=None)` | `pbx-calls:write` | Ring this subscriber and dial `destination`. Returns the accepted `PbxCall` — a 202, no idempotency key, and an id that names the call on the phone system rather than a call record. Pass that id to `call_records.list(call_id=...)` once the call has ended. |
 | `client.pbx.devices.list(*, customer=None, subscriber=None, registered=None, after=None, before=None, page_size=None)` | `pbx-users:read` | A `PbxDevicePage`. `subscriber` is a `subscribers` ID, not an extension. |
 | `client.pbx.devices.get(pbx_device_id)` | `pbx-users:read` | One `PbxDevice` — one registration, not one handset. |
-| `client.pbx.call_records.list(*, customer=None, started_after=None, started_before=None, direction=None, fields=None, subscriber=None, call_id=None, include_hidden=None, after=None, before=None, page_size=None)` | `pbx-call-records:read` | A `CallRecordPage`, newest first. The date range decides which months are read; no range means the current and previous one. `fields=` asks for the extended tier — a sparse fieldset, so it narrows rather than adds. `call_id` finds the records of one `subscribers.call()`, matched only inside the range's months. |
+| `client.pbx.call_records.list(*, customer=None, started_after=None, started_before=None, direction=None, fields=None, subscriber=None, call_id=None, include_hidden=None, after=None, before=None, page_size=None)` | `pbx-call-records:read` | A `CallRecordPage`, newest first. The date range decides which months are read; no range means the current and previous one. `fields=` asks for the extended tier — a sparse fieldset, so it narrows rather than adds. `call_id` finds the records that carry one call id — a `subscribers.call()` id, a leg's SIP Call-ID, or a recording webhook's `callId` — matched only inside the range's months. |
 | `client.pbx.call_records.get(call_record_id)` | `pbx-call-records:read` | One `CallRecord`. A hidden record IS served here. |
 | `client.pbx.call_records.recordings(call_record_id)` | `pbx-call-records:read` | Every capture of that call, as a plain `tuple[Recording, ...]` — NOT paginated: this is the captures of one call, not a walk over a table. Each `Recording.content_url` is a freshly minted, short-lived link. |
 | `client.pbx.call_records.transcripts(call_record_id)` | `pbx-call-records:read` + `pbx-transcripts:read` | One `Transcript` per capture — `status="not_requested"` or `"pending"` and every other field `None` for one with no words yet. Also NOT paginated. |

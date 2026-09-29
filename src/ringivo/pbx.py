@@ -391,9 +391,12 @@ class PbxCallRecords:
             subscriber: Calls with this subscriber on EITHER leg — placed
                 by them or taken by them — by `subscribers` id, not by
                 extension.
-            call_id: The records of ONE click-to-dial call. Pass the `id`
-                that `subscribers.call()` returned. The call record appears once
-                the call has ended. One call writes two records: by default
+            call_id: The records that carry ONE call id: the `id` that
+                `subscribers.call()` returned, a leg's SIP Call-ID
+                (`orig_call_id` or `term_call_id` on a record), or the `callId`
+                of a `call_recording.available` or `call_transcript.available`
+                webhook. A click-to-dial call's record appears once the call
+                has ended, and that call writes two records: by default
                 the list returns the visible dial-out record, and the hidden
                 leg that rang the subscriber comes back only with
                 `include_hidden=True`. THE DATE RANGE STILL APPLIES: the
