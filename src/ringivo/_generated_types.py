@@ -100,6 +100,7 @@ class ErrorSource(TypedDict):
 
 ErrorCode: TypeAlias = Literal[
     'validation_failed',
+    'unknown_member',
     'caller_id_not_permitted',
     'document_too_large',
     'too_many_pages',
@@ -300,7 +301,7 @@ class FaxUpdateRequest(TypedDict):
     data: Data
 
 
-class CoverPageRequest(TypedDict):
+class CoverPageRequest(TypedDict, closed=True):
     toName: NotRequired[str]
     fromName: NotRequired[str]
     subject: NotRequired[str]
@@ -319,6 +320,7 @@ SendFaxMultipartRequest = TypedDict(
         'tags': NotRequired[Tags],
         'documents': list[bytes],
     },
+    closed=True,
 )
 
 
@@ -334,6 +336,7 @@ SendFaxUrlRequest = TypedDict(
         'tags': NotRequired[Tags],
         'documents': list[str],
     },
+    closed=True,
 )
 
 
