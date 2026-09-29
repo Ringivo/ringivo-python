@@ -1161,7 +1161,9 @@ PortOrderStatus: TypeAlias = Literal[
 ]
 
 
-PortNumberFailureCause: TypeAlias = Literal['withdrawn', 'carrier_refused'] | None
+PortNumberFailureCause: TypeAlias = (
+    Literal['withdrawn', 'carrier_refused', 'moved'] | None
+)
 
 
 PortDocumentKind: TypeAlias = Literal['loa', 'bill']
@@ -1194,6 +1196,7 @@ class PortOrderNumberState(TypedDict):
     focDate: NotRequired[str | None]
     stopped: NotRequired[bool]
     stoppedSince: NotRequired[str | None]
+    movedToOrderId: NotRequired[str | None]
 
 
 class PortOrderDocumentSlot(TypedDict):
@@ -1252,6 +1255,7 @@ class PortOrderAttributes(TypedDict):
     numbers: NotRequired[list[str]]
     correctionsRequired: NotRequired[bool]
     correctionsNote: NotRequired[str | None]
+    splitFromId: NotRequired[str | None]
     numberStates: NotRequired[list[PortOrderNumberState]]
     documents: NotRequired[PortOrderDocuments]
     unsignedLoa: NotRequired[PortOrderUnsignedLoa | None]
