@@ -875,7 +875,11 @@ MessagingEnablementStatus: TypeAlias = Literal[
 
 
 MessagingEnablementFailureCause: TypeAlias = Literal[
-    'provider_rejected', 'withdrawn', 'submission_error', 'poll_gave_up'
+    'provider_rejected',
+    'withdrawn',
+    'submission_error',
+    'poll_gave_up',
+    'checkout_unconfirmed',
 ]
 
 
