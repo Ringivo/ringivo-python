@@ -181,6 +181,7 @@ WebhookEventType: TypeAlias = Literal[
     'pbx_change.stalled',
     'call_recording.available',
     'call_transcript.available',
+    'call_record.completed',
     'webhook.heartbeat',
 ]
 
@@ -2101,6 +2102,38 @@ class PortOrderBillExtractionSettledEventData(TypedDict):
     portOrderId: NotRequired[str]
     tenantId: NotRequired[str]
     status: NotRequired[PortOrderBillExtractionStatus]
+
+
+class CallRecordCompletedEventData(TypedDict):
+    id: str
+    customerId: str
+    callId: NotRequired[str | None]
+    origCallId: NotRequired[str | None]
+    termCallId: NotRequired[str | None]
+    direction: NotRequired[CallDirection]
+    disposition: NotRequired[CallDisposition]
+    tenantId: str
+    domain: str
+    territory: NotRequired[str | None]
+    fromNumber: NotRequired[str | None]
+    fromExtension: NotRequired[str | None]
+    fromName: NotRequired[str | None]
+    toNumber: NotRequired[str | None]
+    dialedNumber: NotRequired[str | None]
+    routedByExtension: NotRequired[str | None]
+    answeringExtension: NotRequired[str | None]
+    startedAt: NotRequired[str | None]
+    answeredAt: NotRequired[str | None]
+    releasedAt: NotRequired[str | None]
+    durationSeconds: NotRequired[int | None]
+    talkSeconds: NotRequired[int | None]
+    releaseCode: NotRequired[str | None]
+    releaseText: NotRequired[str | None]
+    hidden: NotRequired[bool]
+
+
+class CallRecordCompletedEvent(WebhookEventEnvelope):
+    data: CallRecordCompletedEventData
 
 
 class MessageReceivedEvent(WebhookEventEnvelope):
