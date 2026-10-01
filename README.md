@@ -707,7 +707,12 @@ them. The same release changed more, with the API:
   `content_url` and `expires_at`. The transcript download is gone: read the
   words from `segments`. **Removed from `Recording`:** `ccc_id`.
 - **Deprecated:** `transcript.status` still works but raises a
-  `DeprecationWarning` on read. Read `transcript_status` instead.
+  `DeprecationWarning` on read. Read `transcript_status` instead. Code that
+  BUILDS a `Transcript` itself (a constructor call or `dataclasses.replace()`)
+  must pass `_status=`, not `status=`.
+- **Code that reads a removed field now fails:** `transcript.ccc_id`,
+  `transcript.content_url`, `transcript.expires_at` and `recording.ccc_id`
+  raise `AttributeError`. Remove those reads before you upgrade.
 - **Faxes:** `send()`, `cancel()`, `media_link()` and `thumbnail_link()` now
   ask for JSON:API. `send()` and `cancel()` return a complete `Fax`, and
   `MediaLink` gains `id`, `kind` and `content_type` (`None` when an older

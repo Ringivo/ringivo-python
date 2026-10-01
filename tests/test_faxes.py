@@ -758,8 +758,8 @@ def test_media_link_hands_back_the_capability_and_its_facts(
 
 
 def test_media_link_parser_still_reads_the_older_flat_shape() -> None:
-    # PupPilot calls this private parser on an old-shape response from its
-    # own `Ringivo.request()` escape hatch, so it keeps both shapes.
+    # An integrator may call this private parser on an old-shape response
+    # from its own `Ringivo.request()` escape hatch, so it keeps both shapes.
     from ringivo.models import MediaLink
 
     link = MediaLink._from_json(
