@@ -691,6 +691,11 @@ differs from `transcript.status` in one case: after a request that ended
 without words, `status` is `not_requested` (you may ask again) and
 `transcript_status` is `failed`.
 
+**0.19.0 removed `transcript.provider` and `transcript.model`.** The API
+stopped sending them on 2026-10-01: which speech-to-text service made a
+transcript is not part of it. Remove every read of them. Nothing replaces
+them.
+
 `transcripts()` answers one item per **recording**, not one per transcript
 that exists: a capture with no words yet still appears, as a `Transcript`
 with `status="not_requested"` or `"pending"` and every other field `None`,

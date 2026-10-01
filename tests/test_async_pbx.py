@@ -259,8 +259,6 @@ def _transcript_resource(
         "duration": 64,
         "byte-size": 2048,
         "sha256": "b" * 64,
-        "provider": "deepgram",
-        "model": "nova-3",
         "content-url": f"{BASE_URL}/v1/pbx/transcripts-content/signed-token",
         "expires-at": "2026-09-12T15:00:00Z",
         # Members added after the kebab-case rename: camelCase only.
@@ -832,8 +830,6 @@ async def test_call_records_transcripts_reads_the_ready_state_into_the_public_da
     assert transcript.duration == 64
     assert transcript.byte_size == 2048
     assert transcript.sha256 == "b" * 64
-    assert transcript.provider == "deepgram"
-    assert transcript.model == "nova-3"
     assert transcript.content_url == f"{BASE_URL}/v1/pbx/transcripts-content/signed-token"
     assert transcript.expires_at == datetime(2026, 9, 12, 15, 0, tzinfo=timezone.utc)
     assert transcript.transcript_status == "available"
@@ -856,8 +852,6 @@ async def test_call_records_transcripts_reads_the_pending_state_with_every_other
                             "duration": None,
                             "byte-size": None,
                             "sha256": None,
-                            "provider": None,
-                            "model": None,
                             "content-url": None,
                             "expires-at": None,
                         }

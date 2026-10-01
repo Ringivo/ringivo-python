@@ -1049,16 +1049,6 @@ _READS: tuple[_Read, ...] = (
     ),
     _Read(
         models.Transcript,
-        "provider",
-        generated.TranscriptAttributes,
-        "provider",
-        "Transcript._from_resource",
-    ),
-    _Read(
-        models.Transcript, "model", generated.TranscriptAttributes, "model", "Transcript._from_resource"
-    ),
-    _Read(
-        models.Transcript,
         "content_url",
         generated.TranscriptAttributes,
         "contentUrl",
@@ -1408,7 +1398,7 @@ def test_every_field_a_model_reads_is_covered_by_the_read_table() -> None:
 
 
 def test_every_field_a_model_reads_exists_in_the_generated_types() -> None:
-    assert len(_READS) == 211, f"{len(_READS)} reads were checked, not 211 — the sweep is broken"
+    assert len(_READS) == 209, f"{len(_READS)} reads were checked, not 209 — the sweep is broken"
 
     failures: list[str] = []
     for read in _READS:
