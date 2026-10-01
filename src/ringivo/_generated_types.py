@@ -1983,8 +1983,6 @@ class TranscriptAttributes(TypedDict):
     duration: NotRequired[int | None]
     byteSize: NotRequired[int | None]
     sha256: NotRequired[str | None]
-    provider: NotRequired[str | None]
-    model: NotRequired[str | None]
     contentUrl: NotRequired[str | None]
     expiresAt: NotRequired[str | None]
     transcriptStatus: NotRequired[
