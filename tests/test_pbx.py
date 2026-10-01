@@ -47,6 +47,7 @@ from ringivo import (
     Ringivo,
     Transcript,
     TranscriptionCappedError,
+    TranscriptChannel,
     TranscriptRequestLimitedError,
     TranscriptSegment,
 )
@@ -280,7 +281,6 @@ def _recording_resource(
     this endpoint's own spelling, unlike the camelCase call-records block.
     """
     merged: dict[str, object] = {
-        "ccc-id": "00b1",
         "duration": 64,
         "byte-size": 512000,
         "sha256": "a" * 64,
@@ -304,15 +304,9 @@ def _transcript_resource(
     it.
     """
     merged: dict[str, object] = {
-        "ccc-id": "00b1",
         "status": "ready",
         "language": "en-US",
         "duration": 64,
-        "byte-size": 2048,
-        "sha256": "b" * 64,
-        "content-url": f"{BASE_URL}/v1/pbx/transcripts-content/signed-token",
-        "expires-at": "2026-09-12T15:00:00Z",
-        # Members added after the kebab-case rename: camelCase only.
         "transcriptStatus": "available",
         "callRecordId": CALL_RECORD_ID,
     }
@@ -1400,7 +1394,7 @@ def test_call_records_recordings_reads_every_field_into_the_public_dataclass(
     recording = recordings[0]
     assert isinstance(recording, Recording)
     assert recording.id == RECORDING_ID
-    assert recording.ccc_id == "00b1"
+    assert not hasattr(recording, "ccc_id")
     assert recording.duration == 64
     assert recording.byte_size == 512000
     assert recording.sha256 == "a" * 64
@@ -1448,7 +1442,7 @@ def test_a_recording_whose_call_record_cannot_be_named_reads_no_call_record_id(
 def test_call_records_recordings_returns_every_capture_in_the_servers_own_order(
     respx_mock: respx.MockRouter, client: Ringivo
 ) -> None:
-    # Vendor key order `(call_id, ccc_id)`, not chronological — this client
+    # Vendor key order, not chronological — this client
     # does not reorder what the server sent.
     second_id = "0198c9aa-1111-7000-8000-0000000000b2"
     respx_mock.get(CALL_RECORD_RECORDINGS_URL).mock(
@@ -1457,7 +1451,7 @@ def test_call_records_recordings_returns_every_capture_in_the_servers_own_order(
             json={
                 "data": [
                     _recording_resource(),
-                    _recording_resource(resource_id=second_id, attributes={"ccc-id": "00b2"}),
+                    _recording_resource(resource_id=second_id, attributes={"duration": 99}),
                 ]
             },
         )
@@ -1537,15 +1531,11 @@ def test_call_records_transcripts_reads_the_ready_state_into_the_public_dataclas
     transcript = transcripts[0]
     assert isinstance(transcript, Transcript)
     assert transcript.id == RECORDING_ID
-    assert transcript.ccc_id == "00b1"
-    assert transcript.status == "ready"
     assert transcript.language == "en-US"
     assert transcript.duration == 64
-    assert transcript.byte_size == 2048
-    assert transcript.sha256 == "b" * 64
-    assert transcript.content_url == f"{BASE_URL}/v1/pbx/transcripts-content/signed-token"
-    assert transcript.expires_at == datetime(2026, 9, 12, 15, 0, tzinfo=timezone.utc)
     assert transcript.transcript_status == "available"
+    # The list does not serve the channels, like the segments.
+    assert transcript.channels is None
     assert transcript.call_record_id == CALL_RECORD_ID
 
 
@@ -1570,7 +1560,8 @@ def test_a_failed_transcript_may_be_asked_for_again(
     with client:
         (transcript,) = client.pbx.call_records.transcripts(CALL_RECORD_ID)
 
-    assert transcript.status == "not_requested"
+    with pytest.warns(DeprecationWarning, match="read transcript_status"):
+        assert transcript.status == "not_requested"
     assert transcript.transcript_status == "failed"
 
 
@@ -1620,10 +1611,7 @@ def test_call_records_transcripts_reads_the_pending_state_with_every_other_field
                             "status": "pending",
                             "language": None,
                             "duration": None,
-                            "byte-size": None,
-                            "sha256": None,
-                            "content-url": None,
-                            "expires-at": None,
+                            "transcriptStatus": "requested",
                         }
                     )
                 ]
@@ -1636,14 +1624,11 @@ def test_call_records_transcripts_reads_the_pending_state_with_every_other_field
 
     transcript = transcripts[0]
     assert transcript.id == RECORDING_ID
-    assert transcript.ccc_id == "00b1"
-    assert transcript.status == "pending"
+    assert transcript.transcript_status == "requested"
     assert transcript.language is None
     assert transcript.duration is None
-    assert transcript.byte_size is None
-    assert transcript.sha256 is None
-    assert transcript.content_url is None
-    assert transcript.expires_at is None
+    assert transcript.segments is None
+    assert transcript.channels is None
 
 
 def test_call_records_transcripts_with_no_captures_is_an_empty_tuple_not_an_error(
@@ -1700,18 +1685,27 @@ def test_a_call_record_outside_your_customers_domains_raises_a_typed_404_on_tran
 CALL_RECORD_TRANSCRIPT_URL = f"{CALL_RECORD_TRANSCRIPTS_URL}/{RECORDING_ID}"
 
 _SEGMENTS = [
-    {"speaker": "Speaker 1", "start": 0.08, "end": 2.4, "text": "Acme Dental, how can I help?"},
-    {"speaker": "Speaker 2", "start": 2.6, "end": 5, "text": "I need to move my appointment."},
+    {
+        "speaker": "Speaker 1",
+        "channel": 0,
+        "start": 0.08,
+        "end": 2.4,
+        "text": "Acme Dental, how can I help?",
+    },
+    {
+        "speaker": "Speaker 2",
+        "channel": 1,
+        "start": 2.6,
+        "end": 5,
+        "text": "I need to move my appointment.",
+    },
 ]
 
 _PENDING = {
     "status": "pending",
     "language": None,
     "duration": None,
-    "byteSize": None,
-    "sha256": None,
-    "contentUrl": None,
-    "expiresAt": None,
+    "transcriptStatus": "requested",
 }
 
 
@@ -1738,13 +1732,12 @@ def test_call_records_transcript_reads_one_transcript_with_its_segments(
     assert route.calls.last.request.headers["accept"] == JSONAPI
     assert isinstance(transcript, Transcript)
     assert transcript.id == RECORDING_ID
-    assert transcript.status == "ready"
-    assert transcript.content_url == f"{BASE_URL}/v1/pbx/transcripts-content/signed-token"
+    assert transcript.transcript_status == "available"
     segments = transcript.segments
     assert segments is not None
-    assert [(s.speaker, s.start, s.end, s.text) for s in segments] == [
-        ("Speaker 1", 0.08, 2.4, "Acme Dental, how can I help?"),
-        ("Speaker 2", 2.6, 5.0, "I need to move my appointment."),
+    assert [(s.speaker, s.channel, s.start, s.end, s.text) for s in segments] == [
+        ("Speaker 1", 0, 0.08, 2.4, "Acme Dental, how can I help?"),
+        ("Speaker 2", 1, 2.6, 5.0, "I need to move my appointment."),
     ]
     assert all(isinstance(s, TranscriptSegment) for s in segments)
     # A whole second arrives as a JSON integer; it is still a float here.
@@ -1779,6 +1772,91 @@ def test_the_transcripts_list_carries_no_segments_rather_than_an_empty_tuple(
     assert transcripts[0].segments is None
 
 
+def test_call_records_transcript_reads_the_channels_with_and_without_a_role(
+    respx_mock: respx.MockRouter, client: Ringivo
+) -> None:
+    channels = [
+        {"channel": 0, "party": "1001", "role": "caller"},
+        {"channel": 1, "party": "+14075550100", "role": "callee"},
+    ]
+    respx_mock.get(CALL_RECORD_TRANSCRIPT_URL).mock(
+        return_value=httpx.Response(
+            200, json={"data": _transcript_resource(attributes={"channels": channels})}
+        )
+    )
+
+    with client:
+        transcript = client.pbx.call_records.transcript(CALL_RECORD_ID, RECORDING_ID)
+
+    assert transcript.channels == (
+        TranscriptChannel(channel=0, party="1001", role="caller", raw=channels[0]),
+        TranscriptChannel(channel=1, party="+14075550100", role="callee", raw=channels[1]),
+    )
+
+
+def test_a_channel_with_no_role_on_the_wire_reads_none(
+    respx_mock: respx.MockRouter, client: Ringivo
+) -> None:
+    respx_mock.get(CALL_RECORD_TRANSCRIPT_URL).mock(
+        return_value=httpx.Response(
+            200,
+            json={
+                "data": _transcript_resource(
+                    attributes={"channels": [{"channel": 0, "party": "1001"}]}
+                )
+            },
+        )
+    )
+
+    with client:
+        transcript = client.pbx.call_records.transcript(CALL_RECORD_ID, RECORDING_ID)
+
+    assert transcript.channels is not None
+    (channel,) = transcript.channels
+    assert (channel.channel, channel.party, channel.role) == (0, "1001", None)
+
+
+def test_a_mono_recording_has_an_empty_channels_tuple(
+    respx_mock: respx.MockRouter, client: Ringivo
+) -> None:
+    respx_mock.get(CALL_RECORD_TRANSCRIPT_URL).mock(
+        return_value=httpx.Response(
+            200, json={"data": _transcript_resource(attributes={"channels": []})}
+        )
+    )
+
+    with client:
+        transcript = client.pbx.call_records.transcript(CALL_RECORD_ID, RECORDING_ID)
+
+    assert transcript.channels == ()
+
+
+def test_a_transcripts_status_is_deprecated_and_still_reads_the_wire() -> None:
+    transcript = Transcript._from_resource(_transcript_resource())
+
+    with pytest.warns(DeprecationWarning, match="read transcript_status") as caught:
+        assert transcript.status == "ready"
+    # The warning names the caller's line, not this package's.
+    assert caught[0].filename == __file__
+    # Only READING it warns: printing and comparing a transcript do not.
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        repr(transcript)
+        assert transcript == dataclasses.replace(transcript)
+
+
+def test_the_attributes_the_api_dropped_are_gone_from_transcript_and_recording() -> None:
+    gone = {"ccc_id", "byte_size", "sha256", "content_url", "expires_at"}
+    assert gone.isdisjoint(f.name for f in dataclasses.fields(Transcript))
+    assert "ccc_id" not in {f.name for f in dataclasses.fields(Recording)}
+    # An API from before the removal still sends them: they stay in `raw`.
+    transcript = Transcript._from_resource(
+        _transcript_resource(attributes={"cccId": "00b1", "byteSize": 5, "contentUrl": "https://x"})
+    )
+    assert not hasattr(transcript, "content_url")
+    assert transcript.raw["attributes"]["contentUrl"] == "https://x"  # type: ignore[index]
+
+
 @pytest.mark.parametrize(
     "code", ["transcript_not_requested", "transcript_pending", "transcript_failed", "not_found"]
 )
@@ -1810,8 +1888,7 @@ def test_request_transcript_posts_no_body_to_the_captures_own_url(
     assert request.content == b""
     assert request.headers["accept"] == JSONAPI
     assert transcript.id == RECORDING_ID
-    assert transcript.status == "pending"
-    assert transcript.content_url is None
+    assert transcript.transcript_status == "requested"
 
 
 def test_request_transcript_of_a_transcribed_capture_hands_back_the_ready_transcript(
@@ -1824,8 +1901,7 @@ def test_request_transcript_of_a_transcribed_capture_hands_back_the_ready_transc
     with client:
         transcript = client.pbx.call_records.request_transcript(CALL_RECORD_ID, RECORDING_ID)
 
-    assert transcript.status == "ready"
-    assert transcript.content_url == f"{BASE_URL}/v1/pbx/transcripts-content/signed-token"
+    assert transcript.transcript_status == "available"
 
 
 def test_a_capture_with_no_audio_is_a_typed_409(

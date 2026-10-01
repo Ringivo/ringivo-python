@@ -489,18 +489,15 @@ class PbxCallRecords:
 
         ONE ITEM PER RECORDING, not one per transcript that exists: a
         capture with no words yet still appears, as a `Transcript` with
-        `status="not_requested"` or `"pending"` and every other field None,
+        `transcript_status` of `none` or `requested` and no turns,
         so you can tell "no transcript yet" from "no recording at all". NOT
         PAGINATED, for the same reason `recordings()` is not: the console's
         own `TranscriptCollectionDocument` carries no `links.next` or
         `meta.page`.
 
-        Each `Transcript.content_url` is short-lived, the same rule
-        `Recording.content_url` follows: call this again for a fresh one.
-
-        This is the collection read only: `status` is `ready`, `pending` or
-        `not_requested`, and it carries no speaker turns. `transcript()`
-        reads one capture with its turns, and says when a transcription
+        This is the collection read only: it carries no speaker turns and
+        no `channels`. `transcript()` reads one capture with its turns and
+        channels, and says when a transcription
         permanently gave up. `request_transcript()` asks for one.
 
         A call outside your customers' domains answers 404, not 403 — the

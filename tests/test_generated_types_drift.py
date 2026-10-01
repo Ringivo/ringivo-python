@@ -138,6 +138,25 @@ def _fax_account_user_relationships() -> type:
 FaxAccountUserRelationships = _fax_account_user_relationships()
 
 
+def _fax_media_document_attributes() -> type:
+    """The generated TypedDict for a fax media document's attributes block.
+
+    REACHED THROUGH THE RESOURCE THAT DECLARES IT, for the reason
+    `_fax_account_user_relationships` gives: the block is inline in the
+    spec, so the generator numbered it (`Attributes1` at the time of
+    writing), and that number moves.
+    """
+    block = typing.get_type_hints(generated.FaxMediaDocumentResource).get("attributes")
+    assert isinstance(block, type), (
+        f"FaxMediaDocumentResource declares no resolvable `attributes` member "
+        f"(got {block!r}) — the lookup is broken, not the spec"
+    )
+    return block
+
+
+FaxMediaDocumentAttributes = _fax_media_document_attributes()
+
+
 # Every field a `_from_*` classmethod in models.py reads off a JSON shape,
 # paired with the exact generated TypedDict and key that shape names it —
 # read straight off the classmethod bodies, not guessed from the dataclass
@@ -211,6 +230,17 @@ _READS: tuple[_Read, ...] = (
     _Read(MediaLinkModel, "expires_at", generated.MediaLink, "expiresAt", "MediaLink._from_json"),
     _Read(MediaLinkModel, "byte_size", generated.MediaLink, "byteSize", "MediaLink._from_json"),
     _Read(MediaLinkModel, "sha256", generated.MediaLink, "sha256", "MediaLink._from_json"),
+    # The JSON:API document the endpoints answer now: a FaxMediaDocumentResource
+    # (id) + its attributes block. The flat reads above stay for an older server.
+    _Read(MediaLinkModel, "id", generated.FaxMediaDocumentResource, "id", "MediaLink._from_json"),
+    _Read(MediaLinkModel, "url", FaxMediaDocumentAttributes, "contentUrl", "MediaLink._from_json"),
+    _Read(MediaLinkModel, "expires_at", FaxMediaDocumentAttributes, "expiresAt", "MediaLink._from_json"),
+    _Read(MediaLinkModel, "byte_size", FaxMediaDocumentAttributes, "byteSize", "MediaLink._from_json"),
+    _Read(MediaLinkModel, "sha256", FaxMediaDocumentAttributes, "sha256", "MediaLink._from_json"),
+    _Read(MediaLinkModel, "kind", FaxMediaDocumentAttributes, "kind", "MediaLink._from_json"),
+    _Read(
+        MediaLinkModel, "content_type", FaxMediaDocumentAttributes, "contentType", "MediaLink._from_json"
+    ),
     # -- FaxAccount._from_resource reads a FaxAccountResource (id) + its ----
     # FaxAccountAttributes, plus the customer LINKAGE off its relationships.
     _Read(models.FaxAccount, "id", generated.FaxAccountResource, "id", "FaxAccount._from_resource"),
@@ -952,9 +982,6 @@ _READS: tuple[_Read, ...] = (
     # block.
     _Read(models.Recording, "id", generated.RecordingResource, "id", "Recording._from_resource"),
     _Read(
-        models.Recording, "ccc_id", generated.RecordingAttributes, "cccId", "Recording._from_resource"
-    ),
-    _Read(
         models.Recording,
         "duration",
         generated.RecordingAttributes,
@@ -1017,11 +1044,10 @@ _READS: tuple[_Read, ...] = (
     # TranscriptAttributes. `id` is the RECORDING's id (one to one), and the
     # attribute keys are the same KEBAB-CASE spelling `Recording` reads.
     _Read(models.Transcript, "id", generated.TranscriptResource, "id", "Transcript._from_resource"),
+    # The deprecated `status`, stored privately behind the warning `status`
+    # property.
     _Read(
-        models.Transcript, "ccc_id", generated.TranscriptAttributes, "cccId", "Transcript._from_resource"
-    ),
-    _Read(
-        models.Transcript, "status", generated.TranscriptAttributes, "status", "Transcript._from_resource"
+        models.Transcript, "_status", generated.TranscriptAttributes, "status", "Transcript._from_resource"
     ),
     _Read(
         models.Transcript,
@@ -1035,30 +1061,6 @@ _READS: tuple[_Read, ...] = (
         "duration",
         generated.TranscriptAttributes,
         "duration",
-        "Transcript._from_resource",
-    ),
-    _Read(
-        models.Transcript,
-        "byte_size",
-        generated.TranscriptAttributes,
-        "byteSize",
-        "Transcript._from_resource",
-    ),
-    _Read(
-        models.Transcript, "sha256", generated.TranscriptAttributes, "sha256", "Transcript._from_resource"
-    ),
-    _Read(
-        models.Transcript,
-        "content_url",
-        generated.TranscriptAttributes,
-        "contentUrl",
-        "Transcript._from_resource",
-    ),
-    _Read(
-        models.Transcript,
-        "expires_at",
-        generated.TranscriptAttributes,
-        "expiresAt",
         "Transcript._from_resource",
     ),
     _Read(
@@ -1084,12 +1086,49 @@ _READS: tuple[_Read, ...] = (
         "segments",
         "Transcript._from_resource",
     ),
+    # Likewise `channels`: only the single-transcript endpoint serves it.
+    _Read(
+        models.Transcript,
+        "channels",
+        generated.TranscriptWithSegmentsAttributes,
+        "channels",
+        "Transcript._from_resource",
+    ),
+    # -- TranscriptChannel._from_json reads one TranscriptChannel ----------
+    _Read(
+        models.TranscriptChannel,
+        "channel",
+        generated.TranscriptChannel,
+        "channel",
+        "TranscriptChannel._from_json",
+    ),
+    _Read(
+        models.TranscriptChannel,
+        "party",
+        generated.TranscriptChannel,
+        "party",
+        "TranscriptChannel._from_json",
+    ),
+    _Read(
+        models.TranscriptChannel,
+        "role",
+        generated.TranscriptChannel,
+        "role",
+        "TranscriptChannel._from_json",
+    ),
     # -- TranscriptSegment._from_json reads one TranscriptSegment ----------
     _Read(
         models.TranscriptSegment,
         "speaker",
         generated.TranscriptSegment,
         "speaker",
+        "TranscriptSegment._from_json",
+    ),
+    _Read(
+        models.TranscriptSegment,
+        "channel",
+        generated.TranscriptSegment,
+        "channel",
         "TranscriptSegment._from_json",
     ),
     _Read(
@@ -1305,6 +1344,7 @@ _EXCLUDED: dict[tuple[type, str], str] = {
     (models.Recording, "raw"): "holds the whole source mapping this object was built from",
     (models.Transcript, "raw"): "holds the whole source mapping this object was built from",
     (models.TranscriptSegment, "raw"): "holds the whole source mapping this object was built from",
+    (models.TranscriptChannel, "raw"): "holds the whole source mapping this object was built from",
     (models.PbxCall, "raw"): "holds the whole source mapping this object was built from",
     (models.Customer, "raw"): "holds the whole source mapping this object was built from",
 }
@@ -1351,6 +1391,7 @@ _MODELS: tuple[type, ...] = (
     models.Recording,
     models.Transcript,
     models.TranscriptSegment,
+    models.TranscriptChannel,
     models.PbxCall,
     models.Customer,
 )
@@ -1378,7 +1419,7 @@ def test_every_field_a_model_reads_is_covered_by_the_read_table() -> None:
     them, in both directions, or this whole test proves nothing about that
     model.
     """
-    assert len(_MODELS) == 16, f"only {[m.__name__ for m in _MODELS]} was searched — the sweep is broken"
+    assert len(_MODELS) == 17, f"only {[m.__name__ for m in _MODELS]} was searched — the sweep is broken"
 
     mismatches: dict[str, str] = {}
     for model in _MODELS:
@@ -1398,7 +1439,7 @@ def test_every_field_a_model_reads_is_covered_by_the_read_table() -> None:
 
 
 def test_every_field_a_model_reads_exists_in_the_generated_types() -> None:
-    assert len(_READS) == 209, f"{len(_READS)} reads were checked, not 209 — the sweep is broken"
+    assert len(_READS) == 215, f"{len(_READS)} reads were checked, not 215 — the sweep is broken"
 
     failures: list[str] = []
     for read in _READS:

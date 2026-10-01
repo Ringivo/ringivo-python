@@ -322,8 +322,8 @@ class AsyncPbxCallRecords:
 
         The awaited twin of `PbxCallRecords.transcripts`. ONE ITEM PER
         RECORDING, not one per transcript that exists — a capture with no
-        words yet still appears, as `status="not_requested"` or
-        `"pending"` with every other field None. NOT PAGINATED, for the
+        words yet still appears, with a
+        `transcript_status` of `none` or `requested` and no turns. NOT PAGINATED, for the
         reason `recordings()` is not.
 
         This is the collection read only, and it carries no speaker turns:

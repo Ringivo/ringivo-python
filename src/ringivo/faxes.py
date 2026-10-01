@@ -54,6 +54,7 @@ import mimetypes
 import os
 import uuid
 from collections.abc import Mapping, Sequence
+from dataclasses import replace
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 from urllib.parse import quote
@@ -67,6 +68,10 @@ __all__ = ["Faxes"]
 
 #: The media type the four non-JSON:API endpoints speak.
 _JSON = "application/json"
+
+#: What the fax endpoints are asked for. `client.JSONAPI_MEDIA_TYPE` is the
+#: same string; this module cannot import it (client imports this module).
+_JSONAPI = "application/vnd.api+json"
 
 #: The ceiling counts uploads PLUS urls — it is the same five on both bodies.
 _MAX_DOCUMENTS = 5
@@ -118,8 +123,8 @@ class Faxes:
 
         Returns:
             The accepted fax. `202` means accepted, not sent: the render
-            and the call happen afterwards, so this carries the
-            acknowledgement fields only. Watch it finish with `get()`.
+            and the call happen afterwards, so its `status` is
+            not final. Watch it finish with `get()`.
             `idempotent_replay` is True when the server said this response
             replays an earlier send — the only thing that tells the two
             apart, because the body is the same fax either way.
@@ -157,7 +162,7 @@ class Faxes:
             response = self._client.request(
                 "POST",
                 "/v1/faxes",
-                accept=_JSON,
+                accept=_JSONAPI,
                 headers=headers,
                 json=fields,
             )
@@ -176,15 +181,14 @@ class Faxes:
             response = self._client.request(
                 "POST",
                 "/v1/faxes",
-                accept=_JSON,
+                accept=_JSONAPI,
                 headers=headers,
                 data=fields,
                 files=parts,
             )
 
-        payload = _data_object(response.json())
         replayed = response.headers.get("Idempotent-Replay") == "true"
-        return Fax._from_acknowledgement(payload, idempotent_replay=replayed)
+        return replace(_fax_from_answer(response.json()), idempotent_replay=replayed)
 
     def get(self, fax_id: str, *, include: str | None = None) -> Fax:
         """Read one fax and its document metadata.
@@ -289,9 +293,9 @@ class Faxes:
         response = self._client.request(
             "POST",
             f"/v1/faxes/{_path_segment(fax_id)}/cancel",
-            accept=_JSON,
+            accept=_JSONAPI,
         )
-        return Fax._from_acknowledgement(_data_object(response.json()))
+        return _fax_from_answer(response.json())
 
     def media_link(self, fax_id: str, *, format: str = "pdf") -> MediaLink:
         """Mint a short-lived download URL for a fax's document.
@@ -306,7 +310,7 @@ class Faxes:
         response = self._client.request(
             "GET",
             f"/v1/faxes/{_path_segment(fax_id)}/media",
-            accept=_JSON,
+            accept=_JSONAPI,
             params={"format": format},
         )
         payload = response.json()
@@ -327,7 +331,7 @@ class Faxes:
         response = self._client.request(
             "GET",
             f"/v1/faxes/{_path_segment(fax_id)}/thumbnail",
-            accept=_JSON,
+            accept=_JSONAPI,
         )
         payload = response.json()
         return MediaLink._from_json(payload if isinstance(payload, Mapping) else {})
@@ -427,6 +431,19 @@ def _data_object(payload: Any) -> Mapping[str, Any]:
         return {}
     data = payload.get("data")
     return data if isinstance(data, Mapping) else {}
+
+
+def _fax_from_answer(payload: Any) -> Fax:
+    """The `faxes` resource `send` and `cancel` answer.
+
+    An older server answers a flat acknowledgement with no `attributes`
+    instead; that is read with `Fax._from_acknowledgement`, so this works on
+    either side of the API deploy.
+    """
+    data = _data_object(payload)
+    if isinstance(data.get("attributes"), Mapping):
+        return Fax._from_resource(data)
+    return Fax._from_acknowledgement(data)
 
 
 def _next_link(document: Mapping[str, Any]) -> str | None:
