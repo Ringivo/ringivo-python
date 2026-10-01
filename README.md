@@ -713,7 +713,7 @@ spoke.
     except (TranscriptionCappedError, TranscriptRequestLimitedError) as error:
         print("try again in", error.retry_after, "seconds")
 
-    # later, or when the call_transcript.available webhook arrives:
+    # later, or when the pbx.transcript.created webhook arrives:
     transcript = client.pbx.call_records.transcript(call.id, recording.id)
     for turn in transcript.segments or ():
         print(turn.speaker, turn.start, turn.text)
@@ -739,13 +739,13 @@ A recording lands about a minute after the call ends, and a transcript
 later still. There are two ways to learn that it is ready.
 
 **Webhooks (preferred).** Subscribe an endpoint to
-`call_recording.available` and `call_transcript.available` (see
+`pbx.recording.created` and `pbx.transcript.created` (see
 [Webhook endpoints](#webhook-endpoints)). The event body names what arrived
 but carries no link to it. Read its `callRecordId` and ask for the media:
 
 ```python
     event = json.loads(request.body)          # after webhooks.verify()
-    if event["type"] == "call_recording.available":
+    if event["type"] == "pbx.recording.created":
         call_record_id = event["data"]["callRecordId"]
         if call_record_id is not None:
             recordings = client.pbx.call_records.recordings(call_record_id)
@@ -779,7 +779,7 @@ until `recording_status` settles:
 ```
 
 `failed` is not final: if a slow conversion completes later, the recording
-lands, the status becomes `available` and `call_recording.available` is
+lands, the status becomes `available` and `pbx.recording.created` is
 sent as usual. Poll `transcript_status` the same way after
 `request_transcript()`: it moves from `requested` to `processing` to
 `available` or `failed`.
