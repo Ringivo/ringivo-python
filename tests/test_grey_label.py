@@ -29,9 +29,18 @@ from pathlib import Path
 import ringivo
 
 # The names this package must never carry, kept rot13-encoded so this public
-# repository does not itself spell them anywhere.
+# repository does not itself spell them anywhere. The second group is the
+# speech-to-text service and its model family: the API stopped naming them
+# on 2026-10-01, and nothing here may name them either. The model family is
+# matched at a word start only, so an ordinary word that contains it does
+# not fail the test.
 FORBIDDEN = re.compile(
-    codecs.decode("gryanzvp|gryvzngvp", "rot13") + r"|ringivo\.com",
+    codecs.decode("gryanzvp|gryvzngvp", "rot13")
+    + "|"
+    + codecs.decode("qrrctenz", "rot13")
+    + r"|\b"
+    + codecs.decode("abin", "rot13")
+    + r"|ringivo\.com",
     re.IGNORECASE,
 )
 
@@ -114,6 +123,16 @@ def test_no_packaged_file_names_a_platform_brand_or_a_provider_host() -> None:
         f"{len(offenders)} of {len(files)} packaged files name a forbidden brand or host: "
         f"{offenders}"
     )
+
+
+def test_the_forbidden_pattern_fires_on_the_speech_to_text_names() -> None:
+    # The control for the scan above: a pattern that matched nothing would
+    # make that scan pass in silence.
+    service = codecs.decode("Qrrctenz", "rot13")
+    model = codecs.decode("abin-3", "rot13")
+    assert FORBIDDEN.search(f"made by {service}")
+    assert FORBIDDEN.search(f"model: {model}")
+    assert not FORBIDDEN.search("an innovation in transcripts")
 
 
 def test_no_client_compiles_in_a_base_url_of_its_own() -> None:

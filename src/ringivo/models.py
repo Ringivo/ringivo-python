@@ -1292,9 +1292,11 @@ class Transcript:
     same id `recordings()` published for the same capture.
 
     `content_url` is a signed, time-limited link to the stored transcript
-    document (the speech-to-text provider's own response, not the audio) —
-    same rule as `Recording.content_url`: do not cache it past
-    `expires_at`.
+    document (not the audio) — same rule as `Recording.content_url`: do not
+    cache it past `expires_at`.
+
+    There is no `provider` or `model`: 0.19.0 removed both, with the API.
+    Which speech-to-text service made a transcript is not part of it.
 
     `segments` is the turns of the conversation, and only `transcript()`
     serves them: it is None on every other answer, which means "not served
@@ -1319,8 +1321,6 @@ class Transcript:
     duration: int | None = None
     byte_size: int | None = None
     sha256: str | None = None
-    provider: str | None = None
-    model: str | None = None
     content_url: str | None = None
     expires_at: datetime | None = None
     segments: tuple[TranscriptSegment, ...] | None = None
@@ -1345,8 +1345,6 @@ class Transcript:
             duration=_integer(attributes, "duration"),
             byte_size=_integer(attributes, "byteSize"),
             sha256=_text(attributes, "sha256"),
-            provider=_text(attributes, "provider"),
-            model=_text(attributes, "model"),
             content_url=_text(attributes, "contentUrl"),
             expires_at=_parse_datetime(attributes.get("expiresAt")),
             segments=_segments(attributes),

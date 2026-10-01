@@ -310,8 +310,6 @@ def _transcript_resource(
         "duration": 64,
         "byte-size": 2048,
         "sha256": "b" * 64,
-        "provider": "deepgram",
-        "model": "nova-3",
         "content-url": f"{BASE_URL}/v1/pbx/transcripts-content/signed-token",
         "expires-at": "2026-09-12T15:00:00Z",
         # Members added after the kebab-case rename: camelCase only.
@@ -1545,8 +1543,6 @@ def test_call_records_transcripts_reads_the_ready_state_into_the_public_dataclas
     assert transcript.duration == 64
     assert transcript.byte_size == 2048
     assert transcript.sha256 == "b" * 64
-    assert transcript.provider == "deepgram"
-    assert transcript.model == "nova-3"
     assert transcript.content_url == f"{BASE_URL}/v1/pbx/transcripts-content/signed-token"
     assert transcript.expires_at == datetime(2026, 9, 12, 15, 0, tzinfo=timezone.utc)
     assert transcript.transcript_status == "available"
@@ -1578,6 +1574,36 @@ def test_a_failed_transcript_may_be_asked_for_again(
     assert transcript.transcript_status == "failed"
 
 
+def test_a_transcript_names_no_speech_to_text_service(
+    respx_mock: respx.MockRouter, client: Ringivo
+) -> None:
+    # The API removed `provider` and `model` on 2026-10-01 (0.19.0 here).
+    # An API from before that still sends them: they stay in `raw` and
+    # reach no attribute, so no code path can hand them to a caller.
+    respx_mock.get(CALL_RECORD_TRANSCRIPTS_URL).mock(
+        return_value=httpx.Response(
+            200,
+            json={
+                "data": [
+                    _transcript_resource(
+                        attributes={"provider": "some-service", "model": "some-model"}
+                    )
+                ]
+            },
+        )
+    )
+
+    with client:
+        (transcript,) = client.pbx.call_records.transcripts(CALL_RECORD_ID)
+
+    assert {"provider", "model"}.isdisjoint(f.name for f in dataclasses.fields(Transcript))
+    assert not hasattr(transcript, "provider")
+    assert not hasattr(transcript, "model")
+    assert "some-service" not in repr(transcript)
+    attributes = cast("dict[str, object]", transcript.raw["attributes"])
+    assert attributes["provider"] == "some-service"
+
+
 def test_call_records_transcripts_reads_the_pending_state_with_every_other_field_none(
     respx_mock: respx.MockRouter, client: Ringivo
 ) -> None:
@@ -1596,8 +1622,6 @@ def test_call_records_transcripts_reads_the_pending_state_with_every_other_field
                             "duration": None,
                             "byte-size": None,
                             "sha256": None,
-                            "provider": None,
-                            "model": None,
                             "content-url": None,
                             "expires-at": None,
                         }
@@ -1618,8 +1642,6 @@ def test_call_records_transcripts_reads_the_pending_state_with_every_other_field
     assert transcript.duration is None
     assert transcript.byte_size is None
     assert transcript.sha256 is None
-    assert transcript.provider is None
-    assert transcript.model is None
     assert transcript.content_url is None
     assert transcript.expires_at is None
 
@@ -1688,8 +1710,6 @@ _PENDING = {
     "duration": None,
     "byteSize": None,
     "sha256": None,
-    "provider": None,
-    "model": None,
     "contentUrl": None,
     "expiresAt": None,
 }
