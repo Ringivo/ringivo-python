@@ -21,15 +21,18 @@ from __future__ import annotations
 import json as jsonlib
 import uuid
 from collections.abc import Mapping, Sequence
+from dataclasses import replace
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from .faxes import (
     _JSON,
+    _JSONAPI,
     _MAX_DOCUMENTS,
     _cover_page_wire,
     _data_object,
     _documents,
+    _fax_from_answer,
     _next_cursor,
     _next_link,
     _path_segment,
@@ -89,8 +92,8 @@ class AsyncFaxes:
 
         Returns:
             The accepted fax. `202` means accepted, not sent: the render
-            and the call happen afterwards, so this carries the
-            acknowledgement fields only. Watch it finish with `get()`.
+            and the call happen afterwards, so its `status` is
+            not final. Watch it finish with `get()`.
             `idempotent_replay` is True when the server said this response
             replays an earlier send — the only thing that tells the two
             apart, because the body is the same fax either way.
@@ -128,7 +131,7 @@ class AsyncFaxes:
             response = await self._client.request(
                 "POST",
                 "/v1/faxes",
-                accept=_JSON,
+                accept=_JSONAPI,
                 headers=headers,
                 json=fields,
             )
@@ -147,15 +150,14 @@ class AsyncFaxes:
             response = await self._client.request(
                 "POST",
                 "/v1/faxes",
-                accept=_JSON,
+                accept=_JSONAPI,
                 headers=headers,
                 data=fields,
                 files=parts,
             )
 
-        payload = _data_object(response.json())
         replayed = response.headers.get("Idempotent-Replay") == "true"
-        return Fax._from_acknowledgement(payload, idempotent_replay=replayed)
+        return replace(_fax_from_answer(response.json()), idempotent_replay=replayed)
 
     async def get(self, fax_id: str, *, include: str | None = None) -> Fax:
         """Read one fax and its document metadata.
@@ -261,9 +263,9 @@ class AsyncFaxes:
         response = await self._client.request(
             "POST",
             f"/v1/faxes/{_path_segment(fax_id)}/cancel",
-            accept=_JSON,
+            accept=_JSONAPI,
         )
-        return Fax._from_acknowledgement(_data_object(response.json()))
+        return _fax_from_answer(response.json())
 
     async def media_link(self, fax_id: str, *, format: str = "pdf") -> MediaLink:
         """Mint a short-lived download URL for a fax's document.
@@ -278,7 +280,7 @@ class AsyncFaxes:
         response = await self._client.request(
             "GET",
             f"/v1/faxes/{_path_segment(fax_id)}/media",
-            accept=_JSON,
+            accept=_JSONAPI,
             params={"format": format},
         )
         payload = response.json()
@@ -299,7 +301,7 @@ class AsyncFaxes:
         response = await self._client.request(
             "GET",
             f"/v1/faxes/{_path_segment(fax_id)}/thumbnail",
-            accept=_JSON,
+            accept=_JSONAPI,
         )
         payload = response.json()
         return MediaLink._from_json(payload if isinstance(payload, Mapping) else {})

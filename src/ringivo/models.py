@@ -112,7 +112,6 @@ def _media_bridged(attributes: Mapping[str, Any]) -> Mapping[str, Any]:
     filled from its old kebab-case spelling when only that arrived — the
     same temporary bridge as `_bridged`, for the PBX media rename."""
     for key, legacy in (
-        ("cccId", "ccc-id"),
         ("byteSize", "byte-size"),
         ("contentUrl", "content-url"),
         ("expiresAt", "expires-at"),
@@ -231,11 +230,11 @@ class Fax:
     whose name is a Python keyword; every other name is the API's own,
     snake_cased.
 
-    Two constructors fill this in, and they do not fill in the same
-    amount. A fax read with `faxes.get()` or `faxes.list()` is complete. A
-    fax returned by `faxes.send()` or `faxes.cancel()` is the flat
-    acknowledgement those endpoints answer — the fields it does not carry
-    are None, and `faxes.get()` is where the rest lives.
+    A fax is complete however you got it: `faxes.get()`, `faxes.list()`,
+    `faxes.send()` and `faxes.cancel()` all answer the full `faxes`
+    resource. Only against an older server, which answers `send` and
+    `cancel` with a flat acknowledgement, are the fields that answer does
+    not carry None; `faxes.get()` is where the rest lives then.
     """
 
     id: str
@@ -364,10 +363,34 @@ class MediaLink:
     expires_at: datetime | None = None
     byte_size: int | None = None
     sha256: str | None = None
+    id: str | None = None
+    kind: str | None = None
+    content_type: str | None = None
     raw: Mapping[str, Any] = field(default_factory=dict, repr=False)
 
     @classmethod
     def _from_json(cls, payload: Mapping[str, Any]) -> MediaLink:
+        """Build from the answer of a media or thumbnail link.
+
+        Two shapes are read. The JSON:API document
+        `{"data": {"type": "fax-documents", "id", "attributes": {...}}}`
+        carries `id`, `kind` and `content_type` as well; its `contentUrl`
+        is `url`. The older flat `{url, expiresAt, byteSize, sha256}` has
+        none of those three, so they are None.
+        """
+        data = _mapping(payload, "data")
+        if data is not None:
+            attributes = _mapping(data, "attributes") or {}
+            return cls(
+                url=_text(attributes, "contentUrl") or "",
+                expires_at=_parse_datetime(attributes.get("expiresAt")),
+                byte_size=_integer(attributes, "byteSize"),
+                sha256=_text(attributes, "sha256"),
+                id=_text(data, "id"),
+                kind=_text(attributes, "kind"),
+                content_type=_text(attributes, "contentType"),
+                raw=payload,
+            )
         # camelCase since the API's v1 naming cleanup; the snake_case names
         # are read as a fallback for this one release (see `Fax._from_acknowledgement`).
         wire = _bridged(_bridged(payload, "expiresAt", "expires_at"), "byteSize", "byte_size")
@@ -1224,7 +1247,6 @@ class Recording:
     """
 
     id: str
-    ccc_id: str | None = None
     duration: int | None = None
     byte_size: int | None = None
     sha256: str | None = None
@@ -1240,7 +1262,7 @@ class Recording:
     def _from_resource(cls, resource: Mapping[str, Any]) -> Recording:
         """Build from one `recordings` resource object.
 
-        The attribute keys are camelCase (`cccId`, `byteSize`, `contentUrl`,
+        The attribute keys are camelCase (`byteSize`, `contentUrl`,
         `expiresAt`). They were KEBAB-CASE until the API renamed them, and
         the API still sends both during its transition window, so an old
         kebab-case-only response is bridged (`_media_bridged`).
@@ -1249,7 +1271,6 @@ class Recording:
 
         return cls(
             id=_text(resource, "id") or "",
-            ccc_id=_text(attributes, "cccId"),
             duration=_integer(attributes, "duration"),
             byte_size=_integer(attributes, "byteSize"),
             sha256=_text(attributes, "sha256"),
@@ -1274,13 +1295,15 @@ class Transcript:
     `segments`, and `pbx.call_records.request_transcript()` answers the one
     it asked for.
 
-    `status` is the member to branch on. `ready` means the words are held
-    and every field is filled. `not_requested` means nobody has asked for
-    this capture's transcript — ask with `request_transcript()`. `pending`
-    means it was asked for and is on its way. Every field but `id`, `ccc_id`
-    and `status` is None unless `status` is `ready`. A transcription that
-    permanently gave up is not a status on the list: `transcript()` answers
-    it as a 404 `ApiError` with `code == "transcript_failed"`.
+    `transcript_status` is the member to branch on (see below). A
+    transcription that permanently gave up is answered by `transcript()` as
+    a 404 `ApiError` with `code == "transcript_failed"`.
+
+    `status` is DEPRECATED, and reading it raises a `DeprecationWarning`:
+    read `transcript_status` instead. It still works: `ready` means the
+    words are held, `not_requested` means nobody has asked for this
+    capture's transcript (ask with `request_transcript()`), `pending` means
+    it was asked for and is on its way.
 
     NO PAGE HERE either, for the same reason `Recording` has none: this is
     the captures of one call, and the console's own
@@ -1291,23 +1314,29 @@ class Transcript:
     transcript is keyed one-to-one by the capture it is of, so it is the
     same id `recordings()` published for the same capture.
 
-    `content_url` is a signed, time-limited link to the stored transcript
-    document (not the audio) — same rule as `Recording.content_url`: do not
-    cache it past `expires_at`.
-
-    There is no `provider` or `model`: 0.19.0 removed both, with the API.
-    Which speech-to-text service made a transcript is not part of it.
+    There is no `provider`, `model`, `ccc_id`, `byte_size`, `sha256`,
+    `content_url` or `expires_at`: 0.19.0 removed them, with the API. The
+    transcript download is gone; read the words from `segments`.
 
     `segments` is the turns of the conversation, and only `transcript()`
     serves them: it is None on every other answer, which means "not served
     here", while an empty tuple means nobody spoke.
 
+    `channels` says who is on which audio channel, and only `transcript()`
+    serves it: it is None on every other answer, which means "not served
+    here", and an empty tuple means a one-channel (mono) recording. Each
+    `TranscriptChannel` names its `party` (the extension or E.164 number)
+    and, when known, its `role` (`caller` or `callee`). WHICH SIDE IS ON
+    WHICH CHANNEL IS NOT FIXED: read `channels`, never assume channel 0 is
+    the caller. `TranscriptSegment.channel` is the channel a turn was
+    spoken on.
+
     `transcript_status` is the same vocabulary as
     `CallRecord.transcript_status`: `none`, `requested`, `processing`,
-    `available` or `failed`. `status` answers "may I ask for it?" and this
-    answers "where is it?", so they differ in one case: after a request that
-    ended without words, `status` is `not_requested` (you may ask again) and
-    `transcript_status` is `failed`.
+    `available` or `failed`. The deprecated `status` answers "may I ask for
+    it?" and this answers "where is it?", so they differ in one case: after
+    a request that ended without words, `status` is `not_requested` (you
+    may ask again) and `transcript_status` is `failed`.
 
     `call_record_id` is the ONE call record the capture — and so this
     transcript — belongs to, with the same rule and the same None as
@@ -1315,18 +1344,22 @@ class Transcript:
     """
 
     id: str
-    ccc_id: str | None = None
-    status: str | None = None
+    # The wire's deprecated `status`, behind the `status` property below so
+    # that reading it can warn.
+    _status: str | None = field(default=None, repr=False)
     language: str | None = None
     duration: int | None = None
-    byte_size: int | None = None
-    sha256: str | None = None
-    content_url: str | None = None
-    expires_at: datetime | None = None
     segments: tuple[TranscriptSegment, ...] | None = None
+    channels: tuple[TranscriptChannel, ...] | None = None
     transcript_status: str | None = None
     call_record_id: str | None = None
     raw: Mapping[str, Any] = field(default_factory=dict, repr=False)
+
+    @property
+    @deprecated("Transcript.status is deprecated: read transcript_status instead")
+    def status(self) -> str | None:
+        """DEPRECATED — read `transcript_status`."""
+        return self._status
 
     @classmethod
     def _from_resource(cls, resource: Mapping[str, Any]) -> Transcript:
@@ -1339,15 +1372,11 @@ class Transcript:
 
         return cls(
             id=_text(resource, "id") or "",
-            ccc_id=_text(attributes, "cccId"),
-            status=_text(attributes, "status"),
+            _status=_text(attributes, "status"),
             language=_text(attributes, "language"),
             duration=_integer(attributes, "duration"),
-            byte_size=_integer(attributes, "byteSize"),
-            sha256=_text(attributes, "sha256"),
-            content_url=_text(attributes, "contentUrl"),
-            expires_at=_parse_datetime(attributes.get("expiresAt")),
             segments=_segments(attributes),
+            channels=_channels(attributes),
             transcript_status=_text(attributes, "transcriptStatus"),
             call_record_id=_text(attributes, "callRecordId"),
             raw=resource,
@@ -1361,9 +1390,12 @@ class TranscriptSegment:
     `speaker` is a label, not an identity: `Speaker 1`, `Speaker 2`, and so
     on. It is stable within one transcript and means nothing across two.
     `start` and `end` are seconds from the start of the recording.
+    `channel` is the audio channel the turn was spoken on, 0 or 1 (0 on a
+    mono recording); `Transcript.channels` says who is on it.
     """
 
     speaker: str | None = None
+    channel: int | None = None
     start: float | None = None
     end: float | None = None
     text: str | None = None
@@ -1373,11 +1405,47 @@ class TranscriptSegment:
     def _from_json(cls, value: Mapping[str, Any]) -> TranscriptSegment:
         return cls(
             speaker=_text(value, "speaker"),
+            channel=_integer(value, "channel"),
             start=_number(value, "start"),
             end=_number(value, "end"),
             text=_text(value, "text"),
             raw=value,
         )
+
+
+@dataclass(frozen=True)
+class TranscriptChannel:
+    """One audio channel of a recording, from `Transcript.channels`.
+
+    `party` is who is on the channel: an extension or an E.164 number.
+    `role` is `caller` or `callee`, and None when the API does not know
+    (the member is absent on the wire then).
+    """
+
+    channel: int | None = None
+    party: str | None = None
+    role: str | None = None
+    raw: Mapping[str, Any] = field(default_factory=dict, repr=False)
+
+    @classmethod
+    def _from_json(cls, value: Mapping[str, Any]) -> TranscriptChannel:
+        return cls(
+            channel=_integer(value, "channel"),
+            party=_text(value, "party"),
+            role=_text(value, "role"),
+            raw=value,
+        )
+
+
+def _channels(attributes: Mapping[str, Any]) -> tuple[TranscriptChannel, ...] | None:
+    """The `channels` member as a tuple, or None when it was not served.
+
+    An empty tuple is a real answer: a one-channel (mono) recording.
+    """
+    value = attributes.get("channels")
+    if not isinstance(value, list):
+        return None
+    return tuple(TranscriptChannel._from_json(item) for item in value if isinstance(item, Mapping))
 
 
 def _segments(attributes: Mapping[str, Any]) -> tuple[TranscriptSegment, ...] | None:

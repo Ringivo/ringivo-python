@@ -135,7 +135,7 @@ async def test_send_uploads_the_pages_as_a_multipart_body(
 
     assert request.headers["content-type"].startswith("multipart/form-data")
     # The four endpoints that are not JSON:API say so, and this is one.
-    assert request.headers["accept"] == "application/json"
+    assert request.headers["accept"] == "application/vnd.api+json"
     assert 'name="faxAccount"' in body
     assert ACCOUNT_ID in body
     assert 'name="to"' in body
@@ -145,6 +145,47 @@ async def test_send_uploads_the_pages_as_a_multipart_body(
     assert fax.id == FAX_ID
     assert fax.status == "queued"
     assert isinstance(fax, Fax)
+
+
+@pytest.mark.anyio
+async def test_send_parses_the_faxes_resource_and_keeps_the_replay_flag(
+    respx_mock: respx.MockRouter, client: AsyncRingivo, tmp_path: Path
+) -> None:
+    page = tmp_path / "chart-4471.pdf"
+    page.write_bytes(b"%PDF-1.7 pretend")
+    route = respx_mock.post(FAXES_URL).mock(
+        return_value=httpx.Response(
+            202, json={"data": _fax_resource()}, headers={"Idempotent-Replay": "true"}
+        )
+    )
+
+    async with client:
+        fax = await client.faxes.send(fax_account=ACCOUNT_ID, to="+13025556789", file=page)
+
+    assert route.calls.last.request.headers["accept"] == "application/vnd.api+json"
+    # A complete fax, not the flat acknowledgement.
+    assert fax.pages_total == 3
+    assert fax.tags == {"clinic": "north"}
+    assert fax.documents[0].kind == "pdf"
+    assert fax.raw["type"] == "faxes"
+    assert fax.idempotent_replay is True
+
+
+@pytest.mark.anyio
+async def test_send_still_reads_an_older_servers_flat_acknowledgement(
+    respx_mock: respx.MockRouter, client: AsyncRingivo, tmp_path: Path
+) -> None:
+    page = tmp_path / "chart-4471.pdf"
+    page.write_bytes(b"%PDF-1.7 pretend")
+    respx_mock.post(FAXES_URL).mock(return_value=httpx.Response(202, json=_accepted()))
+
+    async with client:
+        fax = await client.faxes.send(fax_account=ACCOUNT_ID, to="+13025556789", file=page)
+
+    assert fax.status == "queued"
+    assert fax.client_reference == "chart-4471"
+    assert fax.pages_total is None
+    assert fax.idempotent_replay is False
 
 
 @pytest.mark.anyio
@@ -232,6 +273,7 @@ async def test_send_with_urls_posts_flat_json_and_never_a_jsonapi_document(
     sent = httpx.Response(200, content=request.read()).json()
 
     assert request.headers["content-type"].startswith("application/json")
+    assert request.headers["accept"] == "application/vnd.api+json"
     assert sent == {
         "faxAccount": ACCOUNT_ID,
         "to": "+13025556789",
@@ -560,9 +602,33 @@ async def test_cancel_posts_a_verb_and_returns_the_decision(
     async with client:
         fax = await client.faxes.cancel(FAX_ID)
 
-    assert route.calls.last.request.headers["accept"] == "application/json"
+    assert route.calls.last.request.headers["accept"] == "application/vnd.api+json"
     assert fax.id == FAX_ID
     assert fax.status == "cancelled"
+    # An older server's flat acknowledgement still reads; only the fields it
+    # does not carry are None.
+    assert fax.pages_total is None
+
+
+@pytest.mark.anyio
+async def test_cancel_parses_the_full_faxes_resource(
+    respx_mock: respx.MockRouter, client: AsyncRingivo
+) -> None:
+    resource = _fax_resource()
+    resource["attributes"]["status"] = "cancelled"  # type: ignore[index]
+    route = respx_mock.post(f"{FAX_URL}/cancel").mock(
+        return_value=httpx.Response(200, json={"data": resource})
+    )
+
+    async with client:
+        fax = await client.faxes.cancel(FAX_ID)
+
+    assert route.calls.last.request.headers["accept"] == "application/vnd.api+json"
+    assert fax.status == "cancelled"
+    assert fax.pages_total == 3
+    assert fax.tags == {"clinic": "north"}
+    assert fax.documents[0].kind == "pdf"
+    assert fax.raw["type"] == "faxes"
 
 
 @pytest.mark.anyio
@@ -644,10 +710,18 @@ async def test_media_link_hands_back_the_capability_and_its_facts(
         return_value=httpx.Response(
             200,
             json={
-                "url": f"{BASE_URL}/media/0198c4a1/document.tiff?signature=abc",
-                "expiresAt": "2026-08-16T11:07:31+00:00",
-                "byteSize": 128,
-                "sha256": "d" * 64,
+                "data": {
+                    "type": "fax-documents",
+                    "id": "doc-tiff-1",
+                    "attributes": {
+                        "kind": "tiff",
+                        "contentType": "image/tiff",
+                        "byteSize": 128,
+                        "sha256": "d" * 64,
+                        "contentUrl": f"{BASE_URL}/media/0198c4a1/document.tiff?signature=abc",
+                        "expiresAt": "2026-08-16T11:07:31+00:00",
+                    },
+                }
             },
         )
     )
@@ -656,9 +730,37 @@ async def test_media_link_hands_back_the_capability_and_its_facts(
         media = await client.faxes.media_link(FAX_ID, format="tiff")
 
     assert route.calls.last.request.url.params["format"] == "tiff"
+    assert route.calls.last.request.headers["accept"] == "application/vnd.api+json"
     assert media.url.endswith("signature=abc")
     assert media.byte_size == 128
+    assert media.sha256 == "d" * 64
+    assert media.id == "doc-tiff-1"
+    assert media.kind == "tiff"
+    assert media.content_type == "image/tiff"
     assert media.expires_at == datetime(2026, 8, 16, 11, 7, 31, tzinfo=timezone.utc)
+
+
+def test_media_link_parser_still_reads_the_older_flat_shape() -> None:
+    # An integrator may call this private parser on an old-shape response
+    # from its own `Ringivo.request()` escape hatch, so it keeps both shapes.
+    from ringivo.models import MediaLink
+
+    link = MediaLink._from_json(
+        {
+            "url": "https://x.example/d.pdf?sig=1",
+            "expiresAt": "2026-08-16T11:07:31+00:00",
+            "byteSize": 7,
+            "sha256": "e" * 64,
+        }
+    )
+
+    assert link.url == "https://x.example/d.pdf?sig=1"
+    assert link.byte_size == 7
+    assert link.sha256 == "e" * 64
+    assert link.expires_at == datetime(2026, 8, 16, 11, 7, 31, tzinfo=timezone.utc)
+    assert link.id is None
+    assert link.kind is None
+    assert link.content_type is None
 
 
 @pytest.mark.anyio
@@ -669,10 +771,18 @@ async def test_thumbnail_link_mints_the_first_page_preview_link(
         return_value=httpx.Response(
             200,
             json={
-                "url": f"{FAX_URL}/thumbnail/content?expires=1787057037&signature=abc",
-                "expiresAt": "2026-08-16T11:07:31+00:00",
-                "byteSize": 128,
-                "sha256": "d" * 64,
+                "data": {
+                    "type": "fax-documents",
+                    "id": "doc-thumb-1",
+                    "attributes": {
+                        "kind": "thumb",
+                        "contentType": "image/png",
+                        "byteSize": 128,
+                        "sha256": "d" * 64,
+                        "contentUrl": f"{FAX_URL}/thumbnail/content?expires=1787057037&signature=abc",
+                        "expiresAt": "2026-08-16T11:07:31+00:00",
+                    },
+                }
             },
         )
     )
@@ -681,10 +791,14 @@ async def test_thumbnail_link_mints_the_first_page_preview_link(
         link = await client.faxes.thumbnail_link(FAX_ID)
 
     request = route.calls.last.request
-    assert request.headers["accept"] == "application/json"
+    assert request.headers["accept"] == "application/vnd.api+json"
     assert "format" not in request.url.params
     assert link.url.endswith("signature=abc")
     assert link.byte_size == 128
+    assert link.sha256 == "d" * 64
+    assert link.id == "doc-thumb-1"
+    assert link.kind == "thumb"
+    assert link.content_type == "image/png"
     assert link.expires_at == datetime(2026, 8, 16, 11, 7, 31, tzinfo=timezone.utc)
 
 

@@ -662,19 +662,19 @@ as an outside caller on an inbound call.
         print(recording.id, recording.duration, recording.content_type, recording.content_url)
 
     for transcript in client.pbx.call_records.transcripts(call.id):
-        print(transcript.id, transcript.status)   # "ready", "pending" or "not_requested"
+        print(transcript.id, transcript.transcript_status)   # "available", "requested", "processing", ...
 ```
 
 Both answer every **capture** of one call — a call can have more than one,
-because the phone system's own capture id is `(call id, ccc id)` — and
+because a call can be recorded more than once — and
 neither is paginated: this is the captures of one call, bounded by its two
 legs, never a walk over a growing table, so there is no `after`/`before`
 cursor and nothing beyond the tuple you get back.
 
-`recording.content_url` and `transcript.content_url` are signed,
-time-limited links minted fresh on every call. Do not cache one past its
-`expires_at` or hand it to anyone else — whoever holds the URL can fetch
-that document with no further authorization.
+`recording.content_url` is a signed, time-limited link minted fresh on every
+call. Do not cache it past its `expires_at` or hand it to anyone else —
+whoever holds the URL can fetch the audio with no further authorization.
+A transcript has no link: read its words from `segments`.
 
 **Save a recording with the extension its `content_type` names.** New
 recordings are `audio/webm` (two-channel Opus: the first channel is the
@@ -686,20 +686,42 @@ call record the capture belongs to — the leg the phone system recorded. It
 need not be the record you listed it through, and it is `None` when that
 record is in a domain your credential cannot read or is not written yet.
 `recording.recording_status` is always `available`, and
-`transcript.transcript_status` uses the call record's vocabulary. It
-differs from `transcript.status` in one case: after a request that ended
-without words, `status` is `not_requested` (you may ask again) and
-`transcript_status` is `failed`.
+`transcript.transcript_status` uses the call record's vocabulary — branch on
+it. The deprecated `transcript.status` differs from it in one case: after a
+request that ended without words, `status` is `not_requested` (you may ask
+again) and `transcript_status` is `failed`.
 
 **0.19.0 removed `transcript.provider` and `transcript.model`.** The API
 stopped sending them on 2026-10-01: which speech-to-text service made a
 transcript is not part of it. Remove every read of them. Nothing replaces
-them.
+them. The same release changed more, with the API:
+
+- **Added:** `transcript.channels`, a tuple of `TranscriptChannel` (`channel`,
+  `party`, `role`), and `segment.channel` (0 or 1). `party` is an extension
+  or an E.164 number; `role` is `caller` or `callee`, and `None` when the API
+  does not know. Which side is on which channel is NOT fixed, so read
+  `channels` and never assume channel 0 is the caller. `channels` is `None`
+  where it is not served (`transcripts()` and `request_transcript()`), `()` for
+  a one-channel (mono) recording, and only `transcript()` serves it.
+- **Removed from `Transcript`:** `ccc_id`, `byte_size`, `sha256`,
+  `content_url` and `expires_at`. The transcript download is gone: read the
+  words from `segments`. **Removed from `Recording`:** `ccc_id`.
+- **Deprecated:** `transcript.status` still works but raises a
+  `DeprecationWarning` on read. Read `transcript_status` instead. Code that
+  BUILDS a `Transcript` itself (a constructor call or `dataclasses.replace()`)
+  must pass `_status=`, not `status=`.
+- **Code that reads a removed field now fails:** `transcript.ccc_id`,
+  `transcript.content_url`, `transcript.expires_at` and `recording.ccc_id`
+  raise `AttributeError`. Remove those reads before you upgrade.
+- **Faxes:** `send()`, `cancel()`, `media_link()` and `thumbnail_link()` now
+  ask for JSON:API. `send()` and `cancel()` return a complete `Fax`, and
+  `MediaLink` gains `id`, `kind` and `content_type` (`None` when an older
+  server answers). `MediaLink.url` keeps its name.
 
 `transcripts()` answers one item per **recording**, not one per transcript
 that exists: a capture with no words yet still appears, as a `Transcript`
-with `status="not_requested"` or `"pending"` and every other field `None`,
-so you can tell "no transcript yet" from "no recording at all". Needs
+with `transcript_status` of `none` or `requested`, no `segments` and no
+`channels`, so you can tell "no transcript yet" from "no recording at all". Needs
 `pbx-call-records:read` to fetch the call at all, and `pbx-transcripts:read`
 — a separate grant, because the words of a call are searchable and cheap to
 mine at scale in a way the call log itself is not — to see whether anyone
@@ -716,7 +738,9 @@ spoke.
     # later, or when the pbx.transcript.created webhook arrives:
     transcript = client.pbx.call_records.transcript(call.id, recording.id)
     for turn in transcript.segments or ():
-        print(turn.speaker, turn.start, turn.text)
+        print(turn.speaker, turn.channel, turn.start, turn.text)
+    for side in transcript.channels or ():
+        print(side.channel, side.party, side.role)   # 0 1001 caller
 ```
 
 Both exception classes are importable from `ringivo`. `request_transcript()`
@@ -730,7 +754,7 @@ about too often, 3 times a day by default across all of its captures). Both
 429s carry `retry_after` in seconds.
 
 `transcript()` reads one capture with its `segments`, the turns of the
-conversation. Until the words are ready it is a 404 whose `code` says why:
+conversation, and its `channels`. Until the words are ready it is a 404 whose `code` says why:
 `transcript_not_requested`, `transcript_pending` or `transcript_failed`.
 
 #### Waiting for a recording: webhooks, or polling the status
@@ -1038,16 +1062,16 @@ are deliberately not wrapped.
 | `client.pbx.call_records.list(*, customer=None, started_after=None, started_before=None, direction=None, fields=None, subscriber=None, call_id=None, include_hidden=None, after=None, before=None, page_size=None)` | `pbx-call-records:read` | A `CallRecordPage`, newest first. The date range decides which months are read; no range means the current and previous one. `fields=` asks for the extended tier — a sparse fieldset, so it narrows rather than adds. `call_id` finds the records that carry one call id — a `subscribers.call()` id, a leg's SIP Call-ID, or a recording webhook's `callId` — matched only inside the range's months. |
 | `client.pbx.call_records.get(call_record_id)` | `pbx-call-records:read` | One `CallRecord`. A hidden record IS served here. |
 | `client.pbx.call_records.recordings(call_record_id)` | `pbx-call-records:read` | Every capture of that call, as a plain `tuple[Recording, ...]` — NOT paginated: this is the captures of one call, not a walk over a table. Each `Recording.content_url` is a freshly minted, short-lived link. |
-| `client.pbx.call_records.transcripts(call_record_id)` | `pbx-call-records:read` + `pbx-transcripts:read` | One `Transcript` per capture — `status="not_requested"` or `"pending"` and every other field `None` for one with no words yet. Also NOT paginated. |
-| `client.pbx.call_records.transcript(call_record_id, recording_id)` | `pbx-call-records:read` + `pbx-transcripts:read` | One `Transcript`, with its `segments`. A 404 `code` says whether it was not requested, is pending, or failed. |
-| `client.pbx.call_records.request_transcript(call_record_id, recording_id)` | `pbx-call-records:read` + `pbx-transcripts:write` | Ask for one capture's transcript. Returns the `pending` (202) or `ready` (200) `Transcript`. Safe to repeat. |
+| `client.pbx.call_records.transcripts(call_record_id)` | `pbx-call-records:read` + `pbx-transcripts:read` | One `Transcript` per capture — `transcript_status` `none` or `requested` and no `segments` for one with no words yet. Also NOT paginated. |
+| `client.pbx.call_records.transcript(call_record_id, recording_id)` | `pbx-call-records:read` + `pbx-transcripts:read` | One `Transcript`, with its `segments` and `channels`. A 404 `code` says whether it was not requested, is pending, or failed. |
+| `client.pbx.call_records.request_transcript(call_record_id, recording_id)` | `pbx-call-records:read` + `pbx-transcripts:write` | Ask for one capture's transcript. Returns the `requested` (202) or `available` (200) `Transcript`. Safe to repeat. |
 | `webhooks.verify(payload, header, secret, *, tolerance=300)` | — | Raises unless the body is genuine and fresh. |
 
 `CallRecord`, `CallRecordPage`, `Customer`, `CustomerPage`, `Fax`,
 `FaxAccount`, `FaxAccountNumber`, `FaxAccountPage`, `FaxAccountUser`,
 `FaxAccountUserPage`, `FaxDocument`, `FaxPage`, `MediaLink`, `PbxCall`,
 `PbxDevice`, `PbxDevicePage`, `PbxSubscriber`, `PbxSubscriberPage`, `Recording`,
-`Transcript`, `TranscriptSegment`, `WebhookDelivery`, `WebhookDeliveryPage`, `WebhookEndpoint`
+`Transcript`, `TranscriptChannel`, `TranscriptSegment`, `WebhookDelivery`, `WebhookDeliveryPage`, `WebhookEndpoint`
 and `WebhookEndpointPage` are frozen dataclasses, and each keeps the JSON
 it was built from in `.raw` — so a field the API adds after this release
 reaches you without a new SDK.

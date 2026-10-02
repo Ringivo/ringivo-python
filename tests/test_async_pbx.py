@@ -29,6 +29,7 @@ from ringivo import (
     RecordingAudioMissingError,
     Transcript,
     TranscriptionCappedError,
+    TranscriptChannel,
     TranscriptRequestLimitedError,
     TranscriptSegment,
 )
@@ -232,7 +233,6 @@ def _recording_resource(
     this endpoint's own spelling, unlike the camelCase call-records block.
     """
     merged: dict[str, object] = {
-        "ccc-id": "00b1",
         "duration": 64,
         "byte-size": 512000,
         "sha256": "a" * 64,
@@ -253,15 +253,9 @@ def _transcript_resource(
 ) -> dict[str, object]:
     """One `transcripts` resource object in the `ready` state."""
     merged: dict[str, object] = {
-        "ccc-id": "00b1",
         "status": "ready",
         "language": "en-US",
         "duration": 64,
-        "byte-size": 2048,
-        "sha256": "b" * 64,
-        "content-url": f"{BASE_URL}/v1/pbx/transcripts-content/signed-token",
-        "expires-at": "2026-09-12T15:00:00Z",
-        # Members added after the kebab-case rename: camelCase only.
         "transcriptStatus": "available",
         "callRecordId": None,
     }
@@ -751,7 +745,7 @@ async def test_call_records_recordings_reads_every_field_into_the_public_datacla
     recording = recordings[0]
     assert isinstance(recording, Recording)
     assert recording.id == RECORDING_ID
-    assert recording.ccc_id == "00b1"
+    assert not hasattr(recording, "ccc_id")
     assert recording.duration == 64
     assert recording.byte_size == 512000
     assert recording.sha256 == "a" * 64
@@ -824,15 +818,11 @@ async def test_call_records_transcripts_reads_the_ready_state_into_the_public_da
     transcript = transcripts[0]
     assert isinstance(transcript, Transcript)
     assert transcript.id == RECORDING_ID
-    assert transcript.ccc_id == "00b1"
-    assert transcript.status == "ready"
     assert transcript.language == "en-US"
     assert transcript.duration == 64
-    assert transcript.byte_size == 2048
-    assert transcript.sha256 == "b" * 64
-    assert transcript.content_url == f"{BASE_URL}/v1/pbx/transcripts-content/signed-token"
-    assert transcript.expires_at == datetime(2026, 9, 12, 15, 0, tzinfo=timezone.utc)
     assert transcript.transcript_status == "available"
+    # The list does not serve the channels, like the segments.
+    assert transcript.channels is None
     assert transcript.call_record_id is None
 
 
@@ -850,10 +840,7 @@ async def test_call_records_transcripts_reads_the_pending_state_with_every_other
                             "status": "pending",
                             "language": None,
                             "duration": None,
-                            "byte-size": None,
-                            "sha256": None,
-                            "content-url": None,
-                            "expires-at": None,
+                            "transcriptStatus": "requested",
                         }
                     )
                 ]
@@ -865,10 +852,9 @@ async def test_call_records_transcripts_reads_the_pending_state_with_every_other
         transcripts = await client.pbx.call_records.transcripts(CALL_RECORD_ID)
 
     transcript = transcripts[0]
-    assert transcript.status == "pending"
+    assert transcript.transcript_status == "requested"
     assert transcript.language is None
-    assert transcript.content_url is None
-    assert transcript.expires_at is None
+    assert transcript.channels is None
 
 
 @pytest.mark.anyio
@@ -929,7 +915,7 @@ def _refusal(status: int, code: str, *, retry_after: str | None = None) -> httpx
 async def test_call_records_transcript_reads_one_transcript_with_its_segments(
     respx_mock: respx.MockRouter, client: AsyncRingivo
 ) -> None:
-    segments = [{"speaker": "Speaker 1", "start": 0.08, "end": 2, "text": "Hello."}]
+    segments = [{"speaker": "Speaker 1", "channel": 1, "start": 0.08, "end": 2, "text": "Hello."}]
     respx_mock.get(CALL_RECORD_TRANSCRIPT_URL).mock(
         return_value=httpx.Response(
             200, json={"data": _transcript_resource(attributes={"segments": segments})}
@@ -940,10 +926,75 @@ async def test_call_records_transcript_reads_one_transcript_with_its_segments(
         transcript = await client.pbx.call_records.transcript(CALL_RECORD_ID, RECORDING_ID)
 
     assert transcript.id == RECORDING_ID
-    assert transcript.status == "ready"
+    assert transcript.transcript_status == "available"
     assert transcript.segments == (
-        TranscriptSegment(speaker="Speaker 1", start=0.08, end=2.0, text="Hello.", raw=segments[0]),
+        TranscriptSegment(
+            speaker="Speaker 1", channel=1, start=0.08, end=2.0, text="Hello.", raw=segments[0]
+        ),
     )
+
+
+@pytest.mark.anyio
+async def test_call_records_transcript_reads_the_channels_with_and_without_a_role(
+    respx_mock: respx.MockRouter, client: AsyncRingivo
+) -> None:
+    channels = [
+        {"channel": 0, "party": "1001", "role": "caller"},
+        {"channel": 1, "party": "+14075550100", "role": "callee"},
+    ]
+    respx_mock.get(CALL_RECORD_TRANSCRIPT_URL).mock(
+        return_value=httpx.Response(
+            200, json={"data": _transcript_resource(attributes={"channels": channels})}
+        )
+    )
+
+    async with client:
+        transcript = await client.pbx.call_records.transcript(CALL_RECORD_ID, RECORDING_ID)
+
+    assert transcript.channels == (
+        TranscriptChannel(channel=0, party="1001", role="caller", raw=channels[0]),
+        TranscriptChannel(channel=1, party="+14075550100", role="callee", raw=channels[1]),
+    )
+
+
+@pytest.mark.anyio
+async def test_a_channel_with_no_role_on_the_wire_reads_none(
+    respx_mock: respx.MockRouter, client: AsyncRingivo
+) -> None:
+    respx_mock.get(CALL_RECORD_TRANSCRIPT_URL).mock(
+        return_value=httpx.Response(
+            200,
+            json={
+                "data": _transcript_resource(
+                    attributes={"channels": [{"channel": 0, "party": "1001"}]}
+                )
+            },
+        )
+    )
+
+    async with client:
+        transcript = await client.pbx.call_records.transcript(CALL_RECORD_ID, RECORDING_ID)
+
+    assert transcript.channels is not None
+    (channel,) = transcript.channels
+    assert (channel.channel, channel.party, channel.role) == (0, "1001", None)
+
+
+@pytest.mark.anyio
+async def test_a_mono_recording_has_an_empty_channels_tuple(
+    respx_mock: respx.MockRouter, client: AsyncRingivo
+) -> None:
+    respx_mock.get(CALL_RECORD_TRANSCRIPT_URL).mock(
+        return_value=httpx.Response(
+            200, json={"data": _transcript_resource(attributes={"channels": []})}
+        )
+    )
+
+    async with client:
+        transcript = await client.pbx.call_records.transcript(CALL_RECORD_ID, RECORDING_ID)
+
+    assert transcript.channels == ()
+
 
 
 @pytest.mark.anyio
@@ -955,7 +1006,7 @@ async def test_request_transcript_posts_no_body_and_reads_the_pending_answer(
             202,
             json={
                 "data": _transcript_resource(
-                    attributes={"status": "pending", "content-url": None, "expires-at": None}
+                    attributes={"status": "pending", "transcriptStatus": "requested"}
                 )
             },
         )
@@ -967,8 +1018,7 @@ async def test_request_transcript_posts_no_body_and_reads_the_pending_answer(
     request = route.calls.last.request
     assert request.method == "POST"
     assert request.content == b""
-    assert transcript.status == "pending"
-    assert transcript.content_url is None
+    assert transcript.transcript_status == "requested"
 
 
 @pytest.mark.anyio

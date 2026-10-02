@@ -253,7 +253,7 @@ class AsyncPbxCallRecords:
         call_id: The records that carry ONE call id: the `id` that
             `subscribers.call()` returned, a leg's SIP Call-ID
             (`orig_call_id` or `term_call_id` on a record), or the `callId`
-            of a `call_recording.available` or `call_transcript.available`
+            of a `pbx.recording.created` or `pbx.transcript.created`
             webhook. A click-to-dial call's record appears once the call
             has ended, and that call writes two records: by default
             the list returns the visible dial-out record, and the hidden
@@ -322,8 +322,8 @@ class AsyncPbxCallRecords:
 
         The awaited twin of `PbxCallRecords.transcripts`. ONE ITEM PER
         RECORDING, not one per transcript that exists — a capture with no
-        words yet still appears, as `status="not_requested"` or
-        `"pending"` with every other field None. NOT PAGINATED, for the
+        words yet still appears, with a
+        `transcript_status` of `none` or `requested` and no turns. NOT PAGINATED, for the
         reason `recordings()` is not.
 
         This is the collection read only, and it carries no speaker turns:
