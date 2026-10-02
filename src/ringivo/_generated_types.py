@@ -179,9 +179,9 @@ WebhookEventType: TypeAlias = Literal[
     'port_order.status_changed',
     'pbx_change.confirmed',
     'pbx_change.stalled',
-    'call_recording.available',
-    'call_transcript.available',
-    'call_record.completed',
+    'pbx.recording.created',
+    'pbx.transcript.created',
+    'pbx.cdr.created',
     'webhook.heartbeat',
 ]
 
