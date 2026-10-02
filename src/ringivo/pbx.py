@@ -394,7 +394,7 @@ class PbxCallRecords:
             call_id: The records that carry ONE call id: the `id` that
                 `subscribers.call()` returned, a leg's SIP Call-ID
                 (`orig_call_id` or `term_call_id` on a record), or the `callId`
-                of a `call_recording.available` or `call_transcript.available`
+                of a `pbx.recording.created` or `pbx.transcript.created`
                 webhook. A click-to-dial call's record appears once the call
                 has ended, and that call writes two records: by default
                 the list returns the visible dial-out record, and the hidden
@@ -541,7 +541,7 @@ class PbxCallRecords:
 
         Returns at once. A 202 answers a `Transcript` with
         `status == "pending"`: poll `transcript()` or `transcripts()` until
-        it is `ready`, or subscribe to the `call_transcript.available`
+        it is `ready`, or subscribe to the `pbx.transcript.created`
         webhook. A capture that is already transcribed answers 200 with the
         `ready` transcript, and starts nothing new.
 
