@@ -772,6 +772,43 @@ class CallTranscriptAvailableEvent(WebhookEventEnvelope):
     data: CallTranscriptAvailableEventData
 
 
+class MediaItem(TypedDict, closed=True):
+    url: str
+
+
+ProviderPartId: TypeAlias = str
+
+
+class AlreadySent(TypedDict, closed=True):
+    providerMessageId: str
+    providerPartIds: list[ProviderPartId]
+    sentAt: str
+
+
+Attributes5 = TypedDict(
+    'Attributes5',
+    {
+        'from': str,
+        'to': str,
+        'body': NotRequired[str | None],
+        'media': NotRequired[list[MediaItem]],
+        'senderLabel': str,
+        'markConversationRead': NotRequired[bool],
+        'alreadySent': AlreadySent,
+    },
+    closed=True,
+)
+
+
+class Data8(TypedDict):
+    type: Literal['outbound-messages']
+    attributes: Attributes5
+
+
+class OutboundMessageRecordRequest(TypedDict):
+    data: Data8
+
+
 class OutboundMessageSender(TypedDict):
     kind: Literal['pbx_user']
     name: str | None
@@ -784,7 +821,9 @@ class OutboundMessageMediaPart(TypedDict):
     bytes: NotRequired[int]
 
 
-OutboundMessageSource: TypeAlias = Literal['api', 'pbx', 'passthrough', 'system']
+OutboundMessageSource: TypeAlias = Literal[
+    'api', 'pbx', 'passthrough', 'recorded', 'system'
+]
 
 
 OutboundMessageKind: TypeAlias = Literal['sms', 'mms']
@@ -886,7 +925,7 @@ class NumberLookupDocument(TypedDict):
     data: NumberLookupResource
 
 
-class Attributes5(TypedDict):
+class Attributes6(TypedDict):
     e164: NotRequired[str]
     country: NotRequired[str]
     state: NotRequired[str | None]
@@ -898,7 +937,7 @@ class Attributes5(TypedDict):
 class AvailableNumberResource(TypedDict):
     type: Literal['available-numbers']
     id: str
-    attributes: Attributes5
+    attributes: Attributes6
 
 
 class AvailableNumberCollectionDocument(TypedDict):
@@ -927,7 +966,7 @@ class Tier(TypedDict):
     amount: NotRequired[str | None]
 
 
-class Attributes6(TypedDict):
+class Attributes7(TypedDict):
     slug: NotRequired[str]
     name: NotRequired[str]
     kind: NotRequired[Literal['nrc', 'mrc']]
@@ -941,7 +980,7 @@ class Attributes6(TypedDict):
 class RateResource(TypedDict):
     type: Literal['rates']
     id: str
-    attributes: Attributes6
+    attributes: Attributes7
 
 
 class RateCollectionDocument(TypedDict):
@@ -953,14 +992,14 @@ class Option(TypedDict):
     label: NotRequired[str]
 
 
-class Attributes7(TypedDict):
+class Attributes8(TypedDict):
     options: NotRequired[list[Option]]
 
 
 class RegionResource(TypedDict):
     type: Literal['regions']
     id: str
-    attributes: Attributes7
+    attributes: Attributes8
 
 
 class RegionCollectionDocument(TypedDict):
@@ -1090,13 +1129,13 @@ class Relationships6(TypedDict):
     phoneNumber: PhoneNumber
 
 
-class Data8(TypedDict):
+class Data9(TypedDict):
     type: Literal['messaging-enablements']
     relationships: Relationships6
 
 
 class MessagingEnablementCreateRequest(TypedDict):
-    data: Data8
+    data: Data9
 
 
 HostedMessagingOrderStatus: TypeAlias = Literal[
@@ -1148,7 +1187,7 @@ class EndUser(TypedDict):
     email: str
 
 
-class Attributes8(TypedDict):
+class Attributes9(TypedDict):
     e164: str
     endUser: EndUser
 
@@ -1157,14 +1196,14 @@ class Relationships7(TypedDict):
     customer: NotRequired[Customer]
 
 
-class Data9(TypedDict):
+class Data10(TypedDict):
     type: Literal['hosted-messaging-orders']
-    attributes: Attributes8
+    attributes: Attributes9
     relationships: NotRequired[Relationships7]
 
 
 class HostedMessagingOrderCreateRequest(TypedDict):
-    data: Data9
+    data: Data10
 
 
 class ZtpDeviceAttributes(TypedDict):
@@ -1207,7 +1246,7 @@ class ZtpDeviceCollectionDocument(TypedDict):
     meta: NotRequired[DocumentMeta]
 
 
-class Attributes9(TypedDict):
+class Attributes10(TypedDict):
     mac: str
     label: NotRequired[str | None]
 
@@ -1220,17 +1259,17 @@ class Relationships8(TypedDict):
     customer: NotRequired[Customer3]
 
 
-class Data10(TypedDict):
+class Data11(TypedDict):
     type: Literal['ztp-devices']
-    attributes: Attributes9
+    attributes: Attributes10
     relationships: NotRequired[Relationships8]
 
 
 class ZtpDeviceCreateRequest(TypedDict):
-    data: Data10
+    data: Data11
 
 
-class Attributes10(TypedDict):
+class Attributes11(TypedDict):
     label: NotRequired[str | None]
 
 
@@ -1238,15 +1277,15 @@ class Relationships9(TypedDict):
     customer: NotRequired[Customer3]
 
 
-class Data11(TypedDict):
+class Data12(TypedDict):
     type: Literal['ztp-devices']
     id: str
-    attributes: NotRequired[Attributes10]
+    attributes: NotRequired[Attributes11]
     relationships: NotRequired[Relationships9]
 
 
 class ZtpDeviceUpdateRequest(TypedDict):
-    data: Data11
+    data: Data12
 
 
 PortOrderStatus: TypeAlias = Literal[
@@ -1387,18 +1426,18 @@ class PortOrderCollectionDocument(TypedDict):
     meta: NotRequired[DocumentMeta]
 
 
-class Attributes11(TypedDict):
+class Attributes12(TypedDict):
     label: str
     country: NotRequired[str]
 
 
-class Data12(TypedDict):
+class Data13(TypedDict):
     type: Literal['port-orders']
-    attributes: Attributes11
+    attributes: Attributes12
 
 
 class PortOrderCreateRequest(TypedDict):
-    data: Data12
+    data: Data13
 
 
 class PortOrderNumberInput1(TypedDict, closed=True):
@@ -1412,7 +1451,7 @@ class Meta(TypedDict):
     cancelSignedLoa: NotRequired[bool]
 
 
-class Attributes12(TypedDict):
+class Attributes13(TypedDict):
     label: NotRequired[str | None]
     endUserName: NotRequired[str | None]
     endUserAddress: NotRequired[str | None]
@@ -1435,15 +1474,15 @@ class Attributes12(TypedDict):
     numbers: NotRequired[list[PortOrderNumberInput] | None]
 
 
-class Data13(TypedDict):
+class Data14(TypedDict):
     type: Literal['port-orders']
     id: str
-    attributes: NotRequired[Attributes12]
+    attributes: NotRequired[Attributes13]
 
 
 class PortOrderUpdateRequest(TypedDict):
     meta: NotRequired[Meta]
-    data: Data13
+    data: Data14
 
 
 class PortOrderDocumentUploadRequest(TypedDict):
@@ -1603,14 +1642,14 @@ class TenantWritableAttributes(TypedDict):
     supportPhone: NotRequired[str | None]
 
 
-class Data14(TypedDict):
+class Data15(TypedDict):
     type: Literal['tenants']
     id: str
     attributes: TenantWritableAttributes
 
 
 class TenantUpdateRequest(TypedDict):
-    data: Data14
+    data: Data15
 
 
 SipTrunkMode: TypeAlias = Literal['static', 'register']
@@ -1739,24 +1778,24 @@ class Relationships10(TypedDict):
     customer: Customer5
 
 
-class Data15(TypedDict):
+class Data16(TypedDict):
     type: Literal['sip-trunks']
     attributes: SipTrunkCreateAttributes
     relationships: Relationships10
 
 
 class SipTrunkCreateRequest(TypedDict):
-    data: Data15
+    data: Data16
 
 
-class Data16(TypedDict):
+class Data17(TypedDict):
     type: Literal['sip-trunks']
     id: str
     attributes: SipTrunkWritableAttributes
 
 
 class SipTrunkUpdateRequest(TypedDict):
-    data: Data16
+    data: Data17
 
 
 class SipTrunkIpAttributes(TypedDict):
@@ -1809,24 +1848,24 @@ class Relationships11(TypedDict):
     sipTrunk: SipTrunk
 
 
-class Data17(TypedDict):
+class Data18(TypedDict):
     type: Literal['sip-trunk-ips']
     attributes: SipTrunkIpCreateAttributes
     relationships: Relationships11
 
 
 class SipTrunkIpCreateRequest(TypedDict):
-    data: Data17
+    data: Data18
 
 
-class Data18(TypedDict):
+class Data19(TypedDict):
     type: Literal['sip-trunk-ips']
     id: str
     attributes: SipTrunkIpWritableAttributes
 
 
 class SipTrunkIpUpdateRequest(TypedDict):
-    data: Data18
+    data: Data19
 
 
 class SipTrunkTargetAttributes(TypedDict):
@@ -1884,24 +1923,24 @@ class Relationships12(TypedDict):
     sipTrunk: SipTrunk
 
 
-class Data19(TypedDict):
+class Data20(TypedDict):
     type: Literal['sip-trunk-targets']
     attributes: SipTrunkTargetCreateAttributes
     relationships: Relationships12
 
 
 class SipTrunkTargetCreateRequest(TypedDict):
-    data: Data19
+    data: Data20
 
 
-class Data20(TypedDict):
+class Data21(TypedDict):
     type: Literal['sip-trunk-targets']
     id: str
     attributes: SipTrunkTargetWritableAttributes
 
 
 class SipTrunkTargetUpdateRequest(TypedDict):
-    data: Data20
+    data: Data21
 
 
 CallDirection: TypeAlias = Literal['inbound', 'outbound', 'internal']
@@ -2268,6 +2307,43 @@ OutboundMessageEventData = TypedDict(
 )
 
 
+OutboundMessageAttributes = TypedDict(
+    'OutboundMessageAttributes',
+    {
+        'source': NotRequired[OutboundMessageSource],
+        'kind': NotRequired[OutboundMessageKind],
+        'status': NotRequired[
+            Literal[
+                'queued', 'submitting', 'sent', 'delivered', 'undelivered', 'failed'
+            ]
+        ],
+        'from': NotRequired[str],
+        'to': NotRequired[str],
+        'body': NotRequired[str | None],
+        'media': NotRequired[list[OutboundMessageMediaPart]],
+        'senderLabel': NotRequired[str | None],
+        'markConversationRead': NotRequired[bool | None],
+        'sentAt': NotRequired[str | None],
+        'providerMessageId': NotRequired[str | None],
+        'providerPartIds': NotRequired[list[str] | None],
+        'createdAt': NotRequired[str],
+        'updatedAt': NotRequired[str],
+    },
+)
+
+
+class OutboundMessageResource(TypedDict):
+    type: Literal['outbound-messages']
+    id: str
+    attributes: NotRequired[OutboundMessageAttributes]
+    meta: NotRequired[ResourceMeta]
+
+
+class OutboundMessageDocumentResponse(TypedDict):
+    data: OutboundMessageResource
+    meta: NotRequired[DocumentMeta]
+
+
 class MessageFailedEventData(OutboundMessageEventData):
     failure: Failure
 
@@ -2292,13 +2368,13 @@ class PortOrderBillExtractionSettledEvent(WebhookEventEnvelope):
     data: PortOrderBillExtractionSettledEventData
 
 
-class Data21(TypedDict):
+class Data22(TypedDict):
     type: Literal['calls']
     attributes: PbxCallRequestAttributes
 
 
 class PbxCallRequest(TypedDict):
-    data: Data21
+    data: Data22
 
 
 class PbxSubscriberAttributes(TypedDict):
