@@ -175,6 +175,9 @@ WebhookEventType: TypeAlias = Literal[
     'fax.failed',
     'fax.cancelled',
     'message.received',
+    'message.sent',
+    'message.delivered',
+    'message.failed',
     'port_order.bill_extraction_settled',
     'port_order.status_changed',
     'pbx_change.confirmed',
@@ -767,6 +770,28 @@ class WebhookHeartbeatEvent(WebhookEventEnvelope):
 
 class CallTranscriptAvailableEvent(WebhookEventEnvelope):
     data: CallTranscriptAvailableEventData
+
+
+class OutboundMessageSender(TypedDict):
+    kind: Literal['pbx_user']
+    name: str | None
+
+
+class OutboundMessageMediaPart(TypedDict):
+    contentType: NotRequired[str]
+    filename: NotRequired[str | None]
+    encoding: NotRequired[str | None]
+    bytes: NotRequired[int]
+
+
+OutboundMessageSource: TypeAlias = Literal['api', 'pbx', 'passthrough', 'system']
+
+
+OutboundMessageKind: TypeAlias = Literal['sms', 'mms']
+
+
+class Failure(TypedDict):
+    cause: str
 
 
 class PbxChangeEventData(TypedDict):
@@ -2220,6 +2245,43 @@ class CallRecordCompletedEvent(WebhookEventEnvelope):
 
 class MessageReceivedEvent(WebhookEventEnvelope):
     data: MessageReceivedEventData
+
+
+OutboundMessageEventData = TypedDict(
+    'OutboundMessageEventData',
+    {
+        'id': str,
+        'tenantId': str,
+        'customerId': str | None,
+        'source': OutboundMessageSource,
+        'kind': OutboundMessageKind,
+        'from': str,
+        'to': str,
+        'body': str | None,
+        'media': list[OutboundMessageMediaPart],
+        'status': Literal['sent', 'delivered', 'undelivered', 'failed'],
+        'sentBy': OutboundMessageSender | None,
+        'sentAt': str | None,
+        'providerMessageId': str | None,
+        'providerPartIds': list[str] | None,
+    },
+)
+
+
+class MessageFailedEventData(OutboundMessageEventData):
+    failure: Failure
+
+
+class MessageSentEvent(WebhookEventEnvelope):
+    data: OutboundMessageEventData
+
+
+class MessageDeliveredEvent(WebhookEventEnvelope):
+    data: OutboundMessageEventData
+
+
+class MessageFailedEvent(WebhookEventEnvelope):
+    data: MessageFailedEventData
 
 
 class PortOrderStatusChangedEvent(WebhookEventEnvelope):
