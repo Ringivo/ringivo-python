@@ -821,9 +821,7 @@ class OutboundMessageMediaPart(TypedDict):
     bytes: NotRequired[int]
 
 
-OutboundMessageSource: TypeAlias = Literal[
-    'api', 'pbx', 'passthrough', 'recorded', 'system'
-]
+OutboundMessageSource: TypeAlias = Literal['api', 'pbx', 'recorded', 'system']
 
 
 OutboundMessageKind: TypeAlias = Literal['sms', 'mms']
