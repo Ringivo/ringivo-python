@@ -810,7 +810,7 @@ class OutboundMessageRecordRequest(TypedDict):
 
 
 class OutboundMessageSender(TypedDict):
-    kind: Literal['pbx_user']
+    kind: Literal['phone_system_user']
     name: str | None
 
 
@@ -821,7 +821,7 @@ class OutboundMessageMediaPart(TypedDict):
     bytes: NotRequired[int]
 
 
-OutboundMessageSource: TypeAlias = Literal['api', 'pbx', 'recorded', 'system']
+OutboundMessageSource: TypeAlias = Literal['api', 'phone_system', 'recorded', 'system']
 
 
 OutboundMessageKind: TypeAlias = Literal['sms', 'mms']
