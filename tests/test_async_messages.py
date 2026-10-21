@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 from datetime import datetime, timezone
+from typing import Any
 
 import httpx
 import pytest
@@ -23,50 +24,6 @@ BASE_URL = "https://api.yourprovider.example"
 TOKEN_URL = f"{BASE_URL}/oauth/token"
 RECORD_URL = f"{BASE_URL}/v1/outbound-messages"
 TENANT = "0198c4a1-3d4e-7f50-a1b2-c3d4e5f6a7b8"
-
-#: The spec's request example for `POST /v1/outbound-messages`.
-SPEC_REQUEST_EXAMPLE = {
-    "data": {
-        "type": "outbound-messages",
-        "attributes": {
-            "from": "+14075550142",
-            "to": "+13215550187",
-            "body": "Reminder: Rex is due for his rabies booster on Oct 24.",
-            "media": [],
-            "senderLabel": "Appointment reminder",
-            "markConversationRead": False,
-            "alreadySent": {
-                "providerMessageId": "01JC8ZA1F5T3R8C2P6M0L4JSWQ",
-                "providerPartIds": ["01JC8ZA1F5T3R8C2P6M0L4JSWQ"],
-                "sentAt": "2026-10-19T15:02:44Z",
-            },
-        },
-    }
-}
-
-#: The spec's 201 example.
-SPEC_RESPONSE_EXAMPLE = {
-    "data": {
-        "type": "outbound-messages",
-        "id": "0192f0c0-5d2e-7a1b-8c3d-4e5f60718293",
-        "attributes": {
-            "source": "recorded",
-            "kind": "sms",
-            "status": "sent",
-            "from": "+14075550142",
-            "to": "+13215550187",
-            "body": "Reminder: Rex is due for his rabies booster on Oct 24.",
-            "media": [],
-            "senderLabel": "Appointment reminder",
-            "markConversationRead": False,
-            "sentAt": "2026-10-19T15:02:44.000000Z",
-            "providerMessageId": "01JC8ZA1F5T3R8C2P6M0L4JSWQ",
-            "providerPartIds": ["01JC8ZA1F5T3R8C2P6M0L4JSWQ"],
-            "createdAt": "2026-10-19T15:02:45.000000Z",
-            "updatedAt": "2026-10-19T15:02:45.000000Z",
-        },
-    }
-}
 
 SENT_AT = datetime(2026, 10, 19, 15, 2, 44, tzinfo=timezone.utc)
 
@@ -113,16 +70,16 @@ def _client(timeout: float = 30.0) -> AsyncRingivo:
 
 
 @pytest.mark.anyio
-async def test_record_posts_the_spec_example(respx_mock: respx.MockRouter) -> None:
+async def test_record_posts_the_spec_example(respx_mock: respx.MockRouter, request_example: dict[str, Any], response_example: dict[str, Any]) -> None:
     route = respx_mock.post(RECORD_URL).mock(
-        return_value=httpx.Response(201, json=SPEC_RESPONSE_EXAMPLE)
+        return_value=httpx.Response(201, json=response_example)
     )
 
     async with _client() as client:
         recorded = await client.messages.record(**_arguments())  # type: ignore[arg-type]
 
     sent = route.calls.last.request
-    assert json.loads(sent.content) == SPEC_REQUEST_EXAMPLE
+    assert json.loads(sent.content) == request_example
     assert sent.headers["Content-Type"] == "application/vnd.api+json"
     assert "Idempotency-Key" not in sent.headers
     assert recorded.replayed is False
@@ -130,8 +87,8 @@ async def test_record_posts_the_spec_example(respx_mock: respx.MockRouter) -> No
 
 
 @pytest.mark.anyio
-async def test_a_200_is_a_replay(respx_mock: respx.MockRouter) -> None:
-    respx_mock.post(RECORD_URL).mock(return_value=httpx.Response(200, json=SPEC_RESPONSE_EXAMPLE))
+async def test_a_200_is_a_replay(respx_mock: respx.MockRouter, response_example: dict[str, Any]) -> None:
+    respx_mock.post(RECORD_URL).mock(return_value=httpx.Response(200, json=response_example))
 
     async with _client() as client:
         recorded = await client.messages.record(**_arguments())  # type: ignore[arg-type]
@@ -154,9 +111,9 @@ async def test_a_429_carries_retry_after(respx_mock: respx.MockRouter) -> None:
 
 
 @pytest.mark.anyio
-async def test_the_record_waits_at_least_the_floor(respx_mock: respx.MockRouter) -> None:
+async def test_the_record_waits_at_least_the_floor(respx_mock: respx.MockRouter, response_example: dict[str, Any]) -> None:
     route = respx_mock.post(RECORD_URL).mock(
-        return_value=httpx.Response(201, json=SPEC_RESPONSE_EXAMPLE)
+        return_value=httpx.Response(201, json=response_example)
     )
 
     async with _client(timeout=5.0) as client:

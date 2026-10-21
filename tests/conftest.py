@@ -39,7 +39,15 @@ rewriting first.
 
 from __future__ import annotations
 
+from pathlib import Path
+from typing import Any
+
 import pytest
+import yaml
+
+#: The vendored spec, beside the package rather than inside it (it is not
+#: shipped in the wheel).
+SPEC_PATH = Path(__file__).resolve().parents[1] / "spec" / "openapi.yaml"
 
 
 @pytest.fixture(params=[pytest.param("asyncio", id="asyncio")])
@@ -47,3 +55,36 @@ def anyio_backend(request: pytest.FixtureRequest) -> str:
     backend = request.param
     assert isinstance(backend, str)
     return backend
+
+
+@pytest.fixture(scope="session")
+def openapi_spec() -> dict[str, Any]:
+    """The vendored OpenAPI description, parsed once per run.
+
+    Tests that check this package against the contract read it from here
+    rather than from a hand copy, so a spec sync that changes an example or a
+    limit fails a test instead of leaving the copy behind.
+    """
+    document = yaml.safe_load(SPEC_PATH.read_text(encoding="utf-8"))
+    assert isinstance(document, dict)
+    return document
+
+
+def _record_operation(spec: dict[str, Any]) -> dict[str, Any]:
+    return spec["paths"]["/v1/outbound-messages"]["post"]
+
+
+@pytest.fixture
+def request_example(openapi_spec: dict[str, Any]) -> dict[str, Any]:
+    """The spec's request example for `POST /v1/outbound-messages`."""
+    return _record_operation(openapi_spec)["requestBody"]["content"]["application/vnd.api+json"][
+        "example"
+    ]
+
+
+@pytest.fixture
+def response_example(openapi_spec: dict[str, Any]) -> dict[str, Any]:
+    """The spec's 201 example."""
+    return _record_operation(openapi_spec)["responses"]["201"]["content"][
+        "application/vnd.api+json"
+    ]["example"]

@@ -62,6 +62,7 @@ from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Any
 from urllib.parse import urlsplit
 
+from ._generated_types import OutboundMessageRecordRequest
 from .models import OutboundMessage
 
 if TYPE_CHECKING:  # pragma: no cover - import cycle broken for the type only
@@ -69,17 +70,22 @@ if TYPE_CHECKING:  # pragma: no cover - import cycle broken for the type only
 
 __all__ = [
     "MAX_MEDIA",
+    "MAX_PROVIDER_ID_LENGTH",
     "MAX_SENDER_LABEL_CODE_POINTS",
     "RECORD_MIN_TIMEOUT_SECONDS",
     "Messages",
     "sender_label",
 ]
 
-#: The longest label the API accepts, in Unicode code points.
+#: The longest label the API accepts, in Unicode code points — the spec's
+#: `senderLabel.maxLength` (tests/test_messages.py reads it from the spec).
 MAX_SENDER_LABEL_CODE_POINTS = 40
 
-#: The most picture links one record may carry.
+#: The most picture links one record may carry — the spec's `media.maxItems`.
 MAX_MEDIA = 10
+
+#: The longest provider message id or part id — the spec's `maxLength`.
+MAX_PROVIDER_ID_LENGTH = 128
 
 #: The shortest timeout `record()` uses: the API fetches pictures for up to
 #: 20 seconds before it answers, plus room for the record itself.
@@ -91,13 +97,21 @@ _JSONAPI = "application/vnd.api+json"
 
 _PATH = "/v1/outbound-messages"
 
+#: What the API trims as white space besides the `Z` categories: the ASCII
+#: white space of its `\s` (space, tab, LF, VT, FF, CR). NOT U+001C–U+001F:
+#: Python's `str.isspace()` counts those four `Cc` separators as space, the
+#: API's regex does not, so a label padded with one is a control character
+#: there, and must be one here too.
+_ASCII_SPACE = frozenset(" \t\n\x0b\x0c\r")
+
 #: The two separators that end a line without being `Cc` characters.
 _LINE_BREAKS = frozenset({" ", " "})
 
 
 def _is_space(character: str) -> bool:
-    """White space as the API trims it: Unicode white space and separators."""
-    return character.isspace() or unicodedata.category(character).startswith("Z")
+    """White space as the API trims it (`[\\s\\p{Z}]`): ASCII white space
+    and the Unicode separators (`Zs`, `Zl`, `Zp`)."""
+    return character in _ASCII_SPACE or unicodedata.category(character).startswith("Z")
 
 
 def _breaks_line(character: str) -> bool:
@@ -185,7 +199,7 @@ def _record_body(
     sent_at: datetime,
     media_urls: Sequence[str],
     mark_conversation_read: bool,
-) -> dict[str, Any]:
+) -> OutboundMessageRecordRequest:
     """The JSON:API request document, after every pre-request refusal.
 
     Shared by `Messages.record()` and `AsyncMessages.record()`: the rules
@@ -194,6 +208,11 @@ def _record_body(
     """
     if not provider_message_id:
         raise ValueError("provider_message_id is required: it is the key a retry is matched on")
+    if len(provider_message_id) > MAX_PROVIDER_ID_LENGTH:
+        raise ValueError(
+            f"provider_message_id must be at most {MAX_PROVIDER_ID_LENGTH} characters; "
+            f"it is {len(provider_message_id)}"
+        )
     if isinstance(provider_part_ids, str):
         raise ValueError(
             "provider_part_ids must be a list of part ids, not one string; a one-part text "
@@ -205,6 +224,12 @@ def _record_body(
             "provider_part_ids must name every part id your provider returned, at least one; "
             "a one-part text names its own id"
         )
+    if any(len(part) > MAX_PROVIDER_ID_LENGTH for part in part_ids):
+        raise ValueError(
+            f"every provider part id must be at most {MAX_PROVIDER_ID_LENGTH} characters"
+        )
+    if len(set(part_ids)) != len(part_ids):
+        raise ValueError("provider_part_ids must not repeat a part id")
     if sent_at.tzinfo is None or sent_at.utcoffset() is None:
         raise ValueError(
             "sent_at must carry a time zone: a naive datetime is a different instant on "
@@ -224,20 +249,27 @@ def _record_body(
     if refusal is not None:
         raise ValueError(refusal)
 
-    attributes: dict[str, Any] = {
-        "from": from_,
-        "to": to,
-        "body": body,
-        "media": [{"url": link} for link in links],
-        "senderLabel": sender_label,
-        "markConversationRead": mark_conversation_read,
-        "alreadySent": {
-            "providerMessageId": provider_message_id,
-            "providerPartIds": part_ids,
-            "sentAt": _instant(sent_at),
-        },
+    # Built inline against the generated `OutboundMessageRecordRequest`, so
+    # pyright checks every member name and type against the spec (its
+    # attributes block is `closed`: an unknown member is a type error).
+    return {
+        "data": {
+            "type": "outbound-messages",
+            "attributes": {
+                "from": from_,
+                "to": to,
+                "body": body,
+                "media": [{"url": link} for link in links],
+                "senderLabel": sender_label,
+                "markConversationRead": mark_conversation_read,
+                "alreadySent": {
+                    "providerMessageId": provider_message_id,
+                    "providerPartIds": part_ids,
+                    "sentAt": _instant(sent_at),
+                },
+            },
+        }
     }
-    return {"data": {"type": "outbound-messages", "attributes": attributes}}
 
 
 def _instant(value: datetime) -> str:
@@ -310,7 +342,9 @@ class Messages:
             ValueError: before any request, for what the API would refuse
                 with a 422 that no retry can fix.
             ApiError: the API refused. Retry only what `is_retryable()`
-                says is retryable, after `retry_after` when it is set.
+                says is retryable, after `retry_after` when it is set. A
+                404 means recording texts is not turned on for the
+                platform yet: retry it only slowly, after that changes.
         """
         document = _record_body(
             from_=from_,

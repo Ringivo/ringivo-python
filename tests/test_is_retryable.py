@@ -45,3 +45,17 @@ def test_no_answer_is_retryable(error: Exception) -> None:
 @pytest.mark.parametrize("error", [ValueError("bad"), RingivoError("x"), RuntimeError("x")])
 def test_anything_this_package_did_not_raise_for_the_api_is_not_retryable(error: Exception) -> None:
     assert is_retryable(error) is False
+
+
+@pytest.mark.parametrize(
+    "error",
+    [
+        httpx.UnsupportedProtocol("ftp://"),
+        httpx.LocalProtocolError("invalid header"),
+    ],
+)
+def test_a_transport_error_this_client_caused_is_not_retryable(error: Exception) -> None:
+    """Raised before the server said anything, about a request this client
+    built wrongly: an unchanged retry fails the same way."""
+    assert isinstance(error, httpx.TransportError)
+    assert is_retryable(error) is False

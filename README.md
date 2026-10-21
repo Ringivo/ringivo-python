@@ -1066,13 +1066,17 @@ def receive(request):
 - **`source` and `failure_cause` are strings, not enums**: the API can add
   values, and a value this release does not know still reaches you.
 - **`sent_by`** is set only for a staff reply (`source == "phone_system"`),
-  and its `name` can be `None`. **`sent_at`, `provider_message_id` and
-  `provider_part_ids`** are `None` for a message the provider never
-  accepted; the provider ids are set only on your own provider account.
+  and its `name` can be `None`. For a message the provider never accepted,
+  **`sent_at` and `provider_message_id` are `None` and `provider_part_ids`
+  is `()`**. The provider ids are set only on your own provider account; on
+  any other account both are `None`.
 - **Picture parts are described, never linked**: `media` holds
   `MessageMediaPart(content_type, filename, encoding, byte_size)`.
 - Deliveries are at least once, and the three events can arrive in any
-  order. Dedupe on `event.event_id`, or on the provider message id.
+  order. Dedupe on `event.event_id`, or on the pair
+  (`message.id`, `event.type`). Never on the message id alone: that would
+  drop the `message.delivered` or `message.failed` that follows the
+  `message.sent` of the same message.
 
 ## Upgrading to 0.15.x: the API's v1 naming cleanup
 
@@ -1126,20 +1130,34 @@ are deliberately not wrapped.
 The client never retries a call by itself (apart from re-minting a token
 once on a 401): a retry belongs in your own durable queue, not in a sleep
 that blocks your worker. `ringivo.is_retryable(error)` is the API's retry
-contract — True for no answer at all (any `httpx.TransportError`) and for
-408, 429 and every 5xx; False for every other refusal, such as 400, 401,
-403, 404, 409 and 422, which answer the same however often they are asked.
+contract — True for no answer (an `httpx.TransportError`, except the
+`UnsupportedProtocol` and `LocalProtocolError` this client caused) and for
+408, 429 and every 5xx. False for every other refusal (400, 401, 403, 404,
+409, 422): the same request gets the same answer until something changes
+first. Fix the request for a 400, 409 or 422 — never retry those
+unchanged. A 401, 403 or 404 can be an account setting that is fixed
+later: `messages.record()` answers 404 while recording texts is not turned
+on for the platform yet. A queue may retry those slowly, after the change.
 
 ```python
-from ringivo import is_retryable
+import httpx
+
+from ringivo import ApiError, is_retryable
 
 try:
     client.messages.record(...)
-except Exception as error:
-    if not is_retryable(error):
-        raise                                   # fix the request or the grant first
-    wait = getattr(error, "retry_after", None)  # seconds the server asked for, or None
-    queue.retry_later(seconds=wait if wait else your_backoff(attempt))
+except ValueError:
+    queue.give_up()                             # refused before sending: fix the call
+except (ApiError, httpx.TransportError) as error:
+    if is_retryable(error):
+        wait = getattr(error, "retry_after", None)   # seconds the server asked for, or None
+        queue.retry_later(seconds=wait or your_backoff(attempt))
+    elif isinstance(error, ApiError) and error.status_code in (401, 403, 404):
+        # An account setting, such as a missing scope, or recording texts not
+        # turned on yet (404): retry slowly, and alert someone to fix it.
+        queue.retry_later(seconds=your_slow_backoff(attempt))
+    else:
+        queue.give_up()                         # 400, 409, 422: never retry unchanged
 ```
 
 `retry_after` is set from a `Retry-After` header in either of its forms;

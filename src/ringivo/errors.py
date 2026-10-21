@@ -319,22 +319,35 @@ def raise_for_response(response: httpx.Response) -> None:
 #: the rate limit, and every 5xx (checked by range below).
 _RETRYABLE_STATUSES = frozenset({408, 429})
 
+#: Transport errors raised before or while sending a request this client
+#: built wrongly: the server never said anything, and an unchanged retry
+#: fails the same way.
+_NEVER_RETRYABLE_TRANSPORT_ERRORS = (httpx.UnsupportedProtocol, httpx.LocalProtocolError)
+
 
 def is_retryable(error: BaseException) -> bool:
     """Whether the API's contract says to try this call again, unchanged.
 
-    True for no answer at all — any `httpx.TransportError` (a refused
-    connection, a TLS failure, a timeout) — and for an `ApiError` whose
-    status is 408, 429 or any 5xx. False for every other `ApiError`: a
-    400, 401, 403, 404, 409 or 422 answers the same however often it is
-    asked, so retrying it unchanged only repeats the refusal. False for
-    anything else, because this package did not raise it.
+    True for no answer — an `httpx.TransportError` such as a refused
+    connection, a TLS failure or a timeout — and for an `ApiError` whose
+    status is 408, 429 or any 5xx. False for every other `ApiError` (400,
+    401, 403, 404, 409, 422): the same request gets the same answer until
+    something changes first — the request itself, or the account. A 401,
+    403 or 404 can be a setting that is fixed later; for example
+    `messages.record()` answers 404 while recording texts is not turned on
+    for the platform yet. Retry those only after the change, or slowly.
+    False too for `httpx.UnsupportedProtocol` and `httpx.LocalProtocolError`:
+    those are transport errors this client caused (a bad URL, an invalid
+    request), and an unchanged retry fails the same way. False for anything
+    else, because this package did not raise it.
 
     This decides WHETHER to retry, never WHEN. Wait at least
     `error.retry_after` seconds when it is set; otherwise use your own
     backoff. The client never retries by itself: a retry belongs in your
     durable queue, not inside a call that would block your worker.
     """
+    if isinstance(error, _NEVER_RETRYABLE_TRANSPORT_ERRORS):
+        return False
     if isinstance(error, httpx.TransportError):
         return True
     if isinstance(error, ApiError):

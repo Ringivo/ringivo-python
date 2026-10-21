@@ -1779,8 +1779,10 @@ class MessageEventData:
     must still reach you. Treat a `failure_cause` you do not know as a
     failure.
 
-    `sent_at`, `provider_message_id` and `provider_part_ids` are None for a
-    message the provider never accepted. `sent_by` is None unless `source`
+    `sent_at` and `provider_message_id` are None for a message the provider
+    never accepted, and `provider_part_ids` is `()` for it. Both provider
+    members are None for a message on a provider account that is not
+    yours. `sent_by` is None unless `source`
     is `phone_system`.
     """
 
