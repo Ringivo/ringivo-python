@@ -60,6 +60,10 @@ dev = [
     "anyio>=4",
     "pyright>=1.1.411",
     "pytest>=9.1.1",
+    # The tests read the request example and the limits straight out of
+    # spec/openapi.yaml, so a spec sync that changes them fails a test
+    # instead of leaving a hand copy behind.
+    "pyyaml>=6.0.2",
     "respx>=0.22",
     "ruff>=0.16.3",
 ]

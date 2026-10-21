@@ -57,6 +57,7 @@ from .async_customers import AsyncCustomers
 from .async_fax_account_users import AsyncFaxAccountUsers
 from .async_fax_accounts import AsyncFaxAccounts
 from .async_faxes import AsyncFaxes
+from .async_messages import AsyncMessages
 from .async_pbx import AsyncPbx
 from .async_webhook_deliveries import AsyncWebhookDeliveries
 from .async_webhook_endpoints import AsyncWebhookEndpoints
@@ -98,7 +99,7 @@ class AsyncRingivo:
             which is a reseller-tier scope. The webhook calls need
             `webhooks:read` and `webhooks:write`, except on a
             `fax_account`-scoped endpoint, which a `fax:*` token already
-            reaches. What the token ends up carrying is the intersection
+            reaches. `messages.record()` needs `messages:record`. What the token ends up carrying is the intersection
             with what your grant allows, and a scope outside that is
             dropped rather than refused as long as something survives, so
             an over-broad request fails later at the resource rather than
@@ -184,6 +185,10 @@ class AsyncRingivo:
         # Which filter spelling the API took last — see `_request_filtered()`.
         self._legacy_filters = False
 
+        # The configured per-request timeout; `messages.record()` raises it to
+        # its own floor (messages.py).
+        self._timeout: float | None = timeout
+
         self.faxes = AsyncFaxes(self)
         self.fax_accounts = AsyncFaxAccounts(self)
         self.fax_account_users = AsyncFaxAccountUsers(self)
@@ -191,6 +196,7 @@ class AsyncRingivo:
         self.pbx = AsyncPbx(self)
         self.webhook_endpoints = AsyncWebhookEndpoints(self)
         self.webhook_deliveries = AsyncWebhookDeliveries(self)
+        self.messages = AsyncMessages(self)
 
     @property
     def base_url(self) -> str:
@@ -228,6 +234,7 @@ class AsyncRingivo:
         json: Any = None,
         data: Mapping[str, Any] | None = None,
         files: Sequence[tuple[str, Any]] | None = None,
+        timeout: float | None = None,
     ) -> httpx.Response:
         """Send one authenticated request and hand back the response, or raise.
 
@@ -269,6 +276,8 @@ class AsyncRingivo:
             json: A body to send as JSON.
             data: Form fields, for a multipart send.
             files: File parts, for a multipart send.
+            timeout: Seconds this one request may take, in place of the
+                client's own timeout. None keeps the client's.
 
         Raises:
             AuthenticationError: The credential was refused, and it had
@@ -287,6 +296,7 @@ class AsyncRingivo:
             json=json,
             data=dict(data) if data else None,
             files=list(files) if files else None,
+            timeout=httpx.USE_CLIENT_DEFAULT if timeout is None else timeout,
         )
         raise_for_response(response)
         return response

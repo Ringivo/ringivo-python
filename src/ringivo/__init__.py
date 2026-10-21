@@ -57,8 +57,19 @@ your provider gives you theirs. `scopes` has no default either, and an
 empty one is refused: a token minted without scopes carries none, and every
 route refuses it.
 
+`client.messages.record()` records a text your own system already sent
+through your own messaging-provider account, so staff see it in their
+threads. It needs `messages:record`. `ringivo.sender_label()` makes any text
+a label that keeps the API's label rule.
+
 Webhook receivers want `ringivo.webhooks.verify()`, which needs no client
 and no network — it is pure computation, so both clients share the one.
+`ringivo.webhooks.parse_message_event()` reads a verified `message.sent`,
+`message.delivered` or `message.failed` body.
+
+`ringivo.is_retryable(error)` says whether the API's contract allows the
+same call again (no answer, 408, 429, 5xx); `ApiError.retry_after` says how
+long the server asked you to wait. The client never retries by itself.
 """
 
 from . import webhooks
@@ -68,6 +79,7 @@ from .async_customers import AsyncCustomers
 from .async_fax_account_users import AsyncFaxAccountUsers
 from .async_fax_accounts import AsyncFaxAccounts
 from .async_faxes import AsyncFaxes
+from .async_messages import AsyncMessages
 from .async_pbx import (
     AsyncPbx,
     AsyncPbxCallRecords,
@@ -87,10 +99,12 @@ from .errors import (
     SignatureVerificationError,
     TranscriptionCappedError,
     TranscriptRequestLimitedError,
+    is_retryable,
 )
 from .fax_account_users import FaxAccountUsers
 from .fax_accounts import NOT_GIVEN, FaxAccounts, NotGiven
 from .faxes import Faxes
+from .messages import Messages, sender_label
 from .models import (
     CallRecord,
     CallRecordPage,
@@ -105,6 +119,11 @@ from .models import (
     FaxDocument,
     FaxPage,
     MediaLink,
+    MessageEvent,
+    MessageEventData,
+    MessageMediaPart,
+    MessageSender,
+    OutboundMessage,
     PbxCall,
     PbxDevice,
     PbxDevicePage,
@@ -130,6 +149,7 @@ __all__ = [
     "AsyncFaxAccountUsers",
     "AsyncFaxAccounts",
     "AsyncFaxes",
+    "AsyncMessages",
     "AsyncPbx",
     "AsyncPbxCallRecords",
     "AsyncPbxDevices",
@@ -155,8 +175,14 @@ __all__ = [
     "FaxPage",
     "Faxes",
     "MediaLink",
+    "MessageEvent",
+    "MessageEventData",
+    "MessageMediaPart",
+    "MessageSender",
+    "Messages",
     "NOT_GIVEN",
     "NotGiven",
+    "OutboundMessage",
     "Pbx",
     "PbxCall",
     "PbxCallRecords",
@@ -183,5 +209,7 @@ __all__ = [
     "WebhookEndpointPage",
     "WebhookEndpoints",
     "__version__",
+    "is_retryable",
+    "sender_label",
     "webhooks",
 ]
