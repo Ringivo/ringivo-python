@@ -20,6 +20,7 @@ import hashlib
 import hmac
 import json
 import time
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -238,3 +239,157 @@ def test_verify_answers_with_silence_and_raises_the_documented_type() -> None:
     from ringivo import RingivoError
 
     assert isinstance(caught.value, RingivoError)
+
+
+# -- message.* events: parse after verify ---------------------------------------
+
+# The three examples the spec publishes for message.sent, message.delivered
+# and message.failed, copied verbatim.
+_MESSAGE_DATA: dict[str, Any] = {
+    "id": "0192f0c1-8e4a-7b3d-a2c5-6d7e8f901234",
+    "tenantId": "0191aa10-2b3c-7d4e-8f90-a1b2c3d4e5f6",
+    "customerId": "0191ab22-3c4d-7e5f-9a01-b2c3d4e5f607",
+    "source": "phone_system",
+    "kind": "sms",
+    "from": "+14075550142",
+    "to": "+13215550187",
+    "body": "Yes, a little grass is fine. Call us if he vomits.",
+    "media": [],
+    "status": "sent",
+    "sentBy": {"kind": "phone_system_user", "name": "Dana Smith"},
+    "sentAt": "2026-10-19T15:06:01+00:00",
+    "providerMessageId": "01JC8ZB2H6V4S9D3Q7N1M5KTXR",
+    "providerPartIds": ["01JC8ZB2H6V4S9D3Q7N1M5KTXR"],
+}
+MESSAGE_SENT: dict[str, Any] = {
+    "eventId": "0192f0c2-1a7b-7c4d-9e8f-0a1b2c3d4e5f",
+    "type": "message.sent",
+    "occurredAt": "2026-10-19T15:06:01+00:00",
+    "data": _MESSAGE_DATA,
+}
+MESSAGE_DELIVERED: dict[str, Any] = {
+    "eventId": "0192f0c3-5d6e-7f80-91a2-b3c4d5e6f708",
+    "type": "message.delivered",
+    "occurredAt": "2026-10-19T15:06:04+00:00",
+    "data": {**_MESSAGE_DATA, "status": "delivered"},
+}
+MESSAGE_FAILED: dict[str, Any] = {
+    "eventId": "0192f0c4-6e7f-7091-a2b3-c4d5e6f70819",
+    "type": "message.failed",
+    "occurredAt": "2026-10-19T15:06:09+00:00",
+    "data": {**_MESSAGE_DATA, "status": "undelivered", "failure": {"cause": "undelivered"}},
+}
+
+
+def test_message_event_types_are_the_three_message_events() -> None:
+    assert webhooks.MESSAGE_EVENT_TYPES == {"message.sent", "message.delivered", "message.failed"}
+
+
+def test_a_verified_message_sent_body_parses() -> None:
+    raw = json.dumps(MESSAGE_SENT).encode()
+    webhooks.verify(raw, _header(raw, [SECRET], NOW), SECRET, now=NOW)
+
+    event = webhooks.parse_message_event(json.loads(raw))
+
+    assert event.event_id == "0192f0c2-1a7b-7c4d-9e8f-0a1b2c3d4e5f"
+    assert event.type == "message.sent"
+    assert event.occurred_at == datetime(2026, 10, 19, 15, 6, 1, tzinfo=timezone.utc)
+    message = event.message
+    assert message.id == "0192f0c1-8e4a-7b3d-a2c5-6d7e8f901234"
+    assert message.tenant_id == "0191aa10-2b3c-7d4e-8f90-a1b2c3d4e5f6"
+    assert message.customer_id == "0191ab22-3c4d-7e5f-9a01-b2c3d4e5f607"
+    assert message.source == "phone_system"
+    assert message.kind == "sms"
+    assert message.from_ == "+14075550142"
+    assert message.to == "+13215550187"
+    assert message.body == "Yes, a little grass is fine. Call us if he vomits."
+    assert message.media == ()
+    assert message.status == "sent"
+    assert message.sent_by is not None
+    assert message.sent_by.kind == "phone_system_user"
+    assert message.sent_by.name == "Dana Smith"
+    assert message.sent_at == datetime(2026, 10, 19, 15, 6, 1, tzinfo=timezone.utc)
+    assert message.provider_message_id == "01JC8ZB2H6V4S9D3Q7N1M5KTXR"
+    assert message.provider_part_ids == ("01JC8ZB2H6V4S9D3Q7N1M5KTXR",)
+    assert message.failure_cause is None
+    assert event.raw == MESSAGE_SENT
+
+
+def test_message_delivered_parses() -> None:
+    event = webhooks.parse_message_event(MESSAGE_DELIVERED)
+    assert event.type == "message.delivered"
+    assert event.message.status == "delivered"
+    assert event.message.failure_cause is None
+
+
+def test_message_failed_carries_its_cause() -> None:
+    event = webhooks.parse_message_event(MESSAGE_FAILED)
+    assert event.type == "message.failed"
+    assert event.message.status == "undelivered"
+    assert event.message.failure_cause == "undelivered"
+
+
+def test_a_message_that_never_left_reads_none_for_the_provider_members() -> None:
+    data = {
+        **_MESSAGE_DATA,
+        "source": "api",
+        "status": "failed",
+        "sentBy": None,
+        "sentAt": None,
+        "providerMessageId": None,
+        "providerPartIds": [],
+        "failure": {"cause": "provider_refused"},
+    }
+    event = webhooks.parse_message_event({**MESSAGE_FAILED, "data": data})
+    assert event.message.sent_by is None
+    assert event.message.sent_at is None
+    assert event.message.provider_message_id is None
+    assert event.message.provider_part_ids == ()
+    assert event.message.failure_cause == "provider_refused"
+
+
+def test_unknown_values_and_members_are_kept_not_refused() -> None:
+    data = {
+        **_MESSAGE_DATA,
+        "source": "a_source_added_later",
+        "somethingNew": {"x": 1},
+        "failure": {"cause": "a_cause_added_later"},
+    }
+    event = webhooks.parse_message_event({**MESSAGE_FAILED, "data": data, "extra": True})
+    assert event.message.source == "a_source_added_later"
+    assert event.message.failure_cause == "a_cause_added_later"
+    assert event.message.raw["somethingNew"] == {"x": 1}
+    assert event.raw["extra"] is True
+
+
+def test_picture_parts_read_the_bytes_member() -> None:
+    media = [
+        {"contentType": "image/jpeg", "filename": None, "encoding": None, "bytes": 40213},
+    ]
+    event = webhooks.parse_message_event(
+        {**MESSAGE_SENT, "data": {**_MESSAGE_DATA, "kind": "mms", "media": media}}
+    )
+    (part,) = event.message.media
+    assert part.content_type == "image/jpeg"
+    assert part.filename is None
+    assert part.encoding is None
+    assert part.byte_size == 40213
+
+
+@pytest.mark.parametrize(
+    "payload",
+    [
+        None,
+        [],
+        "message.sent",
+        {},
+        {"type": "message.sent"},
+        {"type": "message.sent", "data": "not an object"},
+        {"type": 7, "data": {"providerMessageId": 12, "providerPartIds": "x", "sentBy": "Dana"}},
+    ],
+)
+def test_a_malformed_body_reads_none_and_never_raises(payload: Any) -> None:
+    event = webhooks.parse_message_event(payload)
+    assert event.message.provider_message_id is None
+    assert event.message.provider_part_ids is None
+    assert event.message.sent_by is None

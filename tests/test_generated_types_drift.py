@@ -1320,6 +1320,49 @@ _READS: tuple[_Read, ...] = (
         "updatedAt",
         "Customer._from_resource",
     ),
+    # -- The message models: the record answer and the message.* events ------
+    _Read(models.MessageMediaPart, "content_type", generated.OutboundMessageMediaPart, "contentType", "MessageMediaPart._from_json"),
+    _Read(models.MessageMediaPart, "filename", generated.OutboundMessageMediaPart, "filename", "MessageMediaPart._from_json"),
+    _Read(models.MessageMediaPart, "encoding", generated.OutboundMessageMediaPart, "encoding", "MessageMediaPart._from_json"),
+    _Read(models.MessageMediaPart, "byte_size", generated.OutboundMessageMediaPart, "bytes", "MessageMediaPart._from_json"),
+    _Read(models.OutboundMessage, "id", generated.OutboundMessageResource, "id", "OutboundMessage._from_resource"),
+    _Read(models.OutboundMessage, "source", generated.OutboundMessageAttributes, "source", "OutboundMessage._from_resource"),
+    _Read(models.OutboundMessage, "kind", generated.OutboundMessageAttributes, "kind", "OutboundMessage._from_resource"),
+    _Read(models.OutboundMessage, "status", generated.OutboundMessageAttributes, "status", "OutboundMessage._from_resource"),
+    _Read(models.OutboundMessage, "from_", generated.OutboundMessageAttributes, "from", "OutboundMessage._from_resource"),
+    _Read(models.OutboundMessage, "to", generated.OutboundMessageAttributes, "to", "OutboundMessage._from_resource"),
+    _Read(models.OutboundMessage, "body", generated.OutboundMessageAttributes, "body", "OutboundMessage._from_resource"),
+    _Read(models.OutboundMessage, "media", generated.OutboundMessageAttributes, "media", "OutboundMessage._from_resource"),
+    _Read(models.OutboundMessage, "sender_label", generated.OutboundMessageAttributes, "senderLabel", "OutboundMessage._from_resource"),
+    _Read(models.OutboundMessage, "mark_conversation_read", generated.OutboundMessageAttributes, "markConversationRead", "OutboundMessage._from_resource"),
+    _Read(models.OutboundMessage, "sent_at", generated.OutboundMessageAttributes, "sentAt", "OutboundMessage._from_resource"),
+    _Read(models.OutboundMessage, "provider_message_id", generated.OutboundMessageAttributes, "providerMessageId", "OutboundMessage._from_resource"),
+    _Read(models.OutboundMessage, "provider_part_ids", generated.OutboundMessageAttributes, "providerPartIds", "OutboundMessage._from_resource"),
+    _Read(models.OutboundMessage, "created_at", generated.OutboundMessageAttributes, "createdAt", "OutboundMessage._from_resource"),
+    _Read(models.OutboundMessage, "updated_at", generated.OutboundMessageAttributes, "updatedAt", "OutboundMessage._from_resource"),
+    _Read(models.MessageSender, "kind", generated.OutboundMessageSender, "kind", "MessageSender._from_json"),
+    _Read(models.MessageSender, "name", generated.OutboundMessageSender, "name", "MessageSender._from_json"),
+    _Read(models.MessageEventData, "id", generated.OutboundMessageEventData, "id", "MessageEventData._from_json"),
+    _Read(models.MessageEventData, "tenant_id", generated.OutboundMessageEventData, "tenantId", "MessageEventData._from_json"),
+    _Read(models.MessageEventData, "customer_id", generated.OutboundMessageEventData, "customerId", "MessageEventData._from_json"),
+    _Read(models.MessageEventData, "source", generated.OutboundMessageEventData, "source", "MessageEventData._from_json"),
+    _Read(models.MessageEventData, "kind", generated.OutboundMessageEventData, "kind", "MessageEventData._from_json"),
+    _Read(models.MessageEventData, "from_", generated.OutboundMessageEventData, "from", "MessageEventData._from_json"),
+    _Read(models.MessageEventData, "to", generated.OutboundMessageEventData, "to", "MessageEventData._from_json"),
+    _Read(models.MessageEventData, "body", generated.OutboundMessageEventData, "body", "MessageEventData._from_json"),
+    _Read(models.MessageEventData, "media", generated.OutboundMessageEventData, "media", "MessageEventData._from_json"),
+    _Read(models.MessageEventData, "status", generated.OutboundMessageEventData, "status", "MessageEventData._from_json"),
+    _Read(models.MessageEventData, "sent_by", generated.OutboundMessageEventData, "sentBy", "MessageEventData._from_json"),
+    _Read(models.MessageEventData, "sent_at", generated.OutboundMessageEventData, "sentAt", "MessageEventData._from_json"),
+    _Read(models.MessageEventData, "provider_message_id", generated.OutboundMessageEventData, "providerMessageId", "MessageEventData._from_json"),
+    _Read(models.MessageEventData, "provider_part_ids", generated.OutboundMessageEventData, "providerPartIds", "MessageEventData._from_json"),
+    # `failure_cause` walks failure -> cause; the member read off the event data is `failure`.
+    _Read(models.MessageEventData, "failure_cause", generated.MessageFailedEventData, "failure", "MessageEventData._from_json"),
+    _Read(models.MessageEventData, "failure_cause", generated.Failure, "cause", "MessageEventData._from_json"),
+    _Read(models.MessageEvent, "event_id", generated.WebhookEventEnvelope, "eventId", "MessageEvent._from_json"),
+    _Read(models.MessageEvent, "type", generated.WebhookEventEnvelope, "type", "MessageEvent._from_json"),
+    _Read(models.MessageEvent, "occurred_at", generated.WebhookEventEnvelope, "occurredAt", "MessageEvent._from_json"),
+    _Read(models.MessageEvent, "message", generated.MessageSentEvent, "data", "MessageEvent._from_json"),
 )
 
 # Fields a model carries that no `_from_*` classmethod reads off a generated
@@ -1347,6 +1390,14 @@ _EXCLUDED: dict[tuple[type, str], str] = {
     (models.TranscriptChannel, "raw"): "holds the whole source mapping this object was built from",
     (models.PbxCall, "raw"): "holds the whole source mapping this object was built from",
     (models.Customer, "raw"): "holds the whole source mapping this object was built from",
+    (models.MessageMediaPart, "raw"): "holds the whole source mapping this object was built from",
+    (models.OutboundMessage, "raw"): "holds the whole source mapping this object was built from",
+    (models.MessageSender, "raw"): "holds the whole source mapping this object was built from",
+    (models.MessageEventData, "raw"): "holds the whole source mapping this object was built from",
+    (models.MessageEvent, "raw"): "holds the whole source mapping this object was built from",
+    (models.OutboundMessage, "replayed"): (
+        "read off the response STATUS in messages.py (200 is a replay, 201 is not), never off the body"
+    ),
 }
 
 # The other direction, and the only entry that needs it: a key the generated
@@ -1394,6 +1445,11 @@ _MODELS: tuple[type, ...] = (
     models.TranscriptChannel,
     models.PbxCall,
     models.Customer,
+    models.MessageMediaPart,
+    models.OutboundMessage,
+    models.MessageSender,
+    models.MessageEventData,
+    models.MessageEvent,
 )
 
 
@@ -1419,7 +1475,7 @@ def test_every_field_a_model_reads_is_covered_by_the_read_table() -> None:
     them, in both directions, or this whole test proves nothing about that
     model.
     """
-    assert len(_MODELS) == 17, f"only {[m.__name__ for m in _MODELS]} was searched — the sweep is broken"
+    assert len(_MODELS) == 22, f"only {[m.__name__ for m in _MODELS]} was searched — the sweep is broken"
 
     mismatches: dict[str, str] = {}
     for model in _MODELS:
@@ -1439,7 +1495,7 @@ def test_every_field_a_model_reads_is_covered_by_the_read_table() -> None:
 
 
 def test_every_field_a_model_reads_exists_in_the_generated_types() -> None:
-    assert len(_READS) == 215, f"{len(_READS)} reads were checked, not 215 — the sweep is broken"
+    assert len(_READS) == 256, f"{len(_READS)} reads were checked, not 256 — the sweep is broken"
 
     failures: list[str] = []
     for read in _READS:

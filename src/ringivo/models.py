@@ -40,6 +40,11 @@ __all__ = [
     "FaxDocument",
     "FaxPage",
     "MediaLink",
+    "MessageEvent",
+    "MessageEventData",
+    "MessageMediaPart",
+    "MessageSender",
+    "OutboundMessage",
     "PbxCall",
     "PbxDevice",
     "PbxDevicePage",
@@ -1656,3 +1661,193 @@ class CustomerPage:
 
     def __getitem__(self, index: int) -> Customer:
         return self.customers[index]
+
+
+@dataclass(frozen=True)
+class MessageMediaPart:
+    """One picture part of a message, DESCRIBED: there is no image and no URL.
+
+    `byte_size` is read from the wire member `bytes` (the part's size).
+    `filename` and `encoding` are null for a part the platform sent; they
+    are kept because the member exists on the wire.
+    """
+
+    content_type: str | None = None
+    filename: str | None = None
+    encoding: str | None = None
+    byte_size: int | None = None
+    raw: Mapping[str, Any] = field(default_factory=dict, repr=False)
+
+    @classmethod
+    def _from_json(cls, source: Mapping[str, Any]) -> MessageMediaPart:
+        return cls(
+            content_type=_text(source, "contentType"),
+            filename=_text(source, "filename"),
+            encoding=_text(source, "encoding"),
+            byte_size=_integer(source, "bytes"),
+            raw=source,
+        )
+
+
+def _media_parts(source: Mapping[str, Any]) -> tuple[MessageMediaPart, ...]:
+    value = source.get("media")
+    return tuple(
+        MessageMediaPart._from_json(item)
+        for item in (value if isinstance(value, list) else [])
+        if isinstance(item, Mapping)
+    )
+
+
+@dataclass(frozen=True)
+class OutboundMessage:
+    """A text you recorded with `client.messages.record()`.
+
+    `replayed` is True when the answer was 200: a repeat of an earlier
+    record with the same provider message id and the same content, so the
+    first record came back unchanged. A first record answers 201 and reads
+    False. The body is the same resource either way; the status code is
+    the only thing that tells the two apart.
+    """
+
+    id: str
+    source: str | None = None
+    kind: str | None = None
+    status: str | None = None
+    from_: str | None = None
+    to: str | None = None
+    body: str | None = None
+    media: tuple[MessageMediaPart, ...] = ()
+    sender_label: str | None = None
+    mark_conversation_read: bool | None = None
+    sent_at: datetime | None = None
+    provider_message_id: str | None = None
+    provider_part_ids: tuple[str, ...] | None = None
+    created_at: datetime | None = None
+    updated_at: datetime | None = None
+    replayed: bool | None = None
+    raw: Mapping[str, Any] = field(default_factory=dict, repr=False)
+
+    @classmethod
+    def _from_resource(cls, resource: Mapping[str, Any]) -> OutboundMessage:
+        """Build from an `outbound-messages` JSON:API resource object."""
+        attributes = _mapping(resource, "attributes") or {}
+
+        return cls(
+            id=_text(resource, "id") or "",
+            source=_text(attributes, "source"),
+            kind=_text(attributes, "kind"),
+            status=_text(attributes, "status"),
+            from_=_text(attributes, "from"),
+            to=_text(attributes, "to"),
+            body=_text(attributes, "body"),
+            media=_media_parts(attributes),
+            sender_label=_text(attributes, "senderLabel"),
+            mark_conversation_read=_boolean(attributes, "markConversationRead"),
+            sent_at=_parse_datetime(attributes.get("sentAt")),
+            provider_message_id=_text(attributes, "providerMessageId"),
+            provider_part_ids=_strings(attributes, "providerPartIds"),
+            created_at=_parse_datetime(attributes.get("createdAt")),
+            updated_at=_parse_datetime(attributes.get("updatedAt")),
+            raw=resource,
+        )
+
+
+@dataclass(frozen=True)
+class MessageSender:
+    """Who typed a staff reply: a kind and a display name, nothing more.
+
+    `name` is None when the platform does not have the person's name yet.
+    No user id is ever sent.
+    """
+
+    kind: str | None = None
+    name: str | None = None
+    raw: Mapping[str, Any] = field(default_factory=dict, repr=False)
+
+    @classmethod
+    def _from_json(cls, source: Mapping[str, Any]) -> MessageSender:
+        return cls(kind=_text(source, "kind"), name=_text(source, "name"), raw=source)
+
+
+@dataclass(frozen=True)
+class MessageEventData:
+    """The message a `message.sent`, `message.delivered` or `message.failed`
+    event carries — the same members on all three.
+
+    `source` and `failure_cause` are plain strings, not enums: the contract
+    says more values can be added, and a value this release does not know
+    must still reach you. Treat a `failure_cause` you do not know as a
+    failure.
+
+    `sent_at`, `provider_message_id` and `provider_part_ids` are None for a
+    message the provider never accepted. `sent_by` is None unless `source`
+    is `phone_system`.
+    """
+
+    id: str | None = None
+    tenant_id: str | None = None
+    customer_id: str | None = None
+    source: str | None = None
+    kind: str | None = None
+    from_: str | None = None
+    to: str | None = None
+    body: str | None = None
+    media: tuple[MessageMediaPart, ...] = ()
+    status: str | None = None
+    sent_by: MessageSender | None = None
+    sent_at: datetime | None = None
+    provider_message_id: str | None = None
+    provider_part_ids: tuple[str, ...] | None = None
+    failure_cause: str | None = None
+    raw: Mapping[str, Any] = field(default_factory=dict, repr=False)
+
+    @classmethod
+    def _from_json(cls, source: Mapping[str, Any]) -> MessageEventData:
+        sent_by = _mapping(source, "sentBy")
+        failure = _mapping(source, "failure") or {}
+
+        return cls(
+            id=_text(source, "id"),
+            tenant_id=_text(source, "tenantId"),
+            customer_id=_text(source, "customerId"),
+            source=_text(source, "source"),
+            kind=_text(source, "kind"),
+            from_=_text(source, "from"),
+            to=_text(source, "to"),
+            body=_text(source, "body"),
+            media=_media_parts(source),
+            status=_text(source, "status"),
+            sent_by=MessageSender._from_json(sent_by) if sent_by is not None else None,
+            sent_at=_parse_datetime(source.get("sentAt")),
+            provider_message_id=_text(source, "providerMessageId"),
+            provider_part_ids=_strings(source, "providerPartIds"),
+            failure_cause=_text(failure, "cause"),
+            raw=source,
+        )
+
+
+@dataclass(frozen=True)
+class MessageEvent:
+    """One `message.sent`, `message.delivered` or `message.failed` delivery.
+
+    Read defensively, like every model here: a member that is missing or
+    has the wrong type reads None, and the whole body stays in `raw`. A
+    receiver decides for itself which None it cannot work without — for
+    example, no `message.provider_message_id`.
+    """
+
+    event_id: str | None = None
+    type: str | None = None
+    occurred_at: datetime | None = None
+    message: MessageEventData = field(default_factory=MessageEventData)
+    raw: Mapping[str, Any] = field(default_factory=dict, repr=False)
+
+    @classmethod
+    def _from_json(cls, source: Mapping[str, Any]) -> MessageEvent:
+        return cls(
+            event_id=_text(source, "eventId"),
+            type=_text(source, "type"),
+            occurred_at=_parse_datetime(source.get("occurredAt")),
+            message=MessageEventData._from_json(_mapping(source, "data") or {}),
+            raw=source,
+        )

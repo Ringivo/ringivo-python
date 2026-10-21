@@ -4,7 +4,7 @@
 one `httpx.Client` with the auth flow attached, and the resource namespaces
 hung off it (`client.faxes`, `client.fax_accounts`,
 `client.fax_account_users`, `client.customers`, `client.pbx`,
-`client.webhook_endpoints`, `client.webhook_deliveries`).
+`client.webhook_endpoints`, `client.webhook_deliveries`, `client.messages`).
 
 -- NO HOSTNAME IS COMPILED IN --------------------------------------------------
 `base_url` is required and has no default. This package is grey-label: the
@@ -83,6 +83,7 @@ from .errors import ApiError, raise_for_response
 from .fax_account_users import FaxAccountUsers
 from .fax_accounts import FaxAccounts
 from .faxes import Faxes
+from .messages import Messages
 from .pbx import Pbx
 from .webhook_deliveries import WebhookDeliveries
 from .webhook_endpoints import WebhookEndpoints
@@ -125,7 +126,7 @@ class Ringivo:
             which is a reseller-tier scope. The webhook calls need
             `webhooks:read` and `webhooks:write`, except on a
             `fax_account`-scoped endpoint, which a `fax:*` token already
-            reaches. What the token ends up carrying is the intersection
+            reaches. `messages.record()` needs `messages:record`. What the token ends up carrying is the intersection
             with what your grant allows, and a scope outside that is
             dropped rather than refused as long as something survives, so
             an over-broad request fails later at the resource rather than
@@ -214,6 +215,10 @@ class Ringivo:
         # Which filter spelling the API took last — see `_request_filtered()`.
         self._legacy_filters = False
 
+        # The configured per-request timeout; `messages.record()` raises it to
+        # its own floor (messages.py).
+        self._timeout: float | None = timeout
+
         self.faxes = Faxes(self)
         self.fax_accounts = FaxAccounts(self)
         self.fax_account_users = FaxAccountUsers(self)
@@ -221,6 +226,7 @@ class Ringivo:
         self.pbx = Pbx(self)
         self.webhook_endpoints = WebhookEndpoints(self)
         self.webhook_deliveries = WebhookDeliveries(self)
+        self.messages = Messages(self)
 
     @property
     def base_url(self) -> str:
@@ -258,6 +264,7 @@ class Ringivo:
         json: Any = None,
         data: Mapping[str, Any] | None = None,
         files: Sequence[tuple[str, Any]] | None = None,
+        timeout: float | None = None,
     ) -> httpx.Response:
         """Send one authenticated request and hand back the response, or raise.
 
@@ -299,6 +306,8 @@ class Ringivo:
             json: A body to send as JSON.
             data: Form fields, for a multipart send.
             files: File parts, for a multipart send.
+            timeout: Seconds this one request may take, in place of the
+                client's own timeout. None keeps the client's.
 
         Raises:
             AuthenticationError: The credential was refused, and it had
@@ -317,6 +326,7 @@ class Ringivo:
             json=json,
             data=dict(data) if data else None,
             files=list(files) if files else None,
+            timeout=httpx.USE_CLIENT_DEFAULT if timeout is None else timeout,
         )
         raise_for_response(response)
         return response

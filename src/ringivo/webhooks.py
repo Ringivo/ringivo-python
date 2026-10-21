@@ -39,6 +39,21 @@ A second `v1` appears during a rotation's grace window, signed with the
 previous secret, newest first. A receiver holding EITHER copy must verify —
 that is the whole reason the window exists — so the loop below does not stop
 at the first candidate.
+
+-- PARSING COMES AFTER, AND IS SEPARATE ----------------------------------------
+`verify()` proves the bytes; it does not read them. A receiver verifies the
+raw body, decodes the JSON itself — so it decides what a body that is not
+JSON, or not an object, deserves — and then hands the object to a parser:
+
+    webhooks.verify(raw, request.headers[webhooks.SIGNATURE_HEADER], secret=WHSEC)
+    payload = json.loads(raw)
+    if payload.get("type") in webhooks.MESSAGE_EVENT_TYPES:
+        event = webhooks.parse_message_event(payload)
+
+`parse_message_event()` reads defensively, like every model in this package:
+a member that is missing or of the wrong type reads None and the whole
+body stays on `raw`. It never raises on content, so the receiver decides
+which None it cannot work without.
 """
 
 from __future__ import annotations
@@ -47,10 +62,23 @@ import hashlib
 import hmac
 import re
 import time
+from collections.abc import Mapping
+from typing import Any
 
 from .errors import SignatureVerificationError
+from .models import MessageEvent
 
-__all__ = ["DEFAULT_TOLERANCE_SECONDS", "SIGNATURE_HEADER", "verify"]
+__all__ = [
+    "DEFAULT_TOLERANCE_SECONDS",
+    "MESSAGE_EVENT_TYPES",
+    "SIGNATURE_HEADER",
+    "parse_message_event",
+    "verify",
+]
+
+#: The event types `parse_message_event()` reads. All three carry the same
+#: message members; `message.failed` adds `failure.cause`.
+MESSAGE_EVENT_TYPES = frozenset({"message.sent", "message.delivered", "message.failed"})
 
 #: The header a delivery carries its signature in.
 SIGNATURE_HEADER = "Ringivo-Signature"
@@ -142,3 +170,19 @@ def _parse(header: str) -> tuple[int | None, tuple[str, ...]]:
             candidates.append(value)
 
     return timestamp, tuple(candidates)
+
+
+def parse_message_event(payload: Any) -> MessageEvent:
+    """Read a `message.sent`, `message.delivered` or `message.failed` body.
+
+    Args:
+        payload: The decoded JSON body — call `verify()` on the raw bytes
+            first. Anything that is not a JSON object reads as an event
+            whose every member is None.
+
+    Returns:
+        The event. Members that are missing or of the wrong type are None,
+        and the whole body is on `raw`. Check `type` against
+        `MESSAGE_EVENT_TYPES` yourself if you route on it.
+    """
+    return MessageEvent._from_json(payload if isinstance(payload, Mapping) else {})

@@ -47,6 +47,7 @@ __all__ = [
     "SignatureVerificationError",
     "TranscriptRequestLimitedError",
     "TranscriptionCappedError",
+    "is_retryable",
 ]
 
 
@@ -312,3 +313,30 @@ def raise_for_response(response: httpx.Response) -> None:
         body=body,
         retry_after=_retry_after_seconds(response.headers.get("retry-after")),
     )
+
+
+#: The statuses the API documents as "try again later": a request timeout,
+#: the rate limit, and every 5xx (checked by range below).
+_RETRYABLE_STATUSES = frozenset({408, 429})
+
+
+def is_retryable(error: BaseException) -> bool:
+    """Whether the API's contract says to try this call again, unchanged.
+
+    True for no answer at all — any `httpx.TransportError` (a refused
+    connection, a TLS failure, a timeout) — and for an `ApiError` whose
+    status is 408, 429 or any 5xx. False for every other `ApiError`: a
+    400, 401, 403, 404, 409 or 422 answers the same however often it is
+    asked, so retrying it unchanged only repeats the refusal. False for
+    anything else, because this package did not raise it.
+
+    This decides WHETHER to retry, never WHEN. Wait at least
+    `error.retry_after` seconds when it is set; otherwise use your own
+    backoff. The client never retries by itself: a retry belongs in your
+    durable queue, not inside a call that would block your worker.
+    """
+    if isinstance(error, httpx.TransportError):
+        return True
+    if isinstance(error, ApiError):
+        return error.status_code in _RETRYABLE_STATUSES or error.status_code >= 500
+    return False

@@ -59,7 +59,8 @@ one customer cannot hold it however it is asked for. The webhook calls need
 `webhooks:read` and `webhooks:write`, except on an endpoint scoped to one fax
 account: a `fax:*` token already reaches those. The phone-system calls need
 `pbx-users:read` for subscribers and their devices, `pbx-call-records:read`
-for the call log, and `pbx-calls:write` to place a call.
+for the call log, and `pbx-calls:write` to place a call. Recording a text
+you already sent needs `messages:record`.
 
 A client that provisions accounts and then reads them asks for both:
 
@@ -890,6 +891,59 @@ not always what you typed — this platform stores every caller id as E.164
 *without* the plus, so `caller_id="+14074366118"` comes back as
 `placed.caller_id == "14074366118"`.
 
+## Record a text you already sent
+
+When your own system sends texts through your own messaging-provider
+account, record each one so it shows in your staff's threads. The platform
+sends nothing: the text already left, and the call files it in the
+conversation with your label in front of it.
+
+```python
+from datetime import datetime, timezone
+
+recorded = client.messages.record(
+    from_="+14075550142",
+    to="+13215550187",
+    body="Reminder: Rex is due for his rabies booster on Oct 24.",
+    sender_label="Appointment reminder",
+    provider_message_id="01JC8ZA1F5T3R8C2P6M0L4JSWQ",       # your provider's id
+    provider_part_ids=["01JC8ZA1F5T3R8C2P6M0L4JSWQ"],       # every part; a one-part text names its own id
+    sent_at=datetime(2026, 10, 19, 15, 2, 44, tzinfo=timezone.utc),
+    media_urls=[],                                          # up to 10 https links
+    mark_conversation_read=False,
+)
+recorded.id, recorded.status, recorded.replayed
+```
+
+- **Staff see `"<sender_label>: <body>"`.** A label is one line, has at
+  least one visible character, and is 1 to 40 Unicode code points after its
+  ends are trimmed. `record()` refuses a label that breaks the rule with
+  `ValueError`, before any request; it never changes your label.
+  `ringivo.sender_label(text)` makes a valid label from any text — a
+  person's name, say — and raises `ValueError` only when nothing visible is
+  left.
+- **The provider message id is the dedupe key.** No `Idempotency-Key` is
+  sent. A repeat with the same id and the same `from`, `to`, `body` and
+  picture count answers 200 with the first record (`replayed` is True); the
+  same id with different content is a 409.
+- **Pictures are fetched during the call and never again**, so make new
+  presigned links for each attempt. The call can take up to 20 seconds to
+  fetch them, so `record()` waits at least 25 seconds whatever the client's
+  own timeout is.
+- **Refused before any request** (`ValueError`): an empty provider id or
+  part-id list, a `sent_at` with no time zone, neither a body nor a picture,
+  more than ten links, a link that is not `https`, a label that breaks the
+  rule. None of these is worth retrying.
+- **`mark_conversation_read=True`** marks the staff threads read — for a
+  reply a person typed in your own inbox. The default leaves them as they
+  were.
+
+The API also limits the label, `": "` and the body together to 1024 code
+points; a longer text is a 422. Only a text from one of your numbers on your
+own provider account can be recorded. No `message.sent` event is raised for
+a recorded text, but its delivery reports raise `message.delivered` and
+`message.failed` with `source: recorded`.
+
 ## The async client
 
 `AsyncRingivo` is the same client for programs already running on asyncio.
@@ -974,6 +1028,52 @@ failure — a stale timestamp, the wrong secret, a malformed header. During a
 secret rotation the header carries two signatures and either secret
 verifies, so a rotation costs you no deliveries.
 
+## Message events
+
+`message.sent`, `message.delivered` and `message.failed` describe a text
+sent from one of your numbers. Verify the raw body, decode it yourself, then
+parse it:
+
+```python
+import json
+
+from ringivo import SignatureVerificationError, webhooks
+
+@app.post("/hooks/messages")
+def receive(request):
+    try:
+        webhooks.verify(request.body, request.headers[webhooks.SIGNATURE_HEADER], secret="whsec_...")
+    except SignatureVerificationError:
+        return Response(status=400)
+
+    payload = json.loads(request.body)
+    if not isinstance(payload, dict) or payload.get("type") not in webhooks.MESSAGE_EVENT_TYPES:
+        return Response(status=204)                       # not a message event: accept and ignore
+
+    event = webhooks.parse_message_event(payload)
+    message = event.message
+    if message.source == "phone_system" and message.sent_by is not None:
+        print(message.sent_by.name, "replied:", message.body)
+    if event.type == "message.failed":
+        print("failed:", message.failure_cause)           # treat a cause you do not know as a failure
+    return Response(status=204)
+```
+
+- **The parse never raises on content.** A member that is missing or of the
+  wrong type reads `None`, and the whole body stays on `event.raw` — the
+  same rule as every model here. Decide for yourself which `None` you
+  cannot work without (for example, no `message.provider_message_id`).
+- **`source` and `failure_cause` are strings, not enums**: the API can add
+  values, and a value this release does not know still reaches you.
+- **`sent_by`** is set only for a staff reply (`source == "phone_system"`),
+  and its `name` can be `None`. **`sent_at`, `provider_message_id` and
+  `provider_part_ids`** are `None` for a message the provider never
+  accepted; the provider ids are set only on your own provider account.
+- **Picture parts are described, never linked**: `media` holds
+  `MessageMediaPart(content_type, filename, encoding, byte_size)`.
+- Deliveries are at least once, and the three events can arrive in any
+  order. Dedupe on `event.event_id`, or on the provider message id.
+
 ## Upgrading to 0.15.x: the API's v1 naming cleanup
 
 The API renamed its last snake_case names on the resource surface to
@@ -1021,6 +1121,30 @@ subclasses of their own: `RecordingAudioMissingError`,
 Connection failures, timeouts and TLS errors are httpx's own exceptions and
 are deliberately not wrapped.
 
+### Retrying from a queue
+
+The client never retries a call by itself (apart from re-minting a token
+once on a 401): a retry belongs in your own durable queue, not in a sleep
+that blocks your worker. `ringivo.is_retryable(error)` is the API's retry
+contract — True for no answer at all (any `httpx.TransportError`) and for
+408, 429 and every 5xx; False for every other refusal, such as 400, 401,
+403, 404, 409 and 422, which answer the same however often they are asked.
+
+```python
+from ringivo import is_retryable
+
+try:
+    client.messages.record(...)
+except Exception as error:
+    if not is_retryable(error):
+        raise                                   # fix the request or the grant first
+    wait = getattr(error, "retry_after", None)  # seconds the server asked for, or None
+    queue.retry_later(seconds=wait if wait else your_backoff(attempt))
+```
+
+`retry_after` is set from a `Retry-After` header in either of its forms;
+when it is `None`, use your own backoff.
+
 ## What is in the box
 
 | | Scope | |
@@ -1065,11 +1189,16 @@ are deliberately not wrapped.
 | `client.pbx.call_records.transcripts(call_record_id)` | `pbx-call-records:read` + `pbx-transcripts:read` | One `Transcript` per capture — `transcript_status` `none` or `requested` and no `segments` for one with no words yet. Also NOT paginated. |
 | `client.pbx.call_records.transcript(call_record_id, recording_id)` | `pbx-call-records:read` + `pbx-transcripts:read` | One `Transcript`, with its `segments` and `channels`. A 404 `code` says whether it was not requested, is pending, or failed. |
 | `client.pbx.call_records.request_transcript(call_record_id, recording_id)` | `pbx-call-records:read` + `pbx-transcripts:write` | Ask for one capture's transcript. Returns the `requested` (202) or `available` (200) `Transcript`. Safe to repeat. |
+| `client.messages.record(*, from_, to, sender_label, provider_message_id, provider_part_ids, sent_at, body=None, media_urls=(), mark_conversation_read=False)` | `messages:record` | Record a text your own system already sent. Returns an `OutboundMessage`; `replayed` is True on a 200 repeat. |
 | `webhooks.verify(payload, header, secret, *, tolerance=300)` | — | Raises unless the body is genuine and fresh. |
+| `webhooks.parse_message_event(payload)` | — | A `MessageEvent` from a decoded `message.*` body. Never raises on content. |
+| `sender_label(text)` | — | A valid record label made from any text. |
+| `is_retryable(error)` | — | Whether the API's contract allows the same call again. |
 
 `CallRecord`, `CallRecordPage`, `Customer`, `CustomerPage`, `Fax`,
 `FaxAccount`, `FaxAccountNumber`, `FaxAccountPage`, `FaxAccountUser`,
-`FaxAccountUserPage`, `FaxDocument`, `FaxPage`, `MediaLink`, `PbxCall`,
+`FaxAccountUserPage`, `FaxDocument`, `FaxPage`, `MediaLink`, `MessageEvent`,
+`MessageEventData`, `MessageMediaPart`, `MessageSender`, `OutboundMessage`, `PbxCall`,
 `PbxDevice`, `PbxDevicePage`, `PbxSubscriber`, `PbxSubscriberPage`, `Recording`,
 `Transcript`, `TranscriptChannel`, `TranscriptSegment`, `WebhookDelivery`, `WebhookDeliveryPage`, `WebhookEndpoint`
 and `WebhookEndpointPage` are frozen dataclasses, and each keeps the JSON
@@ -1083,7 +1212,7 @@ field" on `fax_accounts`, rather than "I said nothing".
 
 ### Reaching an endpoint this client does not wrap
 
-The table above is the fax, customer, webhook and phone-system surfaces.
+The table above is the fax, customer, webhook, phone-system and message-record surfaces.
 For anything else the API offers, use `client.request()` — the same escape
 hatch in both clients, awaited on the async one:
 
