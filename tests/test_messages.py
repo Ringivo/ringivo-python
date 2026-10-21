@@ -363,10 +363,26 @@ def test_an_information_separator_is_a_control_character_not_space(
     assert sender_label(f"{separator}Dana{separator}") == "Dana"
 
 
-@pytest.mark.parametrize("space", [" ", "\t", "\u00a0", "\u3000", "\u2009"])
+@pytest.mark.parametrize("space", [" ", "\t", "\x85", "\u00a0", "\u3000", "\u2009"])
 def test_white_space_the_api_trims_is_trimmed(
     client: Ringivo, respx_mock: respx.MockRouter, space: str, response_example: dict[str, Any]
 ) -> None:
     respx_mock.post(RECORD_URL).mock(return_value=httpx.Response(201, json=response_example))
 
     client.messages.record(**_arguments(sender_label=f"{space}Dana{space}"))  # type: ignore[arg-type]
+
+
+def test_a_next_line_at_either_end_is_trimmed_but_not_inside(
+    client: Ringivo, respx_mock: respx.MockRouter, response_example: dict[str, Any]
+) -> None:
+    """The API's PCRE trims U+0085 at either end and accepts "\\x85Rex"; inside
+    the label it is still a control character."""
+    route = respx_mock.post(RECORD_URL).mock(
+        return_value=httpx.Response(201, json=response_example)
+    )
+
+    client.messages.record(**_arguments(sender_label="\x85Rex\x85"))  # type: ignore[arg-type]
+    assert route.called
+
+    with pytest.raises(ValueError, match="one line"):
+        client.messages.record(**_arguments(sender_label="R\x85ex"))  # type: ignore[arg-type]

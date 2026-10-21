@@ -97,20 +97,21 @@ _JSONAPI = "application/vnd.api+json"
 
 _PATH = "/v1/outbound-messages"
 
-#: What the API trims as white space besides the `Z` categories: the ASCII
-#: white space of its `\s` (space, tab, LF, VT, FF, CR). NOT U+001C–U+001F:
-#: Python's `str.isspace()` counts those four `Cc` separators as space, the
-#: API's regex does not, so a label padded with one is a control character
-#: there, and must be one here too.
-_ASCII_SPACE = frozenset(" \t\n\x0b\x0c\r")
+#: What the API trims as white space besides the `Z` categories: what its
+#: `\s` matches — space, tab, LF, VT, FF, CR, and U+0085 (NEL; the API's
+#: PCRE trims it at either end, so "\x85Rex" is accepted as "Rex"). NOT
+#: U+001C–U+001F: Python's `str.isspace()` counts those four `Cc` separators
+#: as space, the API's regex does not, so a label padded with one is a
+#: control character there, and must be one here too.
+_ASCII_SPACE = frozenset(" \t\n\x0b\x0c\r\x85")
 
 #: The two separators that end a line without being `Cc` characters.
 _LINE_BREAKS = frozenset({" ", " "})
 
 
 def _is_space(character: str) -> bool:
-    """White space as the API trims it (`[\\s\\p{Z}]`): ASCII white space
-    and the Unicode separators (`Zs`, `Zl`, `Zp`)."""
+    """White space as the API trims it (`[\\s\\p{Z}]`): ASCII white space,
+    U+0085, and the Unicode separators (`Zs`, `Zl`, `Zp`)."""
     return character in _ASCII_SPACE or unicodedata.category(character).startswith("Z")
 
 
