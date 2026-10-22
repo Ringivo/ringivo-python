@@ -272,6 +272,34 @@ def test_a_media_refusal_names_the_link_and_the_reason(
     assert caught.value.retry_after == (None if status == 422 else 5)
 
 
+def test_media_over_20_mb_together_names_the_list_not_a_link(
+    client: Ringivo, respx_mock: respx.MockRouter
+) -> None:
+    respx_mock.post(RECORD_URL).mock(
+        return_value=httpx.Response(
+            422,
+            json={
+                "errors": [
+                    {
+                        "status": "422",
+                        "code": "media_rejected",
+                        "source": {"pointer": "/data/attributes/mediaUrls"},
+                    }
+                ]
+            },
+        )
+    )
+
+    with pytest.raises(ApiError) as caught:
+        client.messages.record(
+            **_arguments(media_urls=["https://media.example.com/big.mp4"])  # type: ignore[arg-type]
+        )
+
+    assert caught.value.code == "media_rejected"
+    assert caught.value.errors[0].source == {"pointer": "/data/attributes/mediaUrls"}
+    assert is_retryable(caught.value) is False
+
+
 @pytest.mark.parametrize("status", [429, 503])
 def test_a_429_or_503_carries_retry_after(
     client: Ringivo, respx_mock: respx.MockRouter, status: int
@@ -504,12 +532,18 @@ def test_the_documented_media_sizes_are_the_specs(openapi_spec: dict[str, Any]) 
     flat = " ".join(description.split())
     assert "must be a media item of at most 10 MB" in flat
     assert "at most 20 MB of media together" in flat
-    assert "**each must finish within 10 seconds**" in flat
+    assert "**each must finish within 10 seconds of the call**" in flat
     assert "`text/plain` is refused" in flat
+    # Past 20 MB together the refusal names the list, not one link.
+    assert (
+        "refuse the record with `media_rejected` and `source.pointer` `/data/attributes/mediaUrls` — the list, not one link"
+        in flat
+    )
 
     documented = " ".join((ringivo.messages.__doc__ or "").split())
     assert "at most 10 media items, at most 10 MB each and at most 20 MB together" in documented
-    assert "each within 10 seconds" in documented
+    assert "each within 10 seconds of the call" in documented
+    assert "the pointer is the list itself, `/data/attributes/mediaUrls`" in documented
 
 
 def test_the_record_timeout_floor_is_above_the_specs(openapi_spec: dict[str, Any]) -> None:

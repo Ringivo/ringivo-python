@@ -880,7 +880,8 @@ recorded.media  # each an OutboundMessageMediaItem(content_type, size)
   by your link.
 - **Media is fetched during the call and never again**, so make new
   presigned links for each attempt. The API fetches all links at once and
-  gives each one 10 seconds, then stores the media. It ends any request at
+  gives each one 10 seconds from the start of the call (redirects and DNS
+  lookups included), then stores the media. It ends any request at
   30 seconds of its own time. `record()` waits at least 35 seconds
   (`RECORD_MIN_TIMEOUT_SECONDS`) whatever the client's own timeout is: the
   API's cut plus a margin, because the client's clock starts first. So you
@@ -896,11 +897,14 @@ recorded.media  # each an OutboundMessageMediaItem(content_type, size)
   | Status | `error.code` | What happened | What to do |
   |---|---|---|---|
   | 422 | `media_rejected` | The link, or what it served, can never be used. | Fix the link. Do not retry it unchanged. |
-  | 504 | `media_timeout` | The link did not finish within 10 seconds. | Retry after `error.retry_after`, with a new link. |
+  | 504 | `media_timeout` | The link did not finish within 10 seconds of the call. | Retry after `error.retry_after`, with a new link. |
   | 502 | `media_unreachable` | Its host answered 5xx, refused the connection, or does not resolve. | Retry after `error.retry_after`, with a new link. |
   | 503 | `media_store_unavailable` | The platform could not keep the media right now. | Retry after `error.retry_after`. |
 
-  `is_retryable()` is True for the last three.
+  `is_retryable()` is True for the last three. When your links pass 20 MB
+  together (counted after any decompression), the API stops downloading and
+  answers 422 `media_rejected` with the pointer `/data/attributes/mediaUrls`:
+  the list, not one link.
 - **Refused before any request** (`ValueError`): an empty provider id or
   part-id list, a `sent_at` with no time zone, neither a body nor a media
   link, more than ten links, a link that is not `https`, a label that

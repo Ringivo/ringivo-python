@@ -157,7 +157,7 @@ fails as follows:
   `provider_message_id`.
 - **`messages.record()` waits at least 35 seconds, not 25**
   (`RECORD_MIN_TIMEOUT_SECONDS` is `35.0`). The API now fetches all media
-  links at once, each within 10 seconds, and ends any request at 30
+  links at once, each within 10 seconds of the call, and ends any request at 30
   seconds of its own time. The client's clock starts first, so the floor
   adds a 5-second margin: you always get the API's own answer. The floor
   is the wait for the answer (the read timeout). A longer client timeout is
@@ -168,7 +168,9 @@ fails as follows:
   link. 504 `media_timeout` and 502 `media_unreachable`: retry after
   `retry_after` with a new link. 503 `media_store_unavailable`: retry after
   `retry_after`. Before, a link fault was a 422 or a 503 with no `code`.
-  `is_retryable()` is True for the 502, 503 and 504.
+  `is_retryable()` is True for the 502, 503 and 504. When the links pass
+  20 MB together, the 422 `media_rejected` points at the list,
+  `/data/attributes/mediaUrls`, not at one link.
 - **`messages.record()` no longer answers 404 or the "media in flight" 429.**
   The API removed both: a record is stored (201) while the copy into the
   staff threads is paused on its side, and the limit of two records with
