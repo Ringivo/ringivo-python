@@ -810,7 +810,7 @@ class OutboundMessageRecordRequest(TypedDict):
 
 
 class OutboundMessageSender(TypedDict):
-    kind: Literal['phone_system_user']
+    kind: Literal['phone_system_user', 'phone_system_automatic']
     name: str | None
 
 
