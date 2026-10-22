@@ -83,9 +83,7 @@ def _delivery_resource(**attribute_overrides: object) -> dict[str, object]:
 async def test_list_builds_the_filter_and_page_query(
     respx_mock: respx.MockRouter, client: AsyncRingivo
 ) -> None:
-    route = respx_mock.get(DELIVERIES_URL).mock(
-        return_value=httpx.Response(200, json={"data": []})
-    )
+    route = respx_mock.get(DELIVERIES_URL).mock(return_value=httpx.Response(200, json={"data": []}))
 
     async with client:
         page = await client.webhook_deliveries.list(

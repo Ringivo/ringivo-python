@@ -70,7 +70,12 @@ def _mms_resource() -> dict[str, Any]:
             "to": "+13215550101",
             "body": None,
             "media": [
-                {"contentType": "text/vcard", "filename": "dana.vcf", "encoding": "base64", "bytes": 512},
+                {
+                    "contentType": "text/vcard",
+                    "filename": "dana.vcf",
+                    "encoding": "base64",
+                    "bytes": 512,
+                },
             ],
             "receivedAt": "2026-09-03T09:14:02.000000Z",
             "createdAt": "2026-09-03T09:14:03.000000Z",
@@ -106,7 +111,9 @@ def test_list_reads_the_spec_example(
     assert sent.url.query == b""
 
 
-def test_list_sends_every_filter_and_the_cursor(client: Ringivo, respx_mock: respx.MockRouter) -> None:
+def test_list_sends_every_filter_and_the_cursor(
+    client: Ringivo, respx_mock: respx.MockRouter
+) -> None:
     route = respx_mock.get(MESSAGES_URL).mock(
         return_value=httpx.Response(
             200,
@@ -173,7 +180,9 @@ def test_every_list_filter_is_one_the_spec_publishes(
     assert sent == published
 
 
-def test_get_reads_one_message_and_its_attachments(client: Ringivo, respx_mock: respx.MockRouter) -> None:
+def test_get_reads_one_message_and_its_attachments(
+    client: Ringivo, respx_mock: respx.MockRouter
+) -> None:
     route = respx_mock.get(f"{MESSAGES_URL}/{MESSAGE_ID}").mock(
         return_value=httpx.Response(200, json={"data": _mms_resource()})
     )
@@ -200,7 +209,9 @@ def test_an_inbound_message_id_stays_inside_its_own_path_segment(
 
     client.inbound_messages.get("../fax-accounts/secret")
 
-    assert route.calls.last.request.url.raw_path == b"/v1/inbound-messages/..%2Ffax-accounts%2Fsecret"
+    assert (
+        route.calls.last.request.url.raw_path == b"/v1/inbound-messages/..%2Ffax-accounts%2Fsecret"
+    )
 
 
 def test_get_refuses_an_empty_id(client: Ringivo) -> None:

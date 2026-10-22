@@ -71,6 +71,9 @@ dev = [
 [tool.ruff]
 target-version = "py310"
 line-length = 100
+# Machine-written by scripts/generate.sh (black + isort lay it out); `ruff format` must not
+# fight the generator, so it is left as generated.
+extend-exclude = ["src/ringivo/_generated_types.py"]
 
 [tool.ruff.lint]
 # Ruff's own documented defaults, restored explicitly: with no [tool.ruff]

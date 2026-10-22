@@ -204,18 +204,34 @@ def test_the_send_acknowledgement_reads_the_new_names_and_falls_back_to_the_old(
         side_effect=[
             httpx.Response(
                 202,
-                json={"data": {**base, "clientReference": "new", "createdAt": "2026-08-16T11:02:31+00:00"}},
+                json={
+                    "data": {
+                        **base,
+                        "clientReference": "new",
+                        "createdAt": "2026-08-16T11:02:31+00:00",
+                    }
+                },
             ),
             httpx.Response(
                 202,
-                json={"data": {**base, "client_reference": "old", "created_at": "2026-08-16T11:02:31+00:00"}},
+                json={
+                    "data": {
+                        **base,
+                        "client_reference": "old",
+                        "created_at": "2026-08-16T11:02:31+00:00",
+                    }
+                },
             ),
         ]
     )
 
     with client:
-        renamed = client.faxes.send(fax_account=ACCOUNT_ID, to="+13025556789", urls=["https://x.example/a.pdf"])
-        legacy = client.faxes.send(fax_account=ACCOUNT_ID, to="+13025556789", urls=["https://x.example/a.pdf"])
+        renamed = client.faxes.send(
+            fax_account=ACCOUNT_ID, to="+13025556789", urls=["https://x.example/a.pdf"]
+        )
+        legacy = client.faxes.send(
+            fax_account=ACCOUNT_ID, to="+13025556789", urls=["https://x.example/a.pdf"]
+        )
 
     stamp = datetime(2026, 8, 16, 11, 2, 31, tzinfo=timezone.utc)
     assert (renamed.client_reference, renamed.created_at) == ("new", stamp)
@@ -230,11 +246,21 @@ def test_the_media_link_reads_the_new_names_and_falls_back_to_the_old(
         side_effect=[
             httpx.Response(
                 200,
-                json={"url": url, "expiresAt": "2026-08-16T11:07:31+00:00", "byteSize": 7, "sha256": "d" * 64},
+                json={
+                    "url": url,
+                    "expiresAt": "2026-08-16T11:07:31+00:00",
+                    "byteSize": 7,
+                    "sha256": "d" * 64,
+                },
             ),
             httpx.Response(
                 200,
-                json={"url": url, "expires_at": "2026-08-16T11:07:31+00:00", "byte_size": 7, "sha256": "d" * 64},
+                json={
+                    "url": url,
+                    "expires_at": "2026-08-16T11:07:31+00:00",
+                    "byte_size": 7,
+                    "sha256": "d" * 64,
+                },
             ),
         ]
     )

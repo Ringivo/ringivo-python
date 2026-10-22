@@ -174,7 +174,9 @@ class Faxes:
             if tags is not None:
                 parts.append(("tags", (None, jsonlib.dumps(dict(tags)), _JSON)))
             if cover_page is not None:
-                parts.append(("coverPage", (None, jsonlib.dumps(_cover_page_wire(cover_page)), _JSON)))
+                parts.append(
+                    ("coverPage", (None, jsonlib.dumps(_cover_page_wire(cover_page)), _JSON))
+                )
             for index, document in enumerate(documents):
                 parts.append(("documents[]", _upload(document, index)))
 

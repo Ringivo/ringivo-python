@@ -362,7 +362,10 @@ def test_subscribers_list_builds_the_filter_and_page_query(
     ],
 )
 def test_subscribers_list_sends_kind_as_one_comma_list(
-    respx_mock: respx.MockRouter, client: Ringivo, kind: str | list[str] | tuple[str, ...], sent: str
+    respx_mock: respx.MockRouter,
+    client: Ringivo,
+    kind: str | list[str] | tuple[str, ...],
+    sent: str,
 ) -> None:
     route = respx_mock.get(USERS_URL).mock(return_value=httpx.Response(200, json={"data": []}))
 
@@ -505,7 +508,9 @@ def test_a_kind_this_client_has_no_word_for_parses_as_itself(
     # `kind` is WIDE ON PURPOSE, like `CallRecord.direction`: a word the API
     # adds later must arrive as itself, not fail the read.
     respx_mock.get(USER_URL).mock(
-        return_value=httpx.Response(200, json={"data": _user_resource(attributes={"kind": "paging_group"})})
+        return_value=httpx.Response(
+            200, json={"data": _user_resource(attributes={"kind": "paging_group"})}
+        )
     )
 
     with client:
@@ -658,7 +663,11 @@ def test_devices_list_builds_the_filter_and_page_query(
 
     with client:
         client.pbx.devices.list(
-            customer=CUSTOMER_ID, subscriber=USER_ID, registered=True, before="0198c4a1", page_size=50
+            customer=CUSTOMER_ID,
+            subscriber=USER_ID,
+            registered=True,
+            before="0198c4a1",
+            page_size=50,
         )
 
     request = route.calls.last.request
@@ -740,11 +749,7 @@ def test_an_expired_registration_is_a_row_with_registered_false(
     respx_mock.get(DEVICE_URL).mock(
         return_value=httpx.Response(
             200,
-            json={
-                "data": _device_resource(
-                    attributes={"registered": False, "autoAnswer": True}
-                )
-            },
+            json={"data": _device_resource(attributes={"registered": False, "autoAnswer": True})},
         )
     )
 
@@ -1204,7 +1209,9 @@ def test_call_records_get_reads_every_transcript_status(
     respx_mock.get(CALL_RECORD_URL).mock(
         return_value=httpx.Response(
             200,
-            json={"data": _call_record_resource(attributes={"transcriptStatus": transcript_status})},
+            json={
+                "data": _call_record_resource(attributes={"transcriptStatus": transcript_status})
+            },
         )
     )
 
@@ -1221,9 +1228,7 @@ def test_a_call_record_from_an_older_api_reads_no_status_rather_than_a_guess(
     attributes = cast(dict[str, object], resource["attributes"])
     del attributes["recordingStatus"]
     del attributes["transcriptStatus"]
-    respx_mock.get(CALL_RECORD_URL).mock(
-        return_value=httpx.Response(200, json={"data": resource})
-    )
+    respx_mock.get(CALL_RECORD_URL).mock(return_value=httpx.Response(200, json={"data": resource}))
 
     with client:
         record = client.pbx.call_records.get(CALL_RECORD_ID)
@@ -1297,7 +1302,9 @@ def test_a_call_direction_with_no_word_for_it_arrives_as_its_own_digits(
     respx_mock.get(CALL_RECORD_URL).mock(
         return_value=httpx.Response(
             200,
-            json={"data": _call_record_resource(attributes={"direction": "9", "disposition": None})},
+            json={
+                "data": _call_record_resource(attributes={"direction": "9", "disposition": None})
+            },
         )
     )
 
@@ -1470,7 +1477,9 @@ def test_call_records_recordings_returns_every_capture_in_the_servers_own_order(
 def test_call_records_recordings_with_no_captures_is_an_empty_tuple_not_an_error(
     respx_mock: respx.MockRouter, client: Ringivo
 ) -> None:
-    respx_mock.get(CALL_RECORD_RECORDINGS_URL).mock(return_value=httpx.Response(200, json={"data": []}))
+    respx_mock.get(CALL_RECORD_RECORDINGS_URL).mock(
+        return_value=httpx.Response(200, json={"data": []})
+    )
 
     with client:
         recordings = client.pbx.call_records.recordings(CALL_RECORD_ID)
@@ -1494,7 +1503,8 @@ def test_a_call_record_id_stays_inside_its_own_path_segment_on_recordings(
         client.pbx.call_records.recordings("../users/secret")
 
     assert (
-        route.calls.last.request.url.raw_path == b"/v1/pbx/call-records/..%2Fusers%2Fsecret/recordings"
+        route.calls.last.request.url.raw_path
+        == b"/v1/pbx/call-records/..%2Fusers%2Fsecret/recordings"
     )
 
 
@@ -1638,7 +1648,9 @@ def test_call_records_transcripts_reads_the_pending_state_with_every_other_field
 def test_call_records_transcripts_with_no_captures_is_an_empty_tuple_not_an_error(
     respx_mock: respx.MockRouter, client: Ringivo
 ) -> None:
-    respx_mock.get(CALL_RECORD_TRANSCRIPTS_URL).mock(return_value=httpx.Response(200, json={"data": []}))
+    respx_mock.get(CALL_RECORD_TRANSCRIPTS_URL).mock(
+        return_value=httpx.Response(200, json={"data": []})
+    )
 
     with client:
         transcripts = client.pbx.call_records.transcripts(CALL_RECORD_ID)
@@ -1662,7 +1674,8 @@ def test_a_call_record_id_stays_inside_its_own_path_segment_on_transcripts(
         client.pbx.call_records.transcripts("../users/secret")
 
     assert (
-        route.calls.last.request.url.raw_path == b"/v1/pbx/call-records/..%2Fusers%2Fsecret/transcripts"
+        route.calls.last.request.url.raw_path
+        == b"/v1/pbx/call-records/..%2Fusers%2Fsecret/transcripts"
     )
 
 
@@ -1753,7 +1766,9 @@ def test_call_records_transcript_with_no_turns_is_an_empty_tuple(
     respx_mock: respx.MockRouter, client: Ringivo
 ) -> None:
     respx_mock.get(CALL_RECORD_TRANSCRIPT_URL).mock(
-        return_value=httpx.Response(200, json={"data": _transcript_resource(attributes={"segments": []})})
+        return_value=httpx.Response(
+            200, json={"data": _transcript_resource(attributes={"segments": []})}
+        )
     )
 
     with client:
@@ -1991,7 +2006,9 @@ def test_a_retry_after_http_date_becomes_seconds_from_now(
 
     later = datetime.now(timezone.utc).replace(microsecond=0) + timedelta(seconds=90)
     respx_mock.post(CALL_RECORD_TRANSCRIPT_URL).mock(
-        return_value=_refusal(429, "transcription_capped", retry_after=format_datetime(later, usegmt=True))
+        return_value=_refusal(
+            429, "transcription_capped", retry_after=format_datetime(later, usegmt=True)
+        )
     )
 
     with client, pytest.raises(TranscriptionCappedError) as caught:
@@ -2005,7 +2022,9 @@ def test_a_retry_after_date_already_past_is_zero_not_negative(
     respx_mock: respx.MockRouter, client: Ringivo
 ) -> None:
     respx_mock.post(CALL_RECORD_TRANSCRIPT_URL).mock(
-        return_value=_refusal(429, "transcription_capped", retry_after="Wed, 21 Oct 2015 07:28:00 GMT")
+        return_value=_refusal(
+            429, "transcription_capped", retry_after="Wed, 21 Oct 2015 07:28:00 GMT"
+        )
     )
 
     with client, pytest.raises(TranscriptionCappedError) as caught:
@@ -2017,7 +2036,9 @@ def test_a_retry_after_date_already_past_is_zero_not_negative(
 def test_an_ordinary_refusal_is_still_a_plain_api_error(
     respx_mock: respx.MockRouter, client: Ringivo
 ) -> None:
-    respx_mock.post(CALL_RECORD_TRANSCRIPT_URL).mock(return_value=_refusal(404, "transcript_failed"))
+    respx_mock.post(CALL_RECORD_TRANSCRIPT_URL).mock(
+        return_value=_refusal(404, "transcript_failed")
+    )
 
     with client, pytest.raises(ApiError) as caught:
         client.pbx.call_records.request_transcript(CALL_RECORD_ID, RECORDING_ID)
@@ -2050,8 +2071,10 @@ def test_both_ids_stay_inside_their_own_path_segments_on_a_single_transcript(
     )
 
     with client:
-        call = client.pbx.call_records.transcript if method == "GET" else (
-            client.pbx.call_records.request_transcript
+        call = (
+            client.pbx.call_records.transcript
+            if method == "GET"
+            else (client.pbx.call_records.request_transcript)
         )
         call("../users/secret", "../x")
 

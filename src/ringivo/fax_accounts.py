@@ -406,6 +406,4 @@ def _given(attributes: Mapping[str, Any]) -> dict[str, Any]:
     would make `retention_days=None` — "keep these pages for ever" —
     indistinguishable from not mentioning retention at all.
     """
-    return {
-        name: value for name, value in attributes.items() if not isinstance(value, NotGiven)
-    }
+    return {name: value for name, value in attributes.items() if not isinstance(value, NotGiven)}

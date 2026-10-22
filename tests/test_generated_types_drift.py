@@ -35,7 +35,9 @@ import typing_extensions
 
 from ringivo import _generated_types as generated
 from ringivo import models
-from ringivo.models import MediaLink as MediaLinkModel  # models.MediaLink shadows generated.MediaLink
+from ringivo.models import (
+    MediaLink as MediaLinkModel,
+)  # models.MediaLink shadows generated.MediaLink
 
 
 @dataclasses.dataclass(frozen=True)
@@ -172,8 +174,16 @@ FaxMediaDocumentAttributes = _fax_media_document_attributes()
 # `"client_reference"` from another — two different wire shapes, both real).
 _READS: tuple[_Read, ...] = (
     # -- FaxDocument._from_json reads a FaxDocumentMetadata -----------------
-    _Read(models.FaxDocument, "kind", generated.FaxDocumentMetadata, "kind", "FaxDocument._from_json"),
-    _Read(models.FaxDocument, "ordinal", generated.FaxDocumentMetadata, "ordinal", "FaxDocument._from_json"),
+    _Read(
+        models.FaxDocument, "kind", generated.FaxDocumentMetadata, "kind", "FaxDocument._from_json"
+    ),
+    _Read(
+        models.FaxDocument,
+        "ordinal",
+        generated.FaxDocumentMetadata,
+        "ordinal",
+        "FaxDocument._from_json",
+    ),
     _Read(
         models.FaxDocument,
         "content_type",
@@ -182,10 +192,26 @@ _READS: tuple[_Read, ...] = (
         "FaxDocument._from_json",
     ),
     _Read(
-        models.FaxDocument, "byte_size", generated.FaxDocumentMetadata, "byteSize", "FaxDocument._from_json"
+        models.FaxDocument,
+        "byte_size",
+        generated.FaxDocumentMetadata,
+        "byteSize",
+        "FaxDocument._from_json",
     ),
-    _Read(models.FaxDocument, "sha256", generated.FaxDocumentMetadata, "sha256", "FaxDocument._from_json"),
-    _Read(models.FaxDocument, "pages", generated.FaxDocumentMetadata, "pages", "FaxDocument._from_json"),
+    _Read(
+        models.FaxDocument,
+        "sha256",
+        generated.FaxDocumentMetadata,
+        "sha256",
+        "FaxDocument._from_json",
+    ),
+    _Read(
+        models.FaxDocument,
+        "pages",
+        generated.FaxDocumentMetadata,
+        "pages",
+        "FaxDocument._from_json",
+    ),
     # -- Fax._from_resource reads a FaxResource (id) + its FaxAttributes ----
     _Read(models.Fax, "id", generated.FaxResource, "id", "Fax._from_resource"),
     _Read(models.Fax, "status", generated.FaxAttributes, "status", "Fax._from_resource"),
@@ -195,13 +221,23 @@ _READS: tuple[_Read, ...] = (
     _Read(models.Fax, "failure_code", generated.FaxAttributes, "failureCode", "Fax._from_resource"),
     _Read(models.Fax, "pages_total", generated.FaxAttributes, "pagesTotal", "Fax._from_resource"),
     _Read(
-        models.Fax, "pages_transferred", generated.FaxAttributes, "pagesTransferred", "Fax._from_resource"
+        models.Fax,
+        "pages_transferred",
+        generated.FaxAttributes,
+        "pagesTransferred",
+        "Fax._from_resource",
     ),
     _Read(models.Fax, "partial", generated.FaxAttributes, "partial", "Fax._from_resource"),
-    _Read(models.Fax, "attempt_count", generated.FaxAttributes, "attemptCount", "Fax._from_resource"),
+    _Read(
+        models.Fax, "attempt_count", generated.FaxAttributes, "attemptCount", "Fax._from_resource"
+    ),
     _Read(models.Fax, "resolution", generated.FaxAttributes, "resolution", "Fax._from_resource"),
     _Read(
-        models.Fax, "client_reference", generated.FaxAttributes, "clientReference", "Fax._from_resource"
+        models.Fax,
+        "client_reference",
+        generated.FaxAttributes,
+        "clientReference",
+        "Fax._from_resource",
     ),
     _Read(models.Fax, "cover_page", generated.FaxAttributes, "coverPage", "Fax._from_resource"),
     _Read(models.Fax, "read", generated.FaxAttributes, "read", "Fax._from_resource"),
@@ -241,17 +277,35 @@ _READS: tuple[_Read, ...] = (
     # (id) + its attributes block. The flat reads above stay for an older server.
     _Read(MediaLinkModel, "id", generated.FaxMediaDocumentResource, "id", "MediaLink._from_json"),
     _Read(MediaLinkModel, "url", FaxMediaDocumentAttributes, "contentUrl", "MediaLink._from_json"),
-    _Read(MediaLinkModel, "expires_at", FaxMediaDocumentAttributes, "expiresAt", "MediaLink._from_json"),
-    _Read(MediaLinkModel, "byte_size", FaxMediaDocumentAttributes, "byteSize", "MediaLink._from_json"),
+    _Read(
+        MediaLinkModel,
+        "expires_at",
+        FaxMediaDocumentAttributes,
+        "expiresAt",
+        "MediaLink._from_json",
+    ),
+    _Read(
+        MediaLinkModel, "byte_size", FaxMediaDocumentAttributes, "byteSize", "MediaLink._from_json"
+    ),
     _Read(MediaLinkModel, "sha256", FaxMediaDocumentAttributes, "sha256", "MediaLink._from_json"),
     _Read(MediaLinkModel, "kind", FaxMediaDocumentAttributes, "kind", "MediaLink._from_json"),
     _Read(
-        MediaLinkModel, "content_type", FaxMediaDocumentAttributes, "contentType", "MediaLink._from_json"
+        MediaLinkModel,
+        "content_type",
+        FaxMediaDocumentAttributes,
+        "contentType",
+        "MediaLink._from_json",
     ),
     # -- FaxAccount._from_resource reads a FaxAccountResource (id) + its ----
     # FaxAccountAttributes, plus the customer LINKAGE off its relationships.
     _Read(models.FaxAccount, "id", generated.FaxAccountResource, "id", "FaxAccount._from_resource"),
-    _Read(models.FaxAccount, "name", generated.FaxAccountAttributes, "name", "FaxAccount._from_resource"),
+    _Read(
+        models.FaxAccount,
+        "name",
+        generated.FaxAccountAttributes,
+        "name",
+        "FaxAccount._from_resource",
+    ),
     _Read(
         models.FaxAccount,
         "header_text",
@@ -281,7 +335,11 @@ _READS: tuple[_Read, ...] = (
         "FaxAccount._from_resource",
     ),
     _Read(
-        models.FaxAccount, "status", generated.FaxAccountAttributes, "status", "FaxAccount._from_resource"
+        models.FaxAccount,
+        "status",
+        generated.FaxAccountAttributes,
+        "status",
+        "FaxAccount._from_resource",
     ),
     # The one read that starts on the RELATIONSHIPS block rather than the
     # attributes: `customer_id` walks customer -> data -> id, and the member
@@ -316,7 +374,11 @@ _READS: tuple[_Read, ...] = (
         "FaxAccountNumber._from_resource",
     ),
     _Read(
-        models.FaxAccountNumber, "e164", PhoneNumberAttributes, "e164", "FaxAccountNumber._from_resource"
+        models.FaxAccountNumber,
+        "e164",
+        PhoneNumberAttributes,
+        "e164",
+        "FaxAccountNumber._from_resource",
     ),
     _Read(
         models.FaxAccountNumber,
@@ -572,9 +634,27 @@ _READS: tuple[_Read, ...] = (
     ),
     # -- PbxSubscriber._from_resource reads a PbxSubscriberResource (id) + its
     # PbxSubscriberAttributes, plus BOTH relationship linkages.
-    _Read(models.PbxSubscriber, "id", generated.PbxSubscriberResource, "id", "PbxSubscriber._from_resource"),
-    _Read(models.PbxSubscriber, "user", generated.PbxSubscriberAttributes, "user", "PbxSubscriber._from_resource"),
-    _Read(models.PbxSubscriber, "domain", generated.PbxSubscriberAttributes, "domain", "PbxSubscriber._from_resource"),
+    _Read(
+        models.PbxSubscriber,
+        "id",
+        generated.PbxSubscriberResource,
+        "id",
+        "PbxSubscriber._from_resource",
+    ),
+    _Read(
+        models.PbxSubscriber,
+        "user",
+        generated.PbxSubscriberAttributes,
+        "user",
+        "PbxSubscriber._from_resource",
+    ),
+    _Read(
+        models.PbxSubscriber,
+        "domain",
+        generated.PbxSubscriberAttributes,
+        "domain",
+        "PbxSubscriber._from_resource",
+    ),
     _Read(
         models.PbxSubscriber,
         "display_name",
@@ -590,14 +670,46 @@ _READS: tuple[_Read, ...] = (
         "PbxSubscriber._from_resource",
     ),
     _Read(
-        models.PbxSubscriber, "last_name", generated.PbxSubscriberAttributes, "lastName", "PbxSubscriber._from_resource"
+        models.PbxSubscriber,
+        "last_name",
+        generated.PbxSubscriberAttributes,
+        "lastName",
+        "PbxSubscriber._from_resource",
     ),
-    _Read(models.PbxSubscriber, "email", generated.PbxSubscriberAttributes, "email", "PbxSubscriber._from_resource"),
-    _Read(models.PbxSubscriber, "scope", generated.PbxSubscriberAttributes, "scope", "PbxSubscriber._from_resource"),
-    _Read(models.PbxSubscriber, "group", generated.PbxSubscriberAttributes, "group", "PbxSubscriber._from_resource"),
-    _Read(models.PbxSubscriber, "site", generated.PbxSubscriberAttributes, "site", "PbxSubscriber._from_resource"),
     _Read(
-        models.PbxSubscriber, "presence", generated.PbxSubscriberAttributes, "presence", "PbxSubscriber._from_resource"
+        models.PbxSubscriber,
+        "email",
+        generated.PbxSubscriberAttributes,
+        "email",
+        "PbxSubscriber._from_resource",
+    ),
+    _Read(
+        models.PbxSubscriber,
+        "scope",
+        generated.PbxSubscriberAttributes,
+        "scope",
+        "PbxSubscriber._from_resource",
+    ),
+    _Read(
+        models.PbxSubscriber,
+        "group",
+        generated.PbxSubscriberAttributes,
+        "group",
+        "PbxSubscriber._from_resource",
+    ),
+    _Read(
+        models.PbxSubscriber,
+        "site",
+        generated.PbxSubscriberAttributes,
+        "site",
+        "PbxSubscriber._from_resource",
+    ),
+    _Read(
+        models.PbxSubscriber,
+        "presence",
+        generated.PbxSubscriberAttributes,
+        "presence",
+        "PbxSubscriber._from_resource",
     ),
     _Read(
         models.PbxSubscriber,
@@ -614,15 +726,33 @@ _READS: tuple[_Read, ...] = (
         "PbxSubscriber._from_resource",
     ),
     _Read(
-        models.PbxSubscriber, "time_zone", generated.PbxSubscriberAttributes, "timeZone", "PbxSubscriber._from_resource"
+        models.PbxSubscriber,
+        "time_zone",
+        generated.PbxSubscriberAttributes,
+        "timeZone",
+        "PbxSubscriber._from_resource",
     ),
     _Read(
-        models.PbxSubscriber, "created_at", generated.PbxSubscriberAttributes, "createdAt", "PbxSubscriber._from_resource"
+        models.PbxSubscriber,
+        "created_at",
+        generated.PbxSubscriberAttributes,
+        "createdAt",
+        "PbxSubscriber._from_resource",
     ),
     _Read(
-        models.PbxSubscriber, "updated_at", generated.PbxSubscriberAttributes, "updatedAt", "PbxSubscriber._from_resource"
+        models.PbxSubscriber,
+        "updated_at",
+        generated.PbxSubscriberAttributes,
+        "updatedAt",
+        "PbxSubscriber._from_resource",
     ),
-    _Read(models.PbxSubscriber, "kind", generated.PbxSubscriberAttributes, "kind", "PbxSubscriber._from_resource"),
+    _Read(
+        models.PbxSubscriber,
+        "kind",
+        generated.PbxSubscriberAttributes,
+        "kind",
+        "PbxSubscriber._from_resource",
+    ),
     _Read(
         models.PbxSubscriber,
         "customer_id",
@@ -642,12 +772,22 @@ _READS: tuple[_Read, ...] = (
     # -- PbxDevice._from_resource reads a PbxDeviceResource (id) + its ------
     # PbxDeviceAttributes, plus both relationship linkages.
     _Read(models.PbxDevice, "id", generated.PbxDeviceResource, "id", "PbxDevice._from_resource"),
-    _Read(models.PbxDevice, "aor", generated.PbxDeviceAttributes, "aor", "PbxDevice._from_resource"),
-    _Read(models.PbxDevice, "user", generated.PbxDeviceAttributes, "user", "PbxDevice._from_resource"),
     _Read(
-        models.PbxDevice, "domain", generated.PbxDeviceAttributes, "domain", "PbxDevice._from_resource"
+        models.PbxDevice, "aor", generated.PbxDeviceAttributes, "aor", "PbxDevice._from_resource"
     ),
-    _Read(models.PbxDevice, "mode", generated.PbxDeviceAttributes, "mode", "PbxDevice._from_resource"),
+    _Read(
+        models.PbxDevice, "user", generated.PbxDeviceAttributes, "user", "PbxDevice._from_resource"
+    ),
+    _Read(
+        models.PbxDevice,
+        "domain",
+        generated.PbxDeviceAttributes,
+        "domain",
+        "PbxDevice._from_resource",
+    ),
+    _Read(
+        models.PbxDevice, "mode", generated.PbxDeviceAttributes, "mode", "PbxDevice._from_resource"
+    ),
     _Read(
         models.PbxDevice,
         "user_agent",
@@ -656,7 +796,11 @@ _READS: tuple[_Read, ...] = (
         "PbxDevice._from_resource",
     ),
     _Read(
-        models.PbxDevice, "contact", generated.PbxDeviceAttributes, "contact", "PbxDevice._from_resource"
+        models.PbxDevice,
+        "contact",
+        generated.PbxDeviceAttributes,
+        "contact",
+        "PbxDevice._from_resource",
     ),
     _Read(
         models.PbxDevice,
@@ -731,7 +875,11 @@ _READS: tuple[_Read, ...] = (
     # `toSubscriber`.
     _Read(models.CallRecord, "id", generated.CallRecordResource, "id", "CallRecord._from_resource"),
     _Read(
-        models.CallRecord, "direction", generated.CallRecordAttributes, "direction", "CallRecord._from_resource"
+        models.CallRecord,
+        "direction",
+        generated.CallRecordAttributes,
+        "direction",
+        "CallRecord._from_resource",
     ),
     _Read(
         models.CallRecord,
@@ -925,7 +1073,11 @@ _READS: tuple[_Read, ...] = (
         "CallRecord._from_resource",
     ),
     _Read(
-        models.CallRecord, "codec", generated.CallRecordAttributes, "codec", "CallRecord._from_resource"
+        models.CallRecord,
+        "codec",
+        generated.CallRecordAttributes,
+        "codec",
+        "CallRecord._from_resource",
     ),
     _Read(
         models.CallRecord,
@@ -1003,7 +1155,11 @@ _READS: tuple[_Read, ...] = (
         "Recording._from_resource",
     ),
     _Read(
-        models.Recording, "sha256", generated.RecordingAttributes, "sha256", "Recording._from_resource"
+        models.Recording,
+        "sha256",
+        generated.RecordingAttributes,
+        "sha256",
+        "Recording._from_resource",
     ),
     _Read(
         models.Recording,
@@ -1054,7 +1210,11 @@ _READS: tuple[_Read, ...] = (
     # The deprecated `status`, stored privately behind the warning `status`
     # property.
     _Read(
-        models.Transcript, "_status", generated.TranscriptAttributes, "status", "Transcript._from_resource"
+        models.Transcript,
+        "_status",
+        generated.TranscriptAttributes,
+        "status",
+        "Transcript._from_resource",
     ),
     _Read(
         models.Transcript,
@@ -1146,7 +1306,11 @@ _READS: tuple[_Read, ...] = (
         "TranscriptSegment._from_json",
     ),
     _Read(
-        models.TranscriptSegment, "end", generated.TranscriptSegment, "end", "TranscriptSegment._from_json"
+        models.TranscriptSegment,
+        "end",
+        generated.TranscriptSegment,
+        "end",
+        "TranscriptSegment._from_json",
     ),
     _Read(
         models.TranscriptSegment,
@@ -1173,7 +1337,11 @@ _READS: tuple[_Read, ...] = (
         "PbxCall._from_resource",
     ),
     _Read(
-        models.PbxCall, "caller_id", generated.PbxCallAttributes, "callerId", "PbxCall._from_resource"
+        models.PbxCall,
+        "caller_id",
+        generated.PbxCallAttributes,
+        "callerId",
+        "PbxCall._from_resource",
     ),
     _Read(
         models.PbxCall,
@@ -1182,8 +1350,12 @@ _READS: tuple[_Read, ...] = (
         "autoAnswer",
         "PbxCall._from_resource",
     ),
-    _Read(models.PbxCall, "device", generated.PbxCallAttributes, "device", "PbxCall._from_resource"),
-    _Read(models.PbxCall, "status", generated.PbxCallAttributes, "status", "PbxCall._from_resource"),
+    _Read(
+        models.PbxCall, "device", generated.PbxCallAttributes, "device", "PbxCall._from_resource"
+    ),
+    _Read(
+        models.PbxCall, "status", generated.PbxCallAttributes, "status", "PbxCall._from_resource"
+    ),
     _Read(
         models.PbxCall,
         "requested_at",
@@ -1328,75 +1500,483 @@ _READS: tuple[_Read, ...] = (
         "Customer._from_resource",
     ),
     # -- The message models: the record answer and the message.* events ------
-    _Read(models.MessageMediaPart, "content_type", generated.OutboundMessageMediaPart, "contentType", "MessageMediaPart._from_json"),
-    _Read(models.MessageMediaPart, "filename", generated.OutboundMessageMediaPart, "filename", "MessageMediaPart._from_json"),
-    _Read(models.MessageMediaPart, "encoding", generated.OutboundMessageMediaPart, "encoding", "MessageMediaPart._from_json"),
-    _Read(models.MessageMediaPart, "byte_size", generated.OutboundMessageMediaPart, "bytes", "MessageMediaPart._from_json"),
-    _Read(models.OutboundMessage, "id", generated.OutboundMessageResource, "id", "OutboundMessage._from_resource"),
-    _Read(models.OutboundMessage, "source", generated.OutboundMessageAttributes, "source", "OutboundMessage._from_resource"),
-    _Read(models.OutboundMessage, "kind", generated.OutboundMessageAttributes, "kind", "OutboundMessage._from_resource"),
-    _Read(models.OutboundMessage, "status", generated.OutboundMessageAttributes, "status", "OutboundMessage._from_resource"),
-    _Read(models.OutboundMessage, "from_", generated.OutboundMessageAttributes, "from", "OutboundMessage._from_resource"),
-    _Read(models.OutboundMessage, "to", generated.OutboundMessageAttributes, "to", "OutboundMessage._from_resource"),
-    _Read(models.OutboundMessage, "body", generated.OutboundMessageAttributes, "body", "OutboundMessage._from_resource"),
-    _Read(models.OutboundMessage, "media", generated.OutboundMessageAttributes, "media", "OutboundMessage._from_resource"),
-    _Read(models.OutboundMessage, "sender_label", generated.OutboundMessageAttributes, "senderLabel", "OutboundMessage._from_resource"),
-    _Read(models.OutboundMessage, "mark_conversation_read", generated.OutboundMessageAttributes, "markConversationRead", "OutboundMessage._from_resource"),
-    _Read(models.OutboundMessage, "sent_at", generated.OutboundMessageAttributes, "sentAt", "OutboundMessage._from_resource"),
-    _Read(models.OutboundMessage, "provider_message_id", generated.OutboundMessageAttributes, "providerMessageId", "OutboundMessage._from_resource"),
-    _Read(models.OutboundMessage, "provider_part_ids", generated.OutboundMessageAttributes, "providerPartIds", "OutboundMessage._from_resource"),
-    _Read(models.OutboundMessage, "created_at", generated.OutboundMessageAttributes, "createdAt", "OutboundMessage._from_resource"),
-    _Read(models.OutboundMessage, "updated_at", generated.OutboundMessageAttributes, "updatedAt", "OutboundMessage._from_resource"),
-    _Read(models.MessageSender, "kind", generated.OutboundMessageSender, "kind", "MessageSender._from_json"),
-    _Read(models.MessageSender, "name", generated.OutboundMessageSender, "name", "MessageSender._from_json"),
-    _Read(models.MessageEventData, "id", generated.OutboundMessageEventData, "id", "MessageEventData._from_json"),
-    _Read(models.MessageEventData, "tenant_id", generated.OutboundMessageEventData, "tenantId", "MessageEventData._from_json"),
-    _Read(models.MessageEventData, "customer_id", generated.OutboundMessageEventData, "customerId", "MessageEventData._from_json"),
-    _Read(models.MessageEventData, "source", generated.OutboundMessageEventData, "source", "MessageEventData._from_json"),
-    _Read(models.MessageEventData, "kind", generated.OutboundMessageEventData, "kind", "MessageEventData._from_json"),
-    _Read(models.MessageEventData, "from_", generated.OutboundMessageEventData, "from", "MessageEventData._from_json"),
-    _Read(models.MessageEventData, "to", generated.OutboundMessageEventData, "to", "MessageEventData._from_json"),
-    _Read(models.MessageEventData, "body", generated.OutboundMessageEventData, "body", "MessageEventData._from_json"),
-    _Read(models.MessageEventData, "media", generated.OutboundMessageEventData, "media", "MessageEventData._from_json"),
-    _Read(models.MessageEventData, "status", generated.OutboundMessageEventData, "status", "MessageEventData._from_json"),
-    _Read(models.MessageEventData, "sent_by", generated.OutboundMessageEventData, "sentBy", "MessageEventData._from_json"),
-    _Read(models.MessageEventData, "sent_at", generated.OutboundMessageEventData, "sentAt", "MessageEventData._from_json"),
-    _Read(models.MessageEventData, "provider_message_id", generated.OutboundMessageEventData, "providerMessageId", "MessageEventData._from_json"),
-    _Read(models.MessageEventData, "provider_part_ids", generated.OutboundMessageEventData, "providerPartIds", "MessageEventData._from_json"),
+    _Read(
+        models.MessageMediaPart,
+        "content_type",
+        generated.OutboundMessageMediaPart,
+        "contentType",
+        "MessageMediaPart._from_json",
+    ),
+    _Read(
+        models.MessageMediaPart,
+        "filename",
+        generated.OutboundMessageMediaPart,
+        "filename",
+        "MessageMediaPart._from_json",
+    ),
+    _Read(
+        models.MessageMediaPart,
+        "encoding",
+        generated.OutboundMessageMediaPart,
+        "encoding",
+        "MessageMediaPart._from_json",
+    ),
+    _Read(
+        models.MessageMediaPart,
+        "byte_size",
+        generated.OutboundMessageMediaPart,
+        "bytes",
+        "MessageMediaPart._from_json",
+    ),
+    _Read(
+        models.OutboundMessage,
+        "id",
+        generated.OutboundMessageResource,
+        "id",
+        "OutboundMessage._from_resource",
+    ),
+    _Read(
+        models.OutboundMessage,
+        "source",
+        generated.OutboundMessageAttributes,
+        "source",
+        "OutboundMessage._from_resource",
+    ),
+    _Read(
+        models.OutboundMessage,
+        "kind",
+        generated.OutboundMessageAttributes,
+        "kind",
+        "OutboundMessage._from_resource",
+    ),
+    _Read(
+        models.OutboundMessage,
+        "status",
+        generated.OutboundMessageAttributes,
+        "status",
+        "OutboundMessage._from_resource",
+    ),
+    _Read(
+        models.OutboundMessage,
+        "from_",
+        generated.OutboundMessageAttributes,
+        "from",
+        "OutboundMessage._from_resource",
+    ),
+    _Read(
+        models.OutboundMessage,
+        "to",
+        generated.OutboundMessageAttributes,
+        "to",
+        "OutboundMessage._from_resource",
+    ),
+    _Read(
+        models.OutboundMessage,
+        "body",
+        generated.OutboundMessageAttributes,
+        "body",
+        "OutboundMessage._from_resource",
+    ),
+    _Read(
+        models.OutboundMessage,
+        "media",
+        generated.OutboundMessageAttributes,
+        "media",
+        "OutboundMessage._from_resource",
+    ),
+    _Read(
+        models.OutboundMessage,
+        "sender_label",
+        generated.OutboundMessageAttributes,
+        "senderLabel",
+        "OutboundMessage._from_resource",
+    ),
+    _Read(
+        models.OutboundMessage,
+        "mark_conversation_read",
+        generated.OutboundMessageAttributes,
+        "markConversationRead",
+        "OutboundMessage._from_resource",
+    ),
+    _Read(
+        models.OutboundMessage,
+        "sent_at",
+        generated.OutboundMessageAttributes,
+        "sentAt",
+        "OutboundMessage._from_resource",
+    ),
+    _Read(
+        models.OutboundMessage,
+        "provider_message_id",
+        generated.OutboundMessageAttributes,
+        "providerMessageId",
+        "OutboundMessage._from_resource",
+    ),
+    _Read(
+        models.OutboundMessage,
+        "provider_part_ids",
+        generated.OutboundMessageAttributes,
+        "providerPartIds",
+        "OutboundMessage._from_resource",
+    ),
+    _Read(
+        models.OutboundMessage,
+        "created_at",
+        generated.OutboundMessageAttributes,
+        "createdAt",
+        "OutboundMessage._from_resource",
+    ),
+    _Read(
+        models.OutboundMessage,
+        "updated_at",
+        generated.OutboundMessageAttributes,
+        "updatedAt",
+        "OutboundMessage._from_resource",
+    ),
+    _Read(
+        models.MessageSender,
+        "kind",
+        generated.OutboundMessageSender,
+        "kind",
+        "MessageSender._from_json",
+    ),
+    _Read(
+        models.MessageSender,
+        "name",
+        generated.OutboundMessageSender,
+        "name",
+        "MessageSender._from_json",
+    ),
+    _Read(
+        models.MessageEventData,
+        "id",
+        generated.OutboundMessageEventData,
+        "id",
+        "MessageEventData._from_json",
+    ),
+    _Read(
+        models.MessageEventData,
+        "tenant_id",
+        generated.OutboundMessageEventData,
+        "tenantId",
+        "MessageEventData._from_json",
+    ),
+    _Read(
+        models.MessageEventData,
+        "customer_id",
+        generated.OutboundMessageEventData,
+        "customerId",
+        "MessageEventData._from_json",
+    ),
+    _Read(
+        models.MessageEventData,
+        "source",
+        generated.OutboundMessageEventData,
+        "source",
+        "MessageEventData._from_json",
+    ),
+    _Read(
+        models.MessageEventData,
+        "kind",
+        generated.OutboundMessageEventData,
+        "kind",
+        "MessageEventData._from_json",
+    ),
+    _Read(
+        models.MessageEventData,
+        "from_",
+        generated.OutboundMessageEventData,
+        "from",
+        "MessageEventData._from_json",
+    ),
+    _Read(
+        models.MessageEventData,
+        "to",
+        generated.OutboundMessageEventData,
+        "to",
+        "MessageEventData._from_json",
+    ),
+    _Read(
+        models.MessageEventData,
+        "body",
+        generated.OutboundMessageEventData,
+        "body",
+        "MessageEventData._from_json",
+    ),
+    _Read(
+        models.MessageEventData,
+        "media",
+        generated.OutboundMessageEventData,
+        "media",
+        "MessageEventData._from_json",
+    ),
+    _Read(
+        models.MessageEventData,
+        "status",
+        generated.OutboundMessageEventData,
+        "status",
+        "MessageEventData._from_json",
+    ),
+    _Read(
+        models.MessageEventData,
+        "sent_by",
+        generated.OutboundMessageEventData,
+        "sentBy",
+        "MessageEventData._from_json",
+    ),
+    _Read(
+        models.MessageEventData,
+        "sent_at",
+        generated.OutboundMessageEventData,
+        "sentAt",
+        "MessageEventData._from_json",
+    ),
+    _Read(
+        models.MessageEventData,
+        "provider_message_id",
+        generated.OutboundMessageEventData,
+        "providerMessageId",
+        "MessageEventData._from_json",
+    ),
+    _Read(
+        models.MessageEventData,
+        "provider_part_ids",
+        generated.OutboundMessageEventData,
+        "providerPartIds",
+        "MessageEventData._from_json",
+    ),
     # `failure_cause` walks failure -> cause; the member read off the event data is `failure`.
-    _Read(models.MessageEventData, "failure_cause", generated.MessageFailedEventData, "failure", "MessageEventData._from_json"),
-    _Read(models.MessageEventData, "failure_cause", generated.Failure, "cause", "MessageEventData._from_json"),
-    _Read(models.MessageEvent, "event_id", generated.WebhookEventEnvelope, "eventId", "MessageEvent._from_json"),
-    _Read(models.MessageEvent, "type", generated.WebhookEventEnvelope, "type", "MessageEvent._from_json"),
-    _Read(models.MessageEvent, "occurred_at", generated.WebhookEventEnvelope, "occurredAt", "MessageEvent._from_json"),
-    _Read(models.MessageEvent, "message", generated.MessageSentEvent, "data", "MessageEvent._from_json"),
-    _Read(models.MessageMediaPart, "content_type", generated.InboundMessageMediaPart, "contentType", "MessageMediaPart._from_json"),
-    _Read(models.MessageMediaPart, "filename", generated.InboundMessageMediaPart, "filename", "MessageMediaPart._from_json"),
-    _Read(models.MessageMediaPart, "encoding", generated.InboundMessageMediaPart, "encoding", "MessageMediaPart._from_json"),
-    _Read(models.MessageMediaPart, "byte_size", generated.InboundMessageMediaPart, "bytes", "MessageMediaPart._from_json"),
-    _Read(models.MessageMediaPart, "content_type", generated.MessageReceivedMediaPart, "contentType", "MessageMediaPart._from_json"),
-    _Read(models.MessageMediaPart, "filename", generated.MessageReceivedMediaPart, "filename", "MessageMediaPart._from_json"),
-    _Read(models.MessageMediaPart, "encoding", generated.MessageReceivedMediaPart, "encoding", "MessageMediaPart._from_json"),
-    _Read(models.MessageMediaPart, "byte_size", generated.MessageReceivedMediaPart, "bytes", "MessageMediaPart._from_json"),
-    _Read(models.InboundMessage, "id", generated.InboundMessageResource, "id", "InboundMessage._from_resource"),
-    _Read(models.InboundMessage, "kind", generated.InboundMessageAttributes, "kind", "InboundMessage._from_resource"),
-    _Read(models.InboundMessage, "from_", generated.InboundMessageAttributes, "from", "InboundMessage._from_resource"),
-    _Read(models.InboundMessage, "to", generated.InboundMessageAttributes, "to", "InboundMessage._from_resource"),
-    _Read(models.InboundMessage, "body", generated.InboundMessageAttributes, "body", "InboundMessage._from_resource"),
-    _Read(models.InboundMessage, "media", generated.InboundMessageAttributes, "media", "InboundMessage._from_resource"),
-    _Read(models.InboundMessage, "received_at", generated.InboundMessageAttributes, "receivedAt", "InboundMessage._from_resource"),
-    _Read(models.InboundMessage, "created_at", generated.InboundMessageAttributes, "createdAt", "InboundMessage._from_resource"),
-    _Read(models.InboundMessage, "updated_at", generated.InboundMessageAttributes, "updatedAt", "InboundMessage._from_resource"),
-    _Read(models.MessageEventData, "id", generated.MessageReceivedEventData, "id", "MessageEventData._from_json"),
-    _Read(models.MessageEventData, "tenant_id", generated.MessageReceivedEventData, "tenantId", "MessageEventData._from_json"),
-    _Read(models.MessageEventData, "customer_id", generated.MessageReceivedEventData, "customerId", "MessageEventData._from_json"),
-    _Read(models.MessageEventData, "kind", generated.MessageReceivedEventData, "kind", "MessageEventData._from_json"),
-    _Read(models.MessageEventData, "from_", generated.MessageReceivedEventData, "from", "MessageEventData._from_json"),
-    _Read(models.MessageEventData, "to", generated.MessageReceivedEventData, "to", "MessageEventData._from_json"),
-    _Read(models.MessageEventData, "body", generated.MessageReceivedEventData, "body", "MessageEventData._from_json"),
-    _Read(models.MessageEventData, "media", generated.MessageReceivedEventData, "media", "MessageEventData._from_json"),
-    _Read(models.MessageEventData, "received_at", generated.MessageReceivedEventData, "receivedAt", "MessageEventData._from_json"),
-    _Read(models.MessageEvent, "message", generated.MessageReceivedEvent, "data", "MessageEvent._from_json"),
+    _Read(
+        models.MessageEventData,
+        "failure_cause",
+        generated.MessageFailedEventData,
+        "failure",
+        "MessageEventData._from_json",
+    ),
+    _Read(
+        models.MessageEventData,
+        "failure_cause",
+        generated.Failure,
+        "cause",
+        "MessageEventData._from_json",
+    ),
+    _Read(
+        models.MessageEvent,
+        "event_id",
+        generated.WebhookEventEnvelope,
+        "eventId",
+        "MessageEvent._from_json",
+    ),
+    _Read(
+        models.MessageEvent,
+        "type",
+        generated.WebhookEventEnvelope,
+        "type",
+        "MessageEvent._from_json",
+    ),
+    _Read(
+        models.MessageEvent,
+        "occurred_at",
+        generated.WebhookEventEnvelope,
+        "occurredAt",
+        "MessageEvent._from_json",
+    ),
+    _Read(
+        models.MessageEvent,
+        "message",
+        generated.MessageSentEvent,
+        "data",
+        "MessageEvent._from_json",
+    ),
+    _Read(
+        models.MessageMediaPart,
+        "content_type",
+        generated.InboundMessageMediaPart,
+        "contentType",
+        "MessageMediaPart._from_json",
+    ),
+    _Read(
+        models.MessageMediaPart,
+        "filename",
+        generated.InboundMessageMediaPart,
+        "filename",
+        "MessageMediaPart._from_json",
+    ),
+    _Read(
+        models.MessageMediaPart,
+        "encoding",
+        generated.InboundMessageMediaPart,
+        "encoding",
+        "MessageMediaPart._from_json",
+    ),
+    _Read(
+        models.MessageMediaPart,
+        "byte_size",
+        generated.InboundMessageMediaPart,
+        "bytes",
+        "MessageMediaPart._from_json",
+    ),
+    _Read(
+        models.MessageMediaPart,
+        "content_type",
+        generated.MessageReceivedMediaPart,
+        "contentType",
+        "MessageMediaPart._from_json",
+    ),
+    _Read(
+        models.MessageMediaPart,
+        "filename",
+        generated.MessageReceivedMediaPart,
+        "filename",
+        "MessageMediaPart._from_json",
+    ),
+    _Read(
+        models.MessageMediaPart,
+        "encoding",
+        generated.MessageReceivedMediaPart,
+        "encoding",
+        "MessageMediaPart._from_json",
+    ),
+    _Read(
+        models.MessageMediaPart,
+        "byte_size",
+        generated.MessageReceivedMediaPart,
+        "bytes",
+        "MessageMediaPart._from_json",
+    ),
+    _Read(
+        models.InboundMessage,
+        "id",
+        generated.InboundMessageResource,
+        "id",
+        "InboundMessage._from_resource",
+    ),
+    _Read(
+        models.InboundMessage,
+        "kind",
+        generated.InboundMessageAttributes,
+        "kind",
+        "InboundMessage._from_resource",
+    ),
+    _Read(
+        models.InboundMessage,
+        "from_",
+        generated.InboundMessageAttributes,
+        "from",
+        "InboundMessage._from_resource",
+    ),
+    _Read(
+        models.InboundMessage,
+        "to",
+        generated.InboundMessageAttributes,
+        "to",
+        "InboundMessage._from_resource",
+    ),
+    _Read(
+        models.InboundMessage,
+        "body",
+        generated.InboundMessageAttributes,
+        "body",
+        "InboundMessage._from_resource",
+    ),
+    _Read(
+        models.InboundMessage,
+        "media",
+        generated.InboundMessageAttributes,
+        "media",
+        "InboundMessage._from_resource",
+    ),
+    _Read(
+        models.InboundMessage,
+        "received_at",
+        generated.InboundMessageAttributes,
+        "receivedAt",
+        "InboundMessage._from_resource",
+    ),
+    _Read(
+        models.InboundMessage,
+        "created_at",
+        generated.InboundMessageAttributes,
+        "createdAt",
+        "InboundMessage._from_resource",
+    ),
+    _Read(
+        models.InboundMessage,
+        "updated_at",
+        generated.InboundMessageAttributes,
+        "updatedAt",
+        "InboundMessage._from_resource",
+    ),
+    _Read(
+        models.MessageEventData,
+        "id",
+        generated.MessageReceivedEventData,
+        "id",
+        "MessageEventData._from_json",
+    ),
+    _Read(
+        models.MessageEventData,
+        "tenant_id",
+        generated.MessageReceivedEventData,
+        "tenantId",
+        "MessageEventData._from_json",
+    ),
+    _Read(
+        models.MessageEventData,
+        "customer_id",
+        generated.MessageReceivedEventData,
+        "customerId",
+        "MessageEventData._from_json",
+    ),
+    _Read(
+        models.MessageEventData,
+        "kind",
+        generated.MessageReceivedEventData,
+        "kind",
+        "MessageEventData._from_json",
+    ),
+    _Read(
+        models.MessageEventData,
+        "from_",
+        generated.MessageReceivedEventData,
+        "from",
+        "MessageEventData._from_json",
+    ),
+    _Read(
+        models.MessageEventData,
+        "to",
+        generated.MessageReceivedEventData,
+        "to",
+        "MessageEventData._from_json",
+    ),
+    _Read(
+        models.MessageEventData,
+        "body",
+        generated.MessageReceivedEventData,
+        "body",
+        "MessageEventData._from_json",
+    ),
+    _Read(
+        models.MessageEventData,
+        "media",
+        generated.MessageReceivedEventData,
+        "media",
+        "MessageEventData._from_json",
+    ),
+    _Read(
+        models.MessageEventData,
+        "received_at",
+        generated.MessageReceivedEventData,
+        "receivedAt",
+        "MessageEventData._from_json",
+    ),
+    _Read(
+        models.MessageEvent,
+        "message",
+        generated.MessageReceivedEvent,
+        "data",
+        "MessageEvent._from_json",
+    ),
 )
 
 # Fields a model carries that no `_from_*` classmethod reads off a generated
@@ -1511,7 +2091,9 @@ def test_every_field_a_model_reads_is_covered_by_the_read_table() -> None:
     them, in both directions, or this whole test proves nothing about that
     model.
     """
-    assert len(_MODELS) == 23, f"only {[m.__name__ for m in _MODELS]} was searched — the sweep is broken"
+    assert len(_MODELS) == 23, (
+        f"only {[m.__name__ for m in _MODELS]} was searched — the sweep is broken"
+    )
 
     mismatches: dict[str, str] = {}
     for model in _MODELS:
