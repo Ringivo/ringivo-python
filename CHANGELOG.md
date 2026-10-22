@@ -1,6 +1,6 @@
 # Release notes
 
-## Unreleased — Breaking
+## 0.23.0 (2026-10-22) — Breaking
 
 These removals are part of one clean breaking release (0.23.0). The package
 no longer carries code for the API's v1 naming cleanup.
@@ -176,7 +176,7 @@ fails as follows:
   staff threads is paused on its side, and the limit of two records with
   media in flight is gone. The rate limit of 300 records a minute stays.
 
-## Unreleased — Fixed
+## 0.23.0 (2026-10-22) — Fixed
 
 - **An id of `.` or `..` is refused before any request.** Every method that
   puts an id in a URL path now raises `ValueError` for `""`, `.` and `..`,
