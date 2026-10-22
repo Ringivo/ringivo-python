@@ -62,10 +62,14 @@ through your own messaging-provider account, so staff see it in their
 threads. It needs `messages:record`. `ringivo.sender_label()` makes any text
 a label that keeps the API's label rule.
 
+`client.inbound_messages` reads the texts somebody sent to your numbers:
+list them, or read one. It needs `numbers:read` or `numbers:messaging`.
+
 Webhook receivers want `ringivo.webhooks.verify()`, which needs no client
 and no network — it is pure computation, so both clients share the one.
-`ringivo.webhooks.parse_message_event()` reads a verified `message.sent`,
-`message.delivered` or `message.failed` body.
+`ringivo.webhooks.parse_message_event()` reads a verified
+`message.received`, `message.sent`, `message.delivered` or `message.failed`
+body.
 
 `ringivo.is_retryable(error)` says whether the API's contract allows the
 same call again (no answer, 408, 429, 5xx); `ApiError.retry_after` says how
@@ -79,6 +83,7 @@ from .async_customers import AsyncCustomers
 from .async_fax_account_users import AsyncFaxAccountUsers
 from .async_fax_accounts import AsyncFaxAccounts
 from .async_faxes import AsyncFaxes
+from .async_inbound_messages import AsyncInboundMessages
 from .async_messages import AsyncMessages
 from .async_pbx import (
     AsyncPbx,
@@ -104,6 +109,7 @@ from .errors import (
 from .fax_account_users import FaxAccountUsers
 from .fax_accounts import NOT_GIVEN, FaxAccounts, NotGiven
 from .faxes import Faxes
+from .inbound_messages import InboundMessages
 from .messages import Messages, sender_label
 from .models import (
     CallRecord,
@@ -118,6 +124,8 @@ from .models import (
     FaxAccountUserPage,
     FaxDocument,
     FaxPage,
+    InboundMessage,
+    InboundMessagePage,
     MediaLink,
     MessageEvent,
     MessageEventData,
@@ -149,6 +157,7 @@ __all__ = [
     "AsyncFaxAccountUsers",
     "AsyncFaxAccounts",
     "AsyncFaxes",
+    "AsyncInboundMessages",
     "AsyncMessages",
     "AsyncPbx",
     "AsyncPbxCallRecords",
@@ -174,6 +183,9 @@ __all__ = [
     "FaxDocument",
     "FaxPage",
     "Faxes",
+    "InboundMessage",
+    "InboundMessagePage",
+    "InboundMessages",
     "MediaLink",
     "MessageEvent",
     "MessageEventData",

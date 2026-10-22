@@ -57,6 +57,7 @@ from .async_customers import AsyncCustomers
 from .async_fax_account_users import AsyncFaxAccountUsers
 from .async_fax_accounts import AsyncFaxAccounts
 from .async_faxes import AsyncFaxes
+from .async_inbound_messages import AsyncInboundMessages
 from .async_messages import AsyncMessages
 from .async_pbx import AsyncPbx
 from .async_webhook_deliveries import AsyncWebhookDeliveries
@@ -99,13 +100,15 @@ class AsyncRingivo:
             which is a reseller-tier scope. The webhook calls need
             `webhooks:read` and `webhooks:write`, except on a
             `fax_account`-scoped endpoint, which a `fax:*` token already
-            reaches. `messages.record()` needs `messages:record`. What the token ends up carrying is the intersection
+            reaches. `messages.record()` needs `messages:record`;
+            `inbound_messages` needs `numbers:read` or `numbers:messaging`. What the token ends up carrying is the intersection
             with what your grant allows, and a scope outside that is
             dropped rather than refused as long as something survives, so
             an over-broad request fails later at the resource rather than
             here.
         timeout: Seconds any single request may take, token requests
-            included.
+            included — or an `httpx.Timeout` to set each phase (connect,
+            read, write, pool) on its own.
 
     The token itself never reaches you: it is bought on the first call,
     lives about a quarter of an hour, and is re-minted transparently before
@@ -124,7 +127,7 @@ class AsyncRingivo:
         tenant: str,
         customer: str | None = None,
         scopes: Sequence[str] | None = None,
-        timeout: float = 30.0,
+        timeout: float | httpx.Timeout = 30.0,
     ) -> None:
         if not base_url:
             raise ValueError("base_url is required")
@@ -187,7 +190,7 @@ class AsyncRingivo:
 
         # The configured per-request timeout; `messages.record()` raises it to
         # its own floor (messages.py).
-        self._timeout: float | None = timeout
+        self._timeout: float | httpx.Timeout | None = timeout
 
         self.faxes = AsyncFaxes(self)
         self.fax_accounts = AsyncFaxAccounts(self)
@@ -197,6 +200,7 @@ class AsyncRingivo:
         self.webhook_endpoints = AsyncWebhookEndpoints(self)
         self.webhook_deliveries = AsyncWebhookDeliveries(self)
         self.messages = AsyncMessages(self)
+        self.inbound_messages = AsyncInboundMessages(self)
 
     @property
     def base_url(self) -> str:
@@ -234,7 +238,7 @@ class AsyncRingivo:
         json: Any = None,
         data: Mapping[str, Any] | None = None,
         files: Sequence[tuple[str, Any]] | None = None,
-        timeout: float | None = None,
+        timeout: float | httpx.Timeout | None = None,
     ) -> httpx.Response:
         """Send one authenticated request and hand back the response, or raise.
 
@@ -276,8 +280,9 @@ class AsyncRingivo:
             json: A body to send as JSON.
             data: Form fields, for a multipart send.
             files: File parts, for a multipart send.
-            timeout: Seconds this one request may take, in place of the
-                client's own timeout. None keeps the client's.
+            timeout: Seconds this one request may take, or an
+                `httpx.Timeout`, in place of the client's own timeout. None
+                keeps the client's.
 
         Raises:
             AuthenticationError: The credential was refused, and it had

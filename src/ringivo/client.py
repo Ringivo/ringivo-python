@@ -4,7 +4,8 @@
 one `httpx.Client` with the auth flow attached, and the resource namespaces
 hung off it (`client.faxes`, `client.fax_accounts`,
 `client.fax_account_users`, `client.customers`, `client.pbx`,
-`client.webhook_endpoints`, `client.webhook_deliveries`, `client.messages`).
+`client.webhook_endpoints`, `client.webhook_deliveries`, `client.messages`,
+`client.inbound_messages`).
 
 -- NO HOSTNAME IS COMPILED IN --------------------------------------------------
 `base_url` is required and has no default. This package is grey-label: the
@@ -83,6 +84,7 @@ from .errors import ApiError, raise_for_response
 from .fax_account_users import FaxAccountUsers
 from .fax_accounts import FaxAccounts
 from .faxes import Faxes
+from .inbound_messages import InboundMessages
 from .messages import Messages
 from .pbx import Pbx
 from .webhook_deliveries import WebhookDeliveries
@@ -126,13 +128,15 @@ class Ringivo:
             which is a reseller-tier scope. The webhook calls need
             `webhooks:read` and `webhooks:write`, except on a
             `fax_account`-scoped endpoint, which a `fax:*` token already
-            reaches. `messages.record()` needs `messages:record`. What the token ends up carrying is the intersection
+            reaches. `messages.record()` needs `messages:record`;
+            `inbound_messages` needs `numbers:read` or `numbers:messaging`. What the token ends up carrying is the intersection
             with what your grant allows, and a scope outside that is
             dropped rather than refused as long as something survives, so
             an over-broad request fails later at the resource rather than
             here.
         timeout: Seconds any single request may take, token requests
-            included.
+            included — or an `httpx.Timeout` to set each phase (connect,
+            read, write, pool) on its own.
 
     The token itself never reaches you: it is bought on the first call,
     lives about a quarter of an hour, and is re-minted transparently before
@@ -151,7 +155,7 @@ class Ringivo:
         tenant: str,
         customer: str | None = None,
         scopes: Sequence[str] | None = None,
-        timeout: float = 30.0,
+        timeout: float | httpx.Timeout = 30.0,
     ) -> None:
         if not base_url:
             raise ValueError("base_url is required")
@@ -217,7 +221,7 @@ class Ringivo:
 
         # The configured per-request timeout; `messages.record()` raises it to
         # its own floor (messages.py).
-        self._timeout: float | None = timeout
+        self._timeout: float | httpx.Timeout | None = timeout
 
         self.faxes = Faxes(self)
         self.fax_accounts = FaxAccounts(self)
@@ -227,6 +231,7 @@ class Ringivo:
         self.webhook_endpoints = WebhookEndpoints(self)
         self.webhook_deliveries = WebhookDeliveries(self)
         self.messages = Messages(self)
+        self.inbound_messages = InboundMessages(self)
 
     @property
     def base_url(self) -> str:
@@ -264,7 +269,7 @@ class Ringivo:
         json: Any = None,
         data: Mapping[str, Any] | None = None,
         files: Sequence[tuple[str, Any]] | None = None,
-        timeout: float | None = None,
+        timeout: float | httpx.Timeout | None = None,
     ) -> httpx.Response:
         """Send one authenticated request and hand back the response, or raise.
 
@@ -306,8 +311,9 @@ class Ringivo:
             json: A body to send as JSON.
             data: Form fields, for a multipart send.
             files: File parts, for a multipart send.
-            timeout: Seconds this one request may take, in place of the
-                client's own timeout. None keeps the client's.
+            timeout: Seconds this one request may take, or an
+                `httpx.Timeout`, in place of the client's own timeout. None
+                keeps the client's.
 
         Raises:
             AuthenticationError: The credential was refused, and it had
