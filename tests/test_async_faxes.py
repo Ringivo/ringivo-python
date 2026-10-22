@@ -494,6 +494,32 @@ async def test_a_refused_send_carries_the_jsonapi_error_source(
 
 
 @pytest.mark.anyio
+async def test_list_sends_the_camelcase_filter_names(
+    respx_mock: respx.MockRouter, client: AsyncRingivo
+) -> None:
+    # The API refuses a snake_case filter key with a 400, so each of these
+    # four names is pinned on the wire.
+    route = respx_mock.get(FAXES_URL).mock(return_value=httpx.Response(200, json={"data": []}))
+
+    async with client:
+        await client.faxes.list(
+            fax_account=ACCOUNT_ID,
+            client_reference="chart-4471",
+            created_after="2026-09-01T00:00:00Z",
+            created_before="2026-09-30T23:59:59Z",
+        )
+
+    params = route.calls.last.request.url.params
+
+    assert params["filter[faxAccount]"] == ACCOUNT_ID
+    assert params["filter[clientReference]"] == "chart-4471"
+    assert params["filter[createdAfter]"] == "2026-09-01T00:00:00Z"
+    assert params["filter[createdBefore]"] == "2026-09-30T23:59:59Z"
+    for old in ("fax_account", "client_reference", "created_after", "created_before"):
+        assert f"filter[{old}]" not in params
+
+
+@pytest.mark.anyio
 async def test_list_builds_the_filter_query_including_the_deep_object_tag(
     respx_mock: respx.MockRouter, client: AsyncRingivo
 ) -> None:

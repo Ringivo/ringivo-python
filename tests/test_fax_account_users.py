@@ -339,9 +339,9 @@ def test_create_posts_a_document_that_is_all_relationships(
 def test_create_names_the_relationships_camelcased_as_the_document_wants(
     respx_mock: respx.MockRouter, client: Ringivo
 ) -> None:
-    # The other half of the snake_case/camelCase split the filters have: the
-    # DOCUMENT member is `faxAccount`, and a snake_cased one here would be a
-    # 422 on a relationship the server does not know.
+    # Like the filters, the names are camelCase: the DOCUMENT member is
+    # `faxAccount`, and a snake_cased one here would be a 422
+    # on a relationship the server does not know.
     route = respx_mock.post(GRANTS_URL).mock(
         return_value=httpx.Response(201, json={"data": _grant_resource()})
     )

@@ -247,10 +247,8 @@ _READS: tuple[_Read, ...] = (
     _Read(models.Fax, "created_at", generated.FaxAttributes, "createdAt", "Fax._from_resource"),
     _Read(models.Fax, "completed_at", generated.FaxAttributes, "completedAt", "Fax._from_resource"),
     # -- Fax._from_acknowledgement reads the flat plain-JSON ------------------
-    # `data` object `send()` answers (camelCase since the API's v1 naming
-    # cleanup; the snake_case fallback the 0.15 bridge also reads is not in
-    # the generated types and is not listed here) — Data1 (SendFaxAccepted), the fuller
-    # of the two acknowledgement shapes. `cancel()`'s answer is Data2, a
+    # `data` object `send()` answers (camelCase) — Data1 (SendFaxAccepted),
+    # the fuller of the two acknowledgement shapes. `cancel()`'s answer is Data2, a
     # strict subset (id + status only); the other fields simply read back
     # None for a cancelled fax, which is correct, not a gap.
     _Read(models.Fax, "id", generated.Data1, "id", "Fax._from_acknowledgement"),
@@ -267,8 +265,7 @@ _READS: tuple[_Read, ...] = (
     ),
     _Read(models.Fax, "created_at", generated.Data1, "createdAt", "Fax._from_acknowledgement"),
     # -- MediaLink._from_json reads the generated MediaLink ------------------
-    # (camelCase since the v1 naming cleanup, like the attribute blocks
-    # above; the bridge's snake_case fallback is not listed, as above).
+    # (camelCase, like the attribute blocks above).
     _Read(MediaLinkModel, "url", generated.MediaLink, "url", "MediaLink._from_json"),
     _Read(MediaLinkModel, "expires_at", generated.MediaLink, "expiresAt", "MediaLink._from_json"),
     _Read(MediaLinkModel, "byte_size", generated.MediaLink, "byteSize", "MediaLink._from_json"),

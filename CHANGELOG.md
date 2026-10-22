@@ -15,12 +15,14 @@ no longer carries code for the API's v1 naming cleanup.
   call `client.request("GET", path, params=...)` with camelCase names.
 - **Snake_case response members no longer read.** `Fax` from `send()` and
   `cancel()` reads `clientReference` and `createdAt` only; `MediaLink` reads
-  `expiresAt` and `byteSize` only; `Recording` and `Transcript` read
+  `expiresAt` and `byteSize` only; `Recording` reads
   `byteSize`, `contentUrl` and `expiresAt` only (not the kebab-case
   `byte-size`, `content-url`, `expires-at`). Migration: none, unless you
   parse raw bodies yourself; read the camelCase keys.
 - **`faxes.send(cover_page=...)` takes camelCase keys only.** `to_name` and
-  `from_name` are no longer renamed. Migration: pass `toName` and `fromName`.
+  `from_name` are no longer renamed, and the API answers them with a 400
+  `unknown_member` naming `coverPage.to_name`. Applies to `faxes.send` on both
+  clients. Migration: pass `toName` and `fromName`.
 - **`Ringivo._request` and `AsyncRingivo._request` removed.** Migration: call
   `client.request(...)`.
 - **`webhooks.MESSAGE_EVENT_TYPES` removed.** Migration: use
@@ -70,7 +72,7 @@ member until a later, announced release.
 
 ### Upgrading from 0.13.x
 
-**Upgrading from 0.13.x:** `pbx.users` is now `pbx.subscribers`, and the
+`pbx.users` is now `pbx.subscribers`, and the
 API path `/v1/pbx/users` is gone — there is no alias. `PbxUser` is
 `PbxSubscriber`, `PbxUserPage` is `PbxSubscriberPage` and its rows are
 `page.subscribers`, and `PbxUsers`/`AsyncPbxUsers` are
@@ -87,13 +89,13 @@ and `call_records.list()` is `subscriber=`. `user=` on
 
 ### 0.10.0, 0.11.0 and 0.12.0
 
-**0.10.0 rebuilt this resource with no backward compatibility, 0.11.0
+**0.10.0 rebuilt the call log (`pbx.call_records`) with no backward compatibility, 0.11.0
 renamed one member of it, and 0.12.0 renamed one value.** The console owns both decisions (one clean shape
 mattered more than a migration path), so `0.9.x`'s `vendor_type`,
 `from_user`, `from_uri`, `to_user`, `to_uri`, `dialed`, `by_user`,
 `term_user` and `tag` are all gone rather than deprecated. There is no
 argument or attribute standing in for them: reach for the extended tier
-below for the raw material they used to carry.
+(see "The call log" in the README) for the raw material they used to carry.
 
 **Upgrading from 0.11.x:** the `direction` value `onNet` is now `internal`,
 and `call_records.list(direction="onNet")` is now

@@ -12,6 +12,8 @@ sent to your numbers, and parses the `message.*` webhook events.
 pip install ringivo
 ```
 
+Upgrade notes and breaking changes: [CHANGELOG.md](https://github.com/Ringivo/ringivo-python/blob/main/CHANGELOG.md).
+
 Python 3.10 or newer. Two runtime dependencies: `httpx`, and
 `typing-extensions` (4.10 or newer) on every supported interpreter — the
 generated types use `TypedDict(closed=True)`, which no version of the

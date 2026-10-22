@@ -1338,8 +1338,7 @@ class Transcript:
     def _from_resource(cls, resource: Mapping[str, Any]) -> Transcript:
         """Build from one `transcripts` resource object.
 
-        camelCase attribute keys, bridged from the old kebab-case ones the
-        same way as `Recording._from_resource`.
+        camelCase attribute keys, like `Recording._from_resource`.
         """
         attributes = _mapping(resource, "attributes") or {}
 
