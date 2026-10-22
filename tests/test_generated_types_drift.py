@@ -1499,32 +1499,18 @@ _READS: tuple[_Read, ...] = (
     ),
     # -- The message models: the record answer and the message.* events ------
     _Read(
-        models.MessageMediaPart,
+        models.OutboundMessageMediaItem,
         "content_type",
-        generated.OutboundMessageMediaPart,
+        generated.OutboundMessageMediaItem,
         "contentType",
-        "MessageMediaPart._from_json",
+        "OutboundMessageMediaItem._from_json",
     ),
     _Read(
-        models.MessageMediaPart,
-        "filename",
-        generated.OutboundMessageMediaPart,
-        "filename",
-        "MessageMediaPart._from_json",
-    ),
-    _Read(
-        models.MessageMediaPart,
-        "encoding",
-        generated.OutboundMessageMediaPart,
-        "encoding",
-        "MessageMediaPart._from_json",
-    ),
-    _Read(
-        models.MessageMediaPart,
-        "byte_size",
-        generated.OutboundMessageMediaPart,
-        "bytes",
-        "MessageMediaPart._from_json",
+        models.OutboundMessageMediaItem,
+        "size",
+        generated.OutboundMessageMediaItem,
+        "size",
+        "OutboundMessageMediaItem._from_json",
     ),
     _Read(
         models.OutboundMessage,
@@ -1941,60 +1927,25 @@ _READS: tuple[_Read, ...] = (
         "_message_event_from_json",
     ),
     _Read(
-        models.MessageMediaPart,
+        models.InboundMessageMediaItem,
         "content_type",
-        generated.InboundMessageMediaPart,
+        generated.InboundMessageMediaItem,
         "contentType",
-        "MessageMediaPart._from_json",
+        "InboundMessageMediaItem._from_json",
     ),
     _Read(
-        models.MessageMediaPart,
+        models.InboundMessageMediaItem,
         "filename",
-        generated.InboundMessageMediaPart,
+        generated.InboundMessageMediaItem,
         "filename",
-        "MessageMediaPart._from_json",
+        "InboundMessageMediaItem._from_json",
     ),
     _Read(
-        models.MessageMediaPart,
-        "encoding",
-        generated.InboundMessageMediaPart,
-        "encoding",
-        "MessageMediaPart._from_json",
-    ),
-    _Read(
-        models.MessageMediaPart,
-        "byte_size",
-        generated.InboundMessageMediaPart,
-        "bytes",
-        "MessageMediaPart._from_json",
-    ),
-    _Read(
-        models.MessageMediaPart,
-        "content_type",
-        generated.MessageReceivedMediaPart,
-        "contentType",
-        "MessageMediaPart._from_json",
-    ),
-    _Read(
-        models.MessageMediaPart,
-        "filename",
-        generated.MessageReceivedMediaPart,
-        "filename",
-        "MessageMediaPart._from_json",
-    ),
-    _Read(
-        models.MessageMediaPart,
-        "encoding",
-        generated.MessageReceivedMediaPart,
-        "encoding",
-        "MessageMediaPart._from_json",
-    ),
-    _Read(
-        models.MessageMediaPart,
-        "byte_size",
-        generated.MessageReceivedMediaPart,
-        "bytes",
-        "MessageMediaPart._from_json",
+        models.InboundMessageMediaItem,
+        "size",
+        generated.InboundMessageMediaItem,
+        "size",
+        "InboundMessageMediaItem._from_json",
     ),
     _Read(
         models.InboundMessage,
@@ -2191,7 +2142,14 @@ _EXCLUDED: dict[tuple[type, str], str] = {
     (models.TranscriptChannel, "raw"): "holds the whole source mapping this object was built from",
     (models.PbxCall, "raw"): "holds the whole source mapping this object was built from",
     (models.Customer, "raw"): "holds the whole source mapping this object was built from",
-    (models.MessageMediaPart, "raw"): "holds the whole source mapping this object was built from",
+    (
+        models.OutboundMessageMediaItem,
+        "raw",
+    ): "holds the whole source mapping this object was built from",
+    (
+        models.InboundMessageMediaItem,
+        "raw",
+    ): "holds the whole source mapping this object was built from",
     (models.OutboundMessage, "raw"): "holds the whole source mapping this object was built from",
     (models.MessageSender, "raw"): "holds the whole source mapping this object was built from",
     (
@@ -2281,7 +2239,8 @@ _MODELS: tuple[type, ...] = (
     models.TranscriptChannel,
     models.PbxCall,
     models.Customer,
-    models.MessageMediaPart,
+    models.OutboundMessageMediaItem,
+    models.InboundMessageMediaItem,
     models.OutboundMessage,
     models.MessageSender,
     models.MessageReceivedEventData,
@@ -2318,7 +2277,7 @@ def test_every_field_a_model_reads_is_covered_by_the_read_table() -> None:
     them, in both directions, or this whole test proves nothing about that
     model.
     """
-    assert len(_MODELS) == 29, (
+    assert len(_MODELS) == 30, (
         f"only {[m.__name__ for m in _MODELS]} was searched — the sweep is broken"
     )
 
@@ -2340,7 +2299,7 @@ def test_every_field_a_model_reads_is_covered_by_the_read_table() -> None:
 
 
 def test_every_field_a_model_reads_exists_in_the_generated_types() -> None:
-    assert len(_READS) == 310, f"{len(_READS)} reads were checked, not 310 — the sweep is broken"
+    assert len(_READS) == 303, f"{len(_READS)} reads were checked, not 303 — the sweep is broken"
 
     failures: list[str] = []
     for read in _READS:
@@ -2413,3 +2372,33 @@ def test_every_member_of_a_message_event_is_read(
     assert read == declared, (
         f"declared but not read: {sorted(declared - read)}; read but not declared: {sorted(read - declared)}"
     )
+
+
+@pytest.mark.parametrize(
+    ("model", "typed_dict", "declared"),
+    [
+        (
+            models.OutboundMessageMediaItem,
+            generated.OutboundMessageMediaItem,
+            {"contentType", "size"},
+        ),
+        (
+            models.InboundMessageMediaItem,
+            generated.InboundMessageMediaItem,
+            {"contentType", "filename", "size"},
+        ),
+    ],
+)
+def test_every_member_of_a_media_item_is_read(
+    model: type, typed_dict: type, declared: set[str]
+) -> None:
+    """Both directions for the two media item shapes, as for the events
+    above: the spec gives an outbound item `contentType` and `size`, and an
+    inbound item `filename` too — every one is read, and nothing else is.
+    Against a spec from before 0.23.0 (`bytes`, `encoding`, and one
+    `...MediaPart` schema per surface) this fails on the names alone.
+    """
+    read = {r.key for r in _READS if r.model is model and r.typed_dict is typed_dict}
+
+    assert _generated_keys(typed_dict) == declared, "the media item's shape changed"
+    assert read == declared

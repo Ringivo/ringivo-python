@@ -7,7 +7,7 @@ imported rather than copied, so the two clients cannot drift.
 
 Read inbound_messages.py for the whys: the `message.received` webhook is
 the push half of this collection, `received_at` is when the message was
-sent, and attachments are described, never carried.
+sent, and media is described, never carried.
 """
 
 from __future__ import annotations

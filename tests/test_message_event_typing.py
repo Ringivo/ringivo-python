@@ -180,9 +180,15 @@ def _reads_pyright_must_refuse(event: _Event) -> None:
         _ = event.message.sent_at  # pyright: ignore[reportAttributeAccessIssue]
         _ = event.message.provider_message_id  # pyright: ignore[reportAttributeAccessIssue]
         _ = event.message.failure_cause  # pyright: ignore[reportAttributeAccessIssue]
+        for item in event.message.media:
+            _ = item.encoding  # pyright: ignore[reportAttributeAccessIssue]
+            _ = item.byte_size  # pyright: ignore[reportAttributeAccessIssue]
     elif isinstance(event, (MessageSentEvent, MessageDeliveredEvent)):
         _ = event.message.received_at  # pyright: ignore[reportAttributeAccessIssue]
         _ = event.message.failure_cause  # pyright: ignore[reportAttributeAccessIssue]
+        for item in event.message.media:
+            # A media item sent from your number has no filename.
+            _ = item.filename  # pyright: ignore[reportAttributeAccessIssue]
     elif isinstance(event, MessageFailedEvent):
         _ = event.message.received_at  # pyright: ignore[reportAttributeAccessIssue]
     else:
@@ -190,3 +196,5 @@ def _reads_pyright_must_refuse(event: _Event) -> None:
 
     not_a_known_cause: FailureCause = "a_cause_added_later"  # pyright: ignore[reportAssignmentType]
     del not_a_known_cause
+    retired_cause: FailureCause = "outcome_unknown"  # pyright: ignore[reportAssignmentType]
+    del retired_cause
