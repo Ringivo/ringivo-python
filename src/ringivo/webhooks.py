@@ -46,16 +46,23 @@ raw body, decodes the JSON itself — so it decides what a body that is not
 JSON, or not an object, deserves — and then hands the object to a parser:
 
     webhooks.verify(raw, request.headers[webhooks.SIGNATURE_HEADER], secret=WHSEC)
-    payload = json.loads(raw)
-    if payload.get("type") in webhooks.INBOUND_MESSAGE_EVENT_TYPES:
-        received = webhooks.parse_message_event(payload)  # a text sent TO you
-    elif payload.get("type") in webhooks.OUTBOUND_MESSAGE_EVENT_TYPES:
-        sent = webhooks.parse_message_event(payload)      # a text sent FROM you
+    event = webhooks.parse_message_event(json.loads(raw))
+    if event.type == "message.received":   # a text sent TO you: InboundMessageEvent
+        ...
+    elif event.type is not None:            # a text sent FROM you: OutboundMessageEvent
+        ...
+    # else: not a message event (UnknownMessageEvent). Accept it and ignore it.
 
 `parse_message_event()` reads defensively, like every model in this package:
 a member that is missing or of the wrong type reads None and the whole
 body stays on `raw`. It never raises on content, so the receiver decides
 which None it cannot work without.
+
+-- ONE VARIANT PER DIRECTION ---------------------------------------------------
+A received text and a sent text are different classes, and each has only
+its own members. Code that reads `sent_by` off a received text, and so could
+take a customer's text for a staff reply, fails in the type checker. The
+`type` member is a `Literal`, so a check on it narrows the variant.
 """
 
 from __future__ import annotations
@@ -64,14 +71,20 @@ import hashlib
 import hmac
 import re
 import time
-from collections.abc import Mapping
-from typing import Any
+from typing import Any, get_args
 
 from .errors import SignatureVerificationError
-from .models import MessageEvent
+from .models import (
+    FailureCause,
+    InboundMessageEvent,
+    OutboundMessageEvent,
+    UnknownMessageEvent,
+    _message_event_from_json,
+)
 
 __all__ = [
     "DEFAULT_TOLERANCE_SECONDS",
+    "FAILURE_CAUSES",
     "INBOUND_MESSAGE_EVENT_TYPES",
     "OUTBOUND_MESSAGE_EVENT_TYPES",
     "SIGNATURE_HEADER",
@@ -80,13 +93,18 @@ __all__ = [
 ]
 
 #: The events about a message sent FROM one of your numbers. All three carry
-#: the same members, and `message.failed` adds `failure.cause`. Route on this
-#: set for sent messages.
+#: the same members, and `message.failed` adds `failure.cause`. Each parses
+#: to an `OutboundMessageEvent`.
 OUTBOUND_MESSAGE_EVENT_TYPES = frozenset({"message.sent", "message.delivered", "message.failed"})
 
-#: The events about a message somebody sent TO one of your numbers. Route on
-#: this set for received messages.
+#: The events about a message somebody sent TO one of your numbers. Each
+#: parses to an `InboundMessageEvent`.
 INBOUND_MESSAGE_EVENT_TYPES = frozenset({"message.received"})
+
+#: Every `failure.cause` a `message.failed` event can carry today — the
+#: values of `FailureCause`. More can be added: a cause not in this set
+#: still parses, as a string, and is still a failure.
+FAILURE_CAUSES: frozenset[str] = frozenset(get_args(FailureCause))
 
 #: The header a delivery carries its signature in.
 SIGNATURE_HEADER = "Ringivo-Signature"
@@ -180,21 +198,31 @@ def _parse(header: str) -> tuple[int | None, tuple[str, ...]]:
     return timestamp, tuple(candidates)
 
 
-def parse_message_event(payload: Any) -> MessageEvent:
-    """Read a `message.received`, `message.sent`, `message.delivered` or
-    `message.failed` body.
+def parse_message_event(
+    payload: Any,
+) -> InboundMessageEvent | OutboundMessageEvent | UnknownMessageEvent:
+    """Read a decoded `message.received`, `message.sent`, `message.delivered`
+    or `message.failed` body.
 
     Args:
         payload: The decoded JSON body — call `verify()` on the raw bytes
-            first. Anything that is not a JSON object reads as an event
-            whose every member is None.
+            first.
 
     Returns:
-        The event. Members that are missing or of the wrong type are None,
-        and the whole body is on `raw`. To route, check `type` against
-        `INBOUND_MESSAGE_EVENT_TYPES` or `OUTBOUND_MESSAGE_EVENT_TYPES`:
-        a `message.received` is a
-        message somebody sent you, with `message.received_at` set and the
-        outbound members None.
+        One variant, told apart by `type`:
+
+        - `InboundMessageEvent` for `message.received`, a message somebody
+          sent to one of your numbers;
+        - `OutboundMessageEvent` for `message.sent`, `message.delivered` and
+          `message.failed`, a message sent from one of your numbers;
+        - `UnknownMessageEvent`, whose `type` is None, for anything else:
+          another event, a type this release does not know yet, or no JSON
+          object at all. The type that arrived is on `raw`.
+
+        Members that are missing or of the wrong type are None, and the
+        whole body is on `raw`.
+
+        NEVER RAISES. A receiver that answered a malformed delivery with a
+        500 would only be sent it again.
     """
-    return MessageEvent._from_json(payload if isinstance(payload, Mapping) else {})
+    return _message_event_from_json(payload)

@@ -1022,12 +1022,24 @@ verifies, so a rotation costs you no deliveries.
 `message.received` describes a text somebody sent TO one of your numbers.
 `message.sent`, `message.delivered` and `message.failed` describe a text
 sent FROM one of your numbers. Verify the raw body, decode it yourself, then
-parse it and branch on `event.type`:
+parse it. `parse_message_event()` returns one of three variants:
+
+| Variant | `type` | `message` |
+|---|---|---|
+| `InboundMessageEvent` | `"message.received"` | `InboundMessageEventData` |
+| `OutboundMessageEvent` | `"message.sent"`, `"message.delivered"` or `"message.failed"` | `OutboundMessageEventData` |
+| `UnknownMessageEvent` | `None` | none: it has no `message` member |
 
 ```python
 import json
 
-from ringivo import SignatureVerificationError, webhooks
+from ringivo import (
+    InboundMessageEvent,
+    OutboundMessageEvent,
+    SignatureVerificationError,
+    UnknownMessageEvent,
+    webhooks,
+)
 
 
 @app.post("/hooks/messages")
@@ -1039,45 +1051,56 @@ def receive(request):
     except SignatureVerificationError:
         return Response(status=400)
 
-    payload = json.loads(request.body)
-    event_type = payload.get("type") if isinstance(payload, dict) else None
+    event = webhooks.parse_message_event(json.loads(request.body))
 
-    if event_type in webhooks.INBOUND_MESSAGE_EVENT_TYPES:  # somebody texted one of your numbers
-        message = webhooks.parse_message_event(payload).message
-        print(message.from_, "wrote to", message.to, ":", message.body)
-        return Response(status=204)
+    match event:
+        case InboundMessageEvent(message=message):  # somebody texted one of your numbers
+            print(message.from_, "wrote to", message.to, ":", message.body)
+        case OutboundMessageEvent(message=message):  # a text sent from one of your numbers
+            if message.source == "phone_system" and message.sent_by is not None:
+                print(message.sent_by.name, "replied:", message.body)
+            if event.type == "message.failed":
+                print("failed:", message.failure_cause)  # an unknown cause is still a failure
+        case UnknownMessageEvent():
+            pass  # not a message event: accept it and ignore it
 
-    if event_type in webhooks.OUTBOUND_MESSAGE_EVENT_TYPES:  # a text sent from one of your numbers
-        message = webhooks.parse_message_event(payload).message
-        if message.source == "phone_system" and message.sent_by is not None:
-            print(message.sent_by.name, "replied:", message.body)
-        if event_type == "message.failed":
-            print("failed:", message.failure_cause)  # treat a cause you do not know as a failure
-        return Response(status=204)
-
-    return Response(status=204)  # not a message event: accept and ignore
+    return Response(status=204)
 ```
 
-- **Route on `INBOUND_MESSAGE_EVENT_TYPES` and
-  `OUTBOUND_MESSAGE_EVENT_TYPES`.** The first holds `message.received`; the
-  second holds `message.sent`, `message.delivered` and `message.failed`.
-  `parse_message_event()` reads all four.
-
+- **Each variant has only its own members.** `InboundMessageEventData` has
+  no `source`, `status`, `sent_by`, `sent_at`, provider ids or
+  `failure_cause`; `OutboundMessageEventData` has no `received_at`. Code
+  that reads `sent_by` off a received text fails in the type checker, so it
+  cannot take a customer's text for a staff reply.
+- **Narrow on `type`, `isinstance()` or `match`.** `type` is a `Literal`, so
+  `if event.type == "message.received":` narrows to `InboundMessageEvent`,
+  and `if event.type is None:` narrows to `UnknownMessageEvent`.
+  `INBOUND_MESSAGE_EVENT_TYPES` and `OUTBOUND_MESSAGE_EVENT_TYPES` still
+  hold the type names, but a check against a set does not narrow.
+- **An unknown `type` is not an error.** Another event, a message event this
+  release does not know yet, or a body that is not a JSON object parses as
+  `UnknownMessageEvent`. Its `type` is `None`; the type that arrived is
+  `event.raw.get("type")`. Accept the delivery and ignore it.
 - **The parse never raises on content.** A member that is missing or of the
   wrong type reads `None`, and the whole body stays on `event.raw` — the
   same rule as every model here. Decide for yourself which `None` you
   cannot work without (for example, no `message.provider_message_id`).
-- **`source` and `failure_cause` are strings, not enums**: the API can add
-  values, and a value this release does not know still reaches you.
+- **`failure_cause` is set on `message.failed` only**, from
+  `failure.cause`. It is typed `FailureCause | str | None`: `FailureCause`
+  is a `Literal` of the causes the API documents today, and
+  `webhooks.FAILURE_CAUSES` is the same values as a `frozenset`. The API
+  can add causes, and a cause this release does not know still arrives, as
+  a plain `str`. **Treat a cause you do not know as a failure.**
+- **`source` is a string, not an enum**: the API can add values, and a
+  value this release does not know still reaches you.
 - **`sent_by`** is set only for a staff reply (`source == "phone_system"`),
   and its `name` can be `None`. For a message the provider never accepted,
   **`sent_at` and `provider_message_id` are `None` and `provider_part_ids`
   is `()`**. The provider ids are set only on your own provider account; on
   any other account both are `None`.
 - **On `message.received`**, `message.id` is the id
-  `client.inbound_messages.get()` takes, `received_at` is when it was sent,
-  and the members only a sent message has (`source`, `status`, `sent_by`,
-  `sent_at`, the provider ids, `failure_cause`) are `None`.
+  `client.inbound_messages.get()` takes, and `received_at` is when it was
+  sent.
 - **Attachment parts are described, never linked**: `media` holds
   `MessageMediaPart(content_type, filename, encoding, byte_size)`.
 - Deliveries are at least once, and the three outbound events can arrive
@@ -1195,17 +1218,19 @@ when it is `None`, use your own backoff.
 | `client.inbound_messages.list(*, number=None, from_=None, kind=None, received_after=None, received_before=None, ids=None, after=None, before=None, page_size=None)` | `numbers:read` or `numbers:messaging` | An `InboundMessagePage` of texts sent to your numbers, newest first: iterable, with `next_cursor`. |
 | `client.inbound_messages.get(inbound_message_id)` | `numbers:read` or `numbers:messaging` | One `InboundMessage`. A message to a number you do not carry text messaging for is a 404. |
 | `webhooks.verify(payload, header, secret, *, tolerance=300)` | — | Raises unless the body is genuine and fresh. |
-| `webhooks.parse_message_event(payload)` | — | A `MessageEvent` from a decoded `message.received`, `message.sent`, `message.delivered` or `message.failed` body. Never raises on content. |
+| `webhooks.parse_message_event(payload)` | — | An `InboundMessageEvent` (`message.received`), an `OutboundMessageEvent` (`message.sent`, `message.delivered`, `message.failed`) or an `UnknownMessageEvent` (anything else) from a decoded body. Never raises on content. |
 | `sender_label(text)` | — | A valid record label made from any text. |
 | `is_retryable(error)` | — | Whether the API's contract allows the same call again. |
 
 `CallRecord`, `CallRecordPage`, `Customer`, `CustomerPage`, `Fax`,
 `FaxAccount`, `FaxAccountNumber`, `FaxAccountPage`, `FaxAccountUser`,
 `FaxAccountUserPage`, `FaxDocument`, `FaxPage`, `InboundMessage`,
-`InboundMessagePage`, `MediaLink`, `MessageEvent`,
-`MessageEventData`, `MessageMediaPart`, `MessageSender`, `OutboundMessage`, `PbxCall`,
+`InboundMessageEvent`, `InboundMessageEventData`, `InboundMessagePage`,
+`MediaLink`, `MessageMediaPart`, `MessageSender`, `OutboundMessage`,
+`OutboundMessageEvent`, `OutboundMessageEventData`, `PbxCall`,
 `PbxDevice`, `PbxDevicePage`, `PbxSubscriber`, `PbxSubscriberPage`, `Recording`,
-`Transcript`, `TranscriptChannel`, `TranscriptSegment`, `WebhookDelivery`, `WebhookDeliveryPage`, `WebhookEndpoint`
+`Transcript`, `TranscriptChannel`, `TranscriptSegment`, `UnknownMessageEvent`,
+`WebhookDelivery`, `WebhookDeliveryPage`, `WebhookEndpoint`
 and `WebhookEndpointPage` are frozen dataclasses, and each keeps the JSON
 it was built from in `.raw` — so a field the API adds after this release
 reaches you without a new SDK.

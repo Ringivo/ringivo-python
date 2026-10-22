@@ -28,6 +28,38 @@ no longer carries code for the API's v1 naming cleanup.
 - **`webhooks.MESSAGE_EVENT_TYPES` removed.** Migration: use
   `webhooks.INBOUND_MESSAGE_EVENT_TYPES | webhooks.OUTBOUND_MESSAGE_EVENT_TYPES`
   for all four types, or route on the two sets directly.
+- **Message events split by direction; `MessageEvent` and
+  `MessageEventData` removed.** `webhooks.parse_message_event()` now returns
+  one of three variants, and each has only its own members:
+  - `InboundMessageEvent` for `message.received`. Its `message` is an
+    `InboundMessageEventData`, with no `source`, `status`, `sent_by`,
+    `sent_at`, `provider_message_id`, `provider_part_ids` or
+    `failure_cause`.
+  - `OutboundMessageEvent` for `message.sent`, `message.delivered` and
+    `message.failed`. Its `message` is an `OutboundMessageEventData`, with
+    no `received_at`.
+  - `UnknownMessageEvent` for any other body: another event type, a type
+    this release does not know, or no JSON object. Its `type` is `None` and
+    it has no `message`; the type that arrived is on `raw`. Before, such a
+    body parsed as a `MessageEvent` with every message member `None`.
+
+  `type` is a `Literal` on each variant, so `event.type ==
+  "message.received"`, `event.type is None`, `isinstance()` and `match`
+  narrow the variant in pyright. `failure_cause` is now read on
+  `message.failed` only, and is `None` on the other two. It is typed
+  `FailureCause | str | None`: the new `FailureCause` `Literal` and the new
+  `webhooks.FAILURE_CAUSES` `frozenset` hold the eight causes the API
+  documents today. A cause this release does not know still parses, as a
+  `str`. Treat it as a failure.
+
+  Migration: narrow before you read `event.message`. Replace a routing check
+  such as `if payload.get("type") in webhooks.OUTBOUND_MESSAGE_EVENT_TYPES:`
+  followed by `parse_message_event(payload).message` with a parse first and
+  then `isinstance(event, OutboundMessageEvent)` (or `match`). Remove every
+  read of an outbound member on a received message and of `received_at` on a
+  sent one: those members were always `None` there. Replace a `MessageEvent`
+  annotation with `InboundMessageEvent | OutboundMessageEvent |
+  UnknownMessageEvent`, or with the one variant the code handles.
 
 ## Earlier upgrade notes
 
