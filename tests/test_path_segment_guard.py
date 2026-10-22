@@ -22,7 +22,7 @@ from typing import Any
 import pytest
 import respx
 
-from ringivo import AsyncRingivo, Ringivo
+from ringivo import ApiError, AsyncRingivo, Ringivo
 
 BASE_URL = "https://api.yourprovider.example"
 TENANT = "0198c4a1-3d4e-7f50-a1b2-c3d4e5f6a7b8"
@@ -142,10 +142,23 @@ async def test_the_async_client_refuses_it_before_any_request(
     assert not route.called
 
 
-@pytest.mark.parametrize("value", ["...", ".a", "a.", "..a", "a..b", "%2e", "%2e%2e"])
-def test_an_id_that_only_contains_dots_is_still_sent_escaped(value: str) -> None:
+@pytest.mark.parametrize(
+    ("value", "sent"),
+    [
+        ("...", b"..."),
+        (".a", b".a"),
+        ("a.", b"a."),
+        ("..a", b"..a"),
+        ("a..b", b"a..b"),
+        ("%2e", b"%252e"),
+        ("%2e%2e", b"%252e%252e"),
+        ("../x", b"..%2Fx"),
+    ],
+)
+def test_an_id_that_only_contains_dots_is_still_sent_escaped(value: str, sent: bytes) -> None:
     """Only the two exact dot segments are refused. Any other id still goes
-    out inside its own escaped segment, as before."""
+    out inside its own escaped segment, as before: the exact bytes on the
+    wire are checked, so an id that stopped being escaped would fail here."""
     with respx.mock(assert_all_mocked=True) as router:
         router.post(f"{BASE_URL}/oauth/token").respond(
             200, json={"access_token": "t", "expires_in": 3600, "scope": "fax:read"}
@@ -153,10 +166,8 @@ def test_an_id_that_only_contains_dots_is_still_sent_escaped(value: str) -> None
         route = router.route(host="api.yourprovider.example", method="GET").respond(
             404, json={"errors": [{"status": "404", "title": "Not Found"}]}
         )
-        with _sync_client() as client, pytest.raises(Exception):
+        with _sync_client() as client, pytest.raises(ApiError):
             client.inbound_messages.get(value)
 
-    assert route.called
-    path = route.calls.last.request.url.raw_path
-    assert path.startswith(b"/v1/inbound-messages/")
-    assert path != b"/v1/inbound-messages/"
+    assert route.call_count == 1
+    assert route.calls.last.request.url.raw_path == b"/v1/inbound-messages/" + sent

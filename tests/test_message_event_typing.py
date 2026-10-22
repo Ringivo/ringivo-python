@@ -18,7 +18,7 @@ received text has a `sent_by` again — pyright fails here.
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Any, Literal
+from typing import Any, Literal, get_args, get_type_hints
 
 import pytest
 from typing_extensions import assert_never, assert_type
@@ -148,6 +148,25 @@ def test_a_known_failure_cause_is_a_failure_cause_literal() -> None:
 
     assert isinstance(event, MessageFailedEvent)
     assert event.message.failure_cause == cause
+
+
+def test_failure_causes_is_typed_as_the_literal() -> None:
+    """Pins the `Literal` on `FAILURE_CAUSES` for pyright. `frozenset[str]`
+    would fail both `assert_type()` calls."""
+    assert_type(webhooks.FAILURE_CAUSES, frozenset[FailureCause])
+    for cause in webhooks.FAILURE_CAUSES:
+        assert_type(cause, FailureCause)
+
+
+def test_the_failure_cause_field_keeps_the_literal_in_its_annotation() -> None:
+    """Pins the `Literal` on the field at run time. Pyright reads
+    `FailureCause | str | None` as `str | None`, so an `assert_type()` on the
+    field passes even when the annotation is plain `str | None`. The
+    annotation itself still carries the `Literal`, and this checks it.
+    """
+    hint = get_type_hints(MessageFailedEventData)["failure_cause"]
+
+    assert set(get_args(hint)) == {FailureCause, str, type(None)}
 
 
 def _reads_pyright_must_refuse(event: _Event) -> None:

@@ -27,7 +27,9 @@ no longer carries code for the API's v1 naming cleanup.
   `client.request(...)`.
 - **`webhooks.MESSAGE_EVENT_TYPES` removed.** Migration: use
   `webhooks.INBOUND_MESSAGE_EVENT_TYPES | webhooks.OUTBOUND_MESSAGE_EVENT_TYPES`
-  for all four types, or route on the two sets directly.
+  if you need all four type names. To route a delivery, parse it first and
+  check the class (see the next item): a check against a set does not narrow
+  the type.
 - **Message events split into one class per event type; `MessageEventData`
   removed; `MessageEvent` is now a union.** `webhooks.parse_message_event()`
   now returns a `MessageEvent`: one class per event type, named after it, or
@@ -45,8 +47,9 @@ no longer carries code for the API's v1 naming cleanup.
     adds `failure_cause`.
   - `UnknownMessageEvent` for any other body: another event type, a type
     this release does not know, or no JSON object. Its `type` is `None` and
-    it has no `message`; the type that arrived is on `raw`. Before, such a
-    body parsed as a `MessageEvent` with every message member `None`.
+    it has no `message`. The type that arrived is on `raw`, or `raw` is `{}`
+    when the body was not a JSON object. Before, such a body parsed as a
+    `MessageEvent` with every message member `None`.
 
   `type` is a `Literal` on each class, so `event.type == "message.sent"` (and
   each other type), `event.type is None`, `isinstance()` and `match` narrow
@@ -57,6 +60,21 @@ no longer carries code for the API's v1 naming cleanup.
   `str`. Treat it as a failure.
 
   Migration:
+  - **Code that reads `event.message` without narrowing first now raises
+    `AttributeError` at run time.** An `UnknownMessageEvent` has no
+    `message`, so `{}`, `{"data": "x"}` or any type this release does not
+    know raises on `event.message`. A received message has no outbound
+    members, so `event.message.source` raises on a `message.received` body.
+    Before, both read `None`. Code with no type checker does not see this
+    until a delivery arrives. In a webhook handler it is then a 500, and the
+    platform delivers the event again. Narrow on `type` first:
+
+    ```python
+    event = webhooks.parse_message_event(payload)
+    if not isinstance(event, (MessageSentEvent, MessageDeliveredEvent, MessageFailedEvent)):
+        return  # a received text, or not a message event: accept it and ignore it
+    ```
+
   - **`MessageEvent` is the same name with a new meaning.** It was one
     class; it is now the type alias `MessageReceivedEvent | MessageSentEvent
     | MessageDeliveredEvent | MessageFailedEvent | UnknownMessageEvent`. A
@@ -72,7 +90,10 @@ no longer carries code for the API's v1 naming cleanup.
     member of a sent or delivered message.
   - Remove every read of an outbound member on a received message, and of
     `received_at` on a sent one: those members were always `None` there.
-  - Replace `MessageEventData` with the data class of the event you handle.
+  - Replace `MessageEventData` with the data class of the event you handle:
+    `OutboundMessageEventData` for a sent, delivered or failed handler (it
+    also accepts a `MessageFailedEventData`, which is a subclass), and
+    `MessageReceivedEventData` for a received one.
 
 ## Unreleased — Fixed
 

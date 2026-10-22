@@ -1092,7 +1092,9 @@ def receive(request):
 - **An unknown `type` is not an error.** Another event, a message event this
   release does not know yet, or a body that is not a JSON object parses as
   `UnknownMessageEvent`. Its `type` is `None`; the type that arrived is
-  `event.raw.get("type")`. Accept the delivery and ignore it.
+  `event.raw.get("type")`, and `event.raw` is `{}` when the body was not a
+  JSON object. It has no `message`: reading `event.message` before you
+  narrow raises `AttributeError`. Accept the delivery and ignore it.
 - **The parse never raises on content.** A member that is missing or of the
   wrong type reads `None`, and the whole body stays on `event.raw` — the
   same rule as every model here. Decide for yourself which `None` you

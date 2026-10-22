@@ -2032,9 +2032,10 @@ class UnknownMessageEvent:
     type, a type this release does not know yet, or no JSON object at all.
 
     `type` is None, so a check on `event.type` narrows the known variants
-    cleanly. The type that arrived, if any, is `raw.get("type")`. It
-    carries no `message`, because this release does not know what such a
-    body holds. Accept the delivery and ignore it.
+    cleanly. The type that arrived, if any, is `raw.get("type")`. `raw` is
+    the body when it was a JSON object, or `{}` when it was not. It carries
+    no `message`, because this release does not know what such a body
+    holds. Accept the delivery and ignore it.
     """
 
     type: None = None
@@ -2064,7 +2065,8 @@ def _message_event_from_json(payload: Any) -> MessageEvent:
 
     NEVER RAISES. A body that is not a mapping, or whose `type` is not one
     of the four, is an `UnknownMessageEvent`. A member that is missing or of
-    the wrong type reads None, and the whole body stays on `raw`.
+    the wrong type reads None, and the whole body stays on `raw` (or `{}`
+    when the body is not a mapping).
     """
     source: Mapping[str, Any] = payload if isinstance(payload, Mapping) else {}
     event_id = _text(source, "eventId")

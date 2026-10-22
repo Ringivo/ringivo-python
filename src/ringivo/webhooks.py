@@ -104,7 +104,7 @@ INBOUND_MESSAGE_EVENT_TYPES = frozenset({"message.received"})
 #: Every `failure.cause` a `message.failed` event can carry today — the
 #: values of `FailureCause`. More can be added: a cause not in this set
 #: still parses, as a string, and is still a failure.
-FAILURE_CAUSES: frozenset[str] = frozenset(get_args(FailureCause))
+FAILURE_CAUSES: frozenset[FailureCause] = frozenset(get_args(FailureCause))
 
 #: The header a delivery carries its signature in.
 SIGNATURE_HEADER = "Ringivo-Signature"
@@ -223,7 +223,8 @@ def parse_message_event(payload: Any) -> MessageEvent:
           object at all. The type that arrived is on `raw`.
 
         Members that are missing or of the wrong type are None, and the
-        whole body is on `raw`.
+        whole body is on `raw`, or `raw` is `{}` when the body is not a JSON
+        object.
 
         NEVER RAISES. A receiver that answered a malformed delivery with a
         500 would only be sent it again.
