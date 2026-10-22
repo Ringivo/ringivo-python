@@ -56,8 +56,7 @@ class AsyncFaxAccountUsers:
         """One page of grants, newest first. Needs `fax:read`.
 
         The awaited twin of `FaxAccountUsers.list`, and the same arguments
-        mean the same things — including the v1 naming cleanup bridge on
-        `filter[faxAccount]`.
+        mean the same things.
         """
         params: dict[str, Any] = {
             "page[after]": after,
@@ -66,7 +65,7 @@ class AsyncFaxAccountUsers:
             "filter[faxAccount]": fax_account,
             "filter[user]": user,
         }
-        response = await self._client._request_filtered("/v1/fax-account-users", params)
+        response = await self._client.request("GET", "/v1/fax-account-users", params=params)
         return _page(response.json())
 
     async def get(self, fax_account_user_id: str) -> FaxAccountUser:

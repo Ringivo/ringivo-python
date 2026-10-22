@@ -59,7 +59,7 @@ class AsyncWebhookDeliveries:
             "filter[eventType]": event_type,
             "filter[status]": status,
         }
-        response = await self._client._request_filtered("/v1/webhook-deliveries", params)
+        response = await self._client.request("GET", "/v1/webhook-deliveries", params=params)
         return _page(response.json())
 
     async def get(self, webhook_delivery_id: str) -> WebhookDelivery:

@@ -121,7 +121,7 @@ class WebhookEndpoints:
             "filter[scopeId]": scope_id,
             "filter[active]": active,
         }
-        document = self._client._request_filtered("/v1/webhook-endpoints", params).json()
+        document = self._client.request("GET", "/v1/webhook-endpoints", params=params).json()
         return _page(document)
 
     def get(self, webhook_endpoint_id: str) -> WebhookEndpoint:

@@ -229,17 +229,14 @@ def _call_resource(*, attributes: dict[str, object] | None = None) -> dict[str, 
 def _recording_resource(
     *, resource_id: str = RECORDING_ID, attributes: dict[str, object] | None = None
 ) -> dict[str, object]:
-    """One `recordings` resource object, KEBAB-CASE attributes and all —
-    this endpoint's own spelling, unlike the camelCase call-records block.
-    """
+    """One `recordings` resource object, camelCase attributes and all."""
     merged: dict[str, object] = {
         "duration": 64,
-        "byte-size": 512000,
+        "byteSize": 512000,
         "sha256": "a" * 64,
         "superseded": False,
-        "content-url": f"{BASE_URL}/v1/pbx/recordings-content/signed-token",
-        "expires-at": "2026-09-12T15:00:00Z",
-        # Members added after the kebab-case rename: camelCase only.
+        "contentUrl": f"{BASE_URL}/v1/pbx/recordings-content/signed-token",
+        "expiresAt": "2026-09-12T15:00:00Z",
         "contentType": "audio/wav",
         "recordingStatus": "available",
         "callRecordId": CALL_RECORD_ID,

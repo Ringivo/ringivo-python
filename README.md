@@ -236,14 +236,8 @@ full one.
     )
 ```
 
-Send these camelCase names. `client.request()` does not go through the
-filter-name bridge, and the API refuses the old `target_type`/`fax_account`
-body with a 422 rather than routing the number to the PBX. **The body is not
-portable across the API's v1 naming cleanup** (see "Upgrading to 0.15.x"
-below): an API that has not taken the rename reads only
-`target_type`/`fax_account`, ignores `targetType`, and routes the number to
-the customer's PBX with a 204. Check where the number routes after the
-call if you cannot be sure which API you are talking to.
+Send these camelCase names. The API refuses the old `target_type`/`fax_account`
+body with a 422 rather than routing the number to the PBX.
 
 ### Retention: two rules, either of them off
 
@@ -1124,8 +1118,7 @@ def receive(request):
 - **Route on `INBOUND_MESSAGE_EVENT_TYPES` and
   `OUTBOUND_MESSAGE_EVENT_TYPES`.** The first holds `message.received`; the
   second holds `message.sent`, `message.delivered` and `message.failed`.
-  `MESSAGE_EVENT_TYPES` is their union: it says what
-  `parse_message_event()` reads, and it is not a routing set.
+  `parse_message_event()` reads all four.
 
 - **The parse never raises on content.** A member that is missing or of the
   wrong type reads `None`, and the whole body stays on `event.raw` — the
@@ -1138,10 +1131,6 @@ def receive(request):
   **`sent_at` and `provider_message_id` are `None` and `provider_part_ids`
   is `()`**. The provider ids are set only on your own provider account; on
   any other account both are `None`.
-- **Since 0.21.0, `MESSAGE_EVENT_TYPES` includes `message.received`.** A
-  receiver written for 0.20.0 that reads every type in it as a sent message
-  files received texts as sent. Change it to route on
-  `OUTBOUND_MESSAGE_EVENT_TYPES` (since 0.22.0), as the example above does.
 - **On `message.received`**, `message.id` is the id
   `client.inbound_messages.get()` takes, `received_at` is when it was sent,
   and the members only a sent message has (`source`, `status`, `sent_by`,
@@ -1153,30 +1142,6 @@ def receive(request):
   (`message.id`, `event.type`). Never on the message id alone: that would
   drop the `message.delivered` or `message.failed` that follows the
   `message.sent` of the same message.
-
-## Upgrading to 0.15.x: the API's v1 naming cleanup
-
-The API renamed its last snake_case names on the resource surface to
-camelCase, with no alias. The ones this client touches are four `faxes`
-filters, the `fax-account-users` filter, two `webhook-endpoints` filters, the
-`webhook-deliveries` filter, the send acknowledgement's `clientReference` and
-`createdAt`, and the media link's `expiresAt` and `byteSize`. **Your code does
-not change:** the arguments and attributes keep their Python names
-(`fax_account=`, `created_after=`, `Fax.client_reference`,
-`MediaLink.expires_at`).
-
-**0.15.x works against the API on both sides of that deploy, so upgrade
-before it.** It asks with the new filter names; an API that has not taken
-the rename refuses them with a 400, and this client then asks once more with
-the old names and remembers which spelling worked (and switches back the same
-way when the API changes under a running process). It reads the send
-acknowledgement and the media link in either spelling. An older client stops
-filtering on the day the API is renamed: every renamed filter it sends is
-refused with a 400.
-
-**The next minor release removes the fallback** and sends the new names
-only. The raw bodies in `.raw` and anything you read through
-`client.request()` carry whatever the API sent — camelCase once it is renamed.
 
 ## When something is refused
 

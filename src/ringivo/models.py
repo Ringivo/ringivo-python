@@ -101,32 +101,6 @@ def _number(source: Mapping[str, Any], key: str) -> float | None:
     return float(value)
 
 
-def _bridged(source: Mapping[str, Any], key: str, legacy: str) -> Mapping[str, Any]:
-    """`source`, with `legacy`'s value under `key` when only `legacy` arrived.
-
-    THE v1 NAMING CLEANUP BRIDGE, and temporary: the API renamed a few
-    plain-JSON members from snake_case to camelCase, and for one release
-    this package reads whichever of the two spellings arrived — the new one
-    when both do. The next release deletes this and reads `key` alone.
-    """
-    if key in source or legacy not in source:
-        return source
-    return {**source, key: source[legacy]}
-
-
-def _media_bridged(attributes: Mapping[str, Any]) -> Mapping[str, Any]:
-    """A `recordings`/`transcripts` attribute block with each camelCase key
-    filled from its old kebab-case spelling when only that arrived — the
-    same temporary bridge as `_bridged`, for the PBX media rename."""
-    for key, legacy in (
-        ("byteSize", "byte-size"),
-        ("contentUrl", "content-url"),
-        ("expiresAt", "expires-at"),
-    ):
-        attributes = _bridged(attributes, key, legacy)
-    return attributes
-
-
 def _boolean(source: Mapping[str, Any], key: str) -> bool | None:
     value = source.get(key)
     return value if isinstance(value, bool) else None
@@ -310,21 +284,16 @@ class Fax:
 
         Their bodies are plain JSON, not JSON:API documents — which is why
         this is a second constructor rather than a flag on the first one.
-        The members are camelCase since the API's v1 naming cleanup; the
-        snake_case names they replaced are read as a fallback for this one
-        release, so it works on either side of that deploy.
+        The members are camelCase (`clientReference`, `createdAt`).
         """
-        wire = _bridged(
-            _bridged(payload, "clientReference", "client_reference"), "createdAt", "created_at"
-        )
         return cls(
             id=_text(payload, "id") or "",
             status=_text(payload, "status"),
             direction=_text(payload, "direction"),
             from_=_text(payload, "from"),
             to=_text(payload, "to"),
-            client_reference=_text(wire, "clientReference"),
-            created_at=_parse_datetime(wire.get("createdAt")),
+            client_reference=_text(payload, "clientReference"),
+            created_at=_parse_datetime(payload.get("createdAt")),
             idempotent_replay=idempotent_replay,
             raw=payload,
         )
@@ -400,13 +369,10 @@ class MediaLink:
                 content_type=_text(attributes, "contentType"),
                 raw=payload,
             )
-        # camelCase since the API's v1 naming cleanup; the snake_case names
-        # are read as a fallback for this one release (see `Fax._from_acknowledgement`).
-        wire = _bridged(_bridged(payload, "expiresAt", "expires_at"), "byteSize", "byte_size")
         return cls(
             url=_text(payload, "url") or "",
-            expires_at=_parse_datetime(wire.get("expiresAt")),
-            byte_size=_integer(wire, "byteSize"),
+            expires_at=_parse_datetime(payload.get("expiresAt")),
+            byte_size=_integer(payload, "byteSize"),
             sha256=_text(payload, "sha256"),
             raw=payload,
         )
@@ -1272,11 +1238,9 @@ class Recording:
         """Build from one `recordings` resource object.
 
         The attribute keys are camelCase (`byteSize`, `contentUrl`,
-        `expiresAt`). They were KEBAB-CASE until the API renamed them, and
-        the API still sends both during its transition window, so an old
-        kebab-case-only response is bridged (`_media_bridged`).
+        `expiresAt`).
         """
-        attributes = _media_bridged(_mapping(resource, "attributes") or {})
+        attributes = _mapping(resource, "attributes") or {}
 
         return cls(
             id=_text(resource, "id") or "",
@@ -1377,7 +1341,7 @@ class Transcript:
         camelCase attribute keys, bridged from the old kebab-case ones the
         same way as `Recording._from_resource`.
         """
-        attributes = _media_bridged(_mapping(resource, "attributes") or {})
+        attributes = _mapping(resource, "attributes") or {}
 
         return cls(
             id=_text(resource, "id") or "",

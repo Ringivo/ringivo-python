@@ -266,7 +266,7 @@ async def test_send_with_urls_posts_flat_json_and_never_a_jsonapi_document(
             resolution="fine",
             client_reference="chart-4471",
             tags={"clinic": "north"},
-            cover_page={"to_name": "Dr Ruiz", "subject": "Records"},
+            cover_page={"toName": "Dr Ruiz", "subject": "Records"},
         )
 
     request = route.calls.last.request
@@ -300,14 +300,14 @@ async def test_send_sends_tags_and_cover_page_as_json_typed_parts(
             to="+1302",
             file=b"a",
             tags={"clinic": "north"},
-            cover_page={"to_name": "Dr Ruiz"},
+            cover_page={"toName": "Dr Ruiz"},
         )
 
     body = route.calls.last.request.content.decode("utf-8", "replace")
 
     assert 'name="tags"\r\nContent-Type: application/json\r\n\r\n{"clinic": "north"}' in body
     assert 'name="coverPage"\r\nContent-Type: application/json' in body
-    # The documented snake_case cover-page keys go out camelCase.
+    # The cover-page keys go out exactly as given (camelCase).
     assert '{"toName": "Dr Ruiz"}' in body
     # A form field, not an upload: no filename, or a server reads it as a page.
     assert 'name="tags"; filename' not in body

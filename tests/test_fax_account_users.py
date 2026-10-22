@@ -8,10 +8,9 @@ from the return value alone.
 
 Two things about this resource shape the assertions below. Its write body
 is ALL RELATIONSHIPS — a grant has no attributes a caller writes — and its
-account filter is `filter[faxAccount]`, camelCase like its relationships
-since the API's v1 naming cleanup. Both are asserted rather than assumed:
-a filter the API does not recognise is refused with a 400, and the 0.15
-bridge's fallback to the old spelling is pinned in test_filter_bridge.py.
+account filter is `filter[faxAccount]`, camelCase like its relationships.
+Both are asserted rather than assumed: a filter the API does not recognise
+is refused with a 400.
 """
 
 from __future__ import annotations
@@ -110,9 +109,8 @@ def test_list_builds_the_filter_and_page_query(
 
     params = route.calls.last.request.url.params
 
-    # camelCase since the API's v1 naming cleanup, like the relationships
-    # the two filters narrow (`faxAccount`, `user`). The old spelling is
-    # never sent first; see test_filter_bridge.py for when it is sent at all.
+    # camelCase, like the relationships the two filters narrow
+    # (`faxAccount`, `user`). The old spelling is never sent.
     assert params["filter[faxAccount]"] == ACCOUNT_ID
     assert "filter[fax_account]" not in params
     assert params["filter[user]"] == USER_ID

@@ -1151,9 +1151,8 @@ def test_request_is_a_public_escape_hatch_that_carries_the_credential() -> None:
         assert sent.headers["accept"] == "application/vnd.api+json"
         assert sent.headers["user-agent"] == f"Ringivo/Python {ringivo.__version__}"
 
-        # The same object under both names, so a caller who reached for the
-        # private one before 0.2.2 is not broken by the promotion.
-        assert Ringivo.request is Ringivo._request
+        # The private alias from before 0.2.2 is gone.
+        assert not hasattr(Ringivo, "_request")
 
         # And the refusal half of the promise: past the boundary the body is
         # the API's own, but the FAILURE is still this package's.
