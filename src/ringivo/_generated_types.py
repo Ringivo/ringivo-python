@@ -120,6 +120,10 @@ ErrorCode: TypeAlias = Literal[
     'transcription_daily_limit_reached',
     'transcript_request_limited',
     'transcription_unavailable',
+    'media_rejected',
+    'media_timeout',
+    'media_unreachable',
+    'media_store_unavailable',
 ]
 
 
@@ -772,8 +776,7 @@ class CallTranscriptAvailableEvent(WebhookEventEnvelope):
     data: CallTranscriptAvailableEventData
 
 
-class MediaItem(TypedDict, closed=True):
-    url: str
+MediaUrl: TypeAlias = str
 
 
 ProviderPartId: TypeAlias = str
@@ -791,7 +794,7 @@ Attributes5 = TypedDict(
         'from': str,
         'to': str,
         'body': NotRequired[str | None],
-        'media': NotRequired[list[MediaItem]],
+        'mediaUrls': NotRequired[list[MediaUrl]],
         'senderLabel': str,
         'markConversationRead': NotRequired[bool],
         'alreadySent': AlreadySent,
@@ -814,11 +817,9 @@ class OutboundMessageSender(TypedDict):
     name: str | None
 
 
-class OutboundMessageMediaPart(TypedDict):
-    contentType: NotRequired[str]
-    filename: NotRequired[str | None]
-    encoding: NotRequired[str | None]
-    bytes: NotRequired[int]
+class OutboundMessageMediaItem(TypedDict):
+    contentType: str
+    size: int
 
 
 OutboundMessageSource: TypeAlias = Literal['api', 'phone_system', 'recorded', 'system']
@@ -827,8 +828,19 @@ OutboundMessageSource: TypeAlias = Literal['api', 'phone_system', 'recorded', 's
 OutboundMessageKind: TypeAlias = Literal['sms', 'mms']
 
 
+OutboundMessageFailureCause: TypeAlias = Literal[
+    'provider_refused',
+    'provider_unreachable',
+    'send_interrupted',
+    'opted_out',
+    'no_send_key',
+    'media_unavailable',
+    'undelivered',
+]
+
+
 class Failure(TypedDict):
-    cause: str
+    cause: OutboundMessageFailureCause
 
 
 class PbxChangeEventData(TypedDict):
@@ -1047,18 +1059,10 @@ class MessagingEnablementRelationships(TypedDict):
 InboundMessageKind: TypeAlias = Literal['sms', 'mms']
 
 
-class MessageReceivedMediaPart(TypedDict):
-    contentType: NotRequired[str]
-    filename: NotRequired[str | None]
-    encoding: NotRequired[str]
-    bytes: NotRequired[int]
-
-
-class InboundMessageMediaPart(TypedDict):
-    contentType: NotRequired[str]
-    filename: NotRequired[str | None]
-    encoding: NotRequired[str]
-    bytes: NotRequired[int]
+class InboundMessageMediaItem(TypedDict):
+    contentType: str
+    filename: str | None
+    size: int
 
 
 InboundMessageAttributes = TypedDict(
@@ -1068,7 +1072,7 @@ InboundMessageAttributes = TypedDict(
         'from': NotRequired[str],
         'to': NotRequired[str],
         'body': NotRequired[str | None],
-        'media': NotRequired[list[InboundMessageMediaPart]],
+        'media': NotRequired[list[InboundMessageMediaItem]],
         'receivedAt': NotRequired[str],
         'createdAt': NotRequired[str],
         'updatedAt': NotRequired[str],
@@ -2225,7 +2229,7 @@ MessageReceivedEventData = TypedDict(
         'from': NotRequired[str],
         'to': NotRequired[str],
         'body': NotRequired[str | None],
-        'media': NotRequired[list[MessageReceivedMediaPart]],
+        'media': NotRequired[list[InboundMessageMediaItem]],
         'receivedAt': NotRequired[str],
     },
 )
@@ -2295,7 +2299,7 @@ OutboundMessageEventData = TypedDict(
         'from': str,
         'to': str,
         'body': str | None,
-        'media': list[OutboundMessageMediaPart],
+        'media': list[OutboundMessageMediaItem],
         'status': Literal['sent', 'delivered', 'undelivered', 'failed'],
         'sentBy': OutboundMessageSender | None,
         'sentAt': str | None,
@@ -2318,7 +2322,7 @@ OutboundMessageAttributes = TypedDict(
         'from': NotRequired[str],
         'to': NotRequired[str],
         'body': NotRequired[str | None],
-        'media': NotRequired[list[OutboundMessageMediaPart]],
+        'media': NotRequired[list[OutboundMessageMediaItem]],
         'senderLabel': NotRequired[str | None],
         'markConversationRead': NotRequired[bool | None],
         'sentAt': NotRequired[str | None],
