@@ -90,9 +90,7 @@ def _user_resource(*, attributes: dict[str, object] | None = None) -> dict[str, 
 
     The overrides come in as a DICT rather than as `**kwargs`, unlike the
     fax suites' builders: a `**dict[str, object]` splat would read to a type
-    checker as something that could also fill `relationships`. The kebab-case
-    attribute names that once forced the dict are gone as of 0.11.0 — every
-    member on this surface is camelCase now — but the typing reason stands.
+    checker as something that could also fill `relationships`.
     """
     merged: dict[str, object] = {
         "user": "101",

@@ -1136,9 +1136,8 @@ _READS: tuple[_Read, ...] = (
         "CallRecord._from_resource",
     ),
     # -- Recording._from_resource reads a RecordingResource (id) + its ------
-    # RecordingAttributes. KEBAB-CASE keys, the same reason PbxSubscriber's are:
-    # this is this endpoint's own spelling, not the camelCase call-records
-    # block.
+    # RecordingAttributes. The keys are camelCase (`byteSize`, `contentUrl`,
+    # `expiresAt`), like the call-records block.
     _Read(models.Recording, "id", generated.RecordingResource, "id", "Recording._from_resource"),
     _Read(
         models.Recording,
@@ -1205,7 +1204,7 @@ _READS: tuple[_Read, ...] = (
     ),
     # -- Transcript._from_resource reads a TranscriptResource (id) + its ----
     # TranscriptAttributes. `id` is the RECORDING's id (one to one), and the
-    # attribute keys are the same KEBAB-CASE spelling `Recording` reads.
+    # attribute keys are camelCase, the same spelling `Recording` reads.
     _Read(models.Transcript, "id", generated.TranscriptResource, "id", "Transcript._from_resource"),
     # The deprecated `status`, stored privately behind the warning `status`
     # property.
