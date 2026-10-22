@@ -47,11 +47,11 @@ JSON, or not an object, deserves — and then hands the object to a parser:
 
     webhooks.verify(raw, request.headers[webhooks.SIGNATURE_HEADER], secret=WHSEC)
     event = webhooks.parse_message_event(json.loads(raw))
-    if event.type == "message.received":   # a text sent TO you: InboundMessageEvent
+    if event.type == "message.received":   # a text sent TO you: MessageReceivedEvent
         ...
     elif event.type == "message.failed":   # a text from you did not arrive: MessageFailedEvent
         ...
-    elif event.type is not None:            # sent or delivered: OutboundMessageEvent
+    elif event.type is not None:            # MessageSentEvent or MessageDeliveredEvent
         ...
     # else: not a message event (UnknownMessageEvent). Accept it and ignore it.
 
@@ -60,9 +60,9 @@ a member that is missing or of the wrong type reads None and the whole
 body stays on `raw`. It never raises on content, so the receiver decides
 which None it cannot work without.
 
--- ONE VARIANT PER DIRECTION ---------------------------------------------------
-A received text and a sent text are different classes, and each has only
-its own members. Code that reads `sent_by` off a received text, and so could
+-- ONE CLASS PER EVENT TYPE ----------------------------------------------------
+Each event type is its own class, named after it, and each has only its own
+members. Code that reads `sent_by` off a received text, and so could
 take a customer's text for a staff reply, fails in the type checker. The
 `type` member is a `Literal`, so a check on it narrows the variant.
 """
@@ -93,13 +93,12 @@ __all__ = [
 ]
 
 #: The events about a message sent FROM one of your numbers. All three carry
-#: the same members, and `message.failed` adds `failure.cause`. `message.sent`
-#: and `message.delivered` parse to an `OutboundMessageEvent`, and
-#: `message.failed` to a `MessageFailedEvent`.
+#: the same members, and `message.failed` adds `failure.cause`. They parse to
+#: a `MessageSentEvent`, a `MessageDeliveredEvent` and a `MessageFailedEvent`.
 OUTBOUND_MESSAGE_EVENT_TYPES = frozenset({"message.sent", "message.delivered", "message.failed"})
 
 #: The events about a message somebody sent TO one of your numbers. Each
-#: parses to an `InboundMessageEvent`.
+#: parses to a `MessageReceivedEvent`.
 INBOUND_MESSAGE_EVENT_TYPES = frozenset({"message.received"})
 
 #: Every `failure.cause` a `message.failed` event can carry today — the
@@ -210,10 +209,12 @@ def parse_message_event(payload: Any) -> MessageEvent:
     Returns:
         A `MessageEvent`: one variant, told apart by `type`:
 
-        - `InboundMessageEvent` for `message.received`, a message somebody
+        - `MessageReceivedEvent` for `message.received`, a message somebody
           sent to one of your numbers;
-        - `OutboundMessageEvent` for `message.sent` and `message.delivered`,
-          news about a message sent from one of your numbers;
+        - `MessageSentEvent` for `message.sent`: the provider accepted a
+          message sent from one of your numbers;
+        - `MessageDeliveredEvent` for `message.delivered`: the recipient's
+          carrier took it;
         - `MessageFailedEvent` for `message.failed`, a message sent from one
           of your numbers that did not reach its recipient, with
           `message.failure_cause`;

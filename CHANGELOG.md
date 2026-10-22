@@ -28,18 +28,18 @@ no longer carries code for the API's v1 naming cleanup.
 - **`webhooks.MESSAGE_EVENT_TYPES` removed.** Migration: use
   `webhooks.INBOUND_MESSAGE_EVENT_TYPES | webhooks.OUTBOUND_MESSAGE_EVENT_TYPES`
   for all four types, or route on the two sets directly.
-- **Message events split into variants; `MessageEventData` removed;
-  `MessageEvent` is now a union.** `webhooks.parse_message_event()` now
-  returns a `MessageEvent`, which is one of four variants. Each variant has
-  only its own members. The names and the split are the same as in the
-  TypeScript client.
-  - `InboundMessageEvent` for `message.received`. Its `message` is an
-    `InboundMessageEventData`, with no `source`, `status`, `sent_by`,
+- **Message events split into one class per event type; `MessageEventData`
+  removed; `MessageEvent` is now a union.** `webhooks.parse_message_event()`
+  now returns a `MessageEvent`: one class per event type, named after it, or
+  `UnknownMessageEvent`. Each class has only its own members. The names and
+  the shapes are the same as in the TypeScript client.
+  - `MessageReceivedEvent` for `message.received`. Its `message` is a
+    `MessageReceivedEventData`, with no `source`, `status`, `sent_by`,
     `sent_at`, `provider_message_id`, `provider_part_ids` or
     `failure_cause`.
-  - `OutboundMessageEvent` for `message.sent` and `message.delivered`. Its
-    `message` is an `OutboundMessageEventData`, with no `received_at` and no
-    `failure_cause`.
+  - `MessageSentEvent` for `message.sent` and `MessageDeliveredEvent` for
+    `message.delivered`. Their `message` is an `OutboundMessageEventData`,
+    with no `received_at` and no `failure_cause`.
   - `MessageFailedEvent` for `message.failed`. Its `message` is a
     `MessageFailedEventData`: a subclass of `OutboundMessageEventData` that
     adds `failure_cause`.
@@ -48,32 +48,31 @@ no longer carries code for the API's v1 naming cleanup.
     it has no `message`; the type that arrived is on `raw`. Before, such a
     body parsed as a `MessageEvent` with every message member `None`.
 
-  `type` is a `Literal` on each variant, so `event.type ==
-  "message.received"`, `event.type == "message.failed"`, `event.type is
-  None`, `isinstance()` and `match` narrow the variant in pyright.
-  `failure_cause` is typed `FailureCause | str | None`: the new
-  `FailureCause` `Literal` and the new `webhooks.FAILURE_CAUSES` `frozenset`
-  hold the eight causes the API documents today. A cause this release does
-  not know still parses, as a `str`. Treat it as a failure.
+  `type` is a `Literal` on each class, so `event.type == "message.sent"` (and
+  each other type), `event.type is None`, `isinstance()` and `match` narrow
+  to one class in pyright. `failure_cause` is typed
+  `FailureCause | str | None`: the new `FailureCause` `Literal` and the new
+  `webhooks.FAILURE_CAUSES` `frozenset` hold the eight causes the API
+  documents today. A cause this release does not know still parses, as a
+  `str`. Treat it as a failure.
 
   Migration:
   - **`MessageEvent` is the same name with a new meaning.** It was one
-    class; it is now the type alias `InboundMessageEvent |
-    OutboundMessageEvent | MessageFailedEvent | UnknownMessageEvent`. A
+    class; it is now the type alias `MessageReceivedEvent | MessageSentEvent
+    | MessageDeliveredEvent | MessageFailedEvent | UnknownMessageEvent`. A
     `MessageEvent` annotation still type-checks, but `event.message` on it
     is now an error until you narrow. `isinstance(x, MessageEvent)` is now
-    true for any of the four variants. `MessageEvent(...)` no longer works:
-    build one variant instead.
+    true for any of the five classes. `MessageEvent(...)` no longer works:
+    build one class instead.
   - Narrow before you read `event.message`. Replace a routing check such as
     `if payload.get("type") in webhooks.OUTBOUND_MESSAGE_EVENT_TYPES:`
     followed by `parse_message_event(payload).message` with a parse first,
-    then `isinstance()` or `match` on the variants.
+    then `isinstance()` or `match` on the classes.
   - Read `failure_cause` only on a `MessageFailedEvent`. It is no longer a
     member of a sent or delivered message.
   - Remove every read of an outbound member on a received message, and of
     `received_at` on a sent one: those members were always `None` there.
-  - Replace `MessageEventData` with the data class of the variant you
-    handle.
+  - Replace `MessageEventData` with the data class of the event you handle.
 
 ## Earlier upgrade notes
 

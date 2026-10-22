@@ -1022,13 +1022,15 @@ verifies, so a rotation costs you no deliveries.
 `message.received` describes a text somebody sent TO one of your numbers.
 `message.sent`, `message.delivered` and `message.failed` describe a text
 sent FROM one of your numbers. Verify the raw body, decode it yourself, then
-parse it. `parse_message_event()` returns a `MessageEvent`, which is one of
-four variants:
+parse it. `parse_message_event()` returns a `MessageEvent`: one class per
+event type, named after it, or `UnknownMessageEvent`. The TypeScript client
+uses the same names.
 
 | Variant | `type` | `message` |
 |---|---|---|
-| `InboundMessageEvent` | `"message.received"` | `InboundMessageEventData` |
-| `OutboundMessageEvent` | `"message.sent"` or `"message.delivered"` | `OutboundMessageEventData` |
+| `MessageReceivedEvent` | `"message.received"` | `MessageReceivedEventData` |
+| `MessageSentEvent` | `"message.sent"` | `OutboundMessageEventData` |
+| `MessageDeliveredEvent` | `"message.delivered"` | `OutboundMessageEventData` |
 | `MessageFailedEvent` | `"message.failed"` | `MessageFailedEventData`: the outbound members plus `failure_cause` |
 | `UnknownMessageEvent` | `None` | none: it has no `message` member |
 
@@ -1036,9 +1038,10 @@ four variants:
 import json
 
 from ringivo import (
-    InboundMessageEvent,
+    MessageDeliveredEvent,
     MessageFailedEvent,
-    OutboundMessageEvent,
+    MessageReceivedEvent,
+    MessageSentEvent,
     SignatureVerificationError,
     UnknownMessageEvent,
     webhooks,
@@ -1057,11 +1060,13 @@ def receive(request):
     event = webhooks.parse_message_event(json.loads(request.body))
 
     match event:
-        case InboundMessageEvent(message=message):  # somebody texted one of your numbers
+        case MessageReceivedEvent(message=message):  # somebody texted one of your numbers
             print(message.from_, "wrote to", message.to, ":", message.body)
-        case OutboundMessageEvent(message=message):  # a text from you was sent or delivered
+        case MessageSentEvent(message=message):  # a text from you was sent
             if message.source == "phone_system" and message.sent_by is not None:
                 print(message.sent_by.name, "replied:", message.body)
+        case MessageDeliveredEvent(message=message):  # the recipient's carrier took it
+            print("delivered:", message.id)
         case MessageFailedEvent(message=message):  # a text from you did not arrive
             print("failed:", message.failure_cause)  # an unknown cause is still a failure
         case UnknownMessageEvent():
@@ -1070,7 +1075,7 @@ def receive(request):
     return Response(status=204)
 ```
 
-- **Each variant has only its own members.** `InboundMessageEventData` has
+- **Each variant has only its own members.** `MessageReceivedEventData` has
   no `source`, `status`, `sent_by`, `sent_at`, provider ids or
   `failure_cause`. `OutboundMessageEventData` has no `received_at` and no
   `failure_cause`. `MessageFailedEventData` is a subclass of
@@ -1078,9 +1083,9 @@ def receive(request):
   `sent_by` off a received text fails in the type checker, so it cannot
   take a customer's text for a staff reply.
 - **Narrow on `type`, `isinstance()` or `match`.** `type` is a `Literal`, so
-  `if event.type == "message.received":` narrows to `InboundMessageEvent`,
-  `if event.type == "message.failed":` narrows to `MessageFailedEvent`, and
-  `if event.type is None:` narrows to `UnknownMessageEvent`. Annotate a
+  `if event.type == "message.sent":` narrows to `MessageSentEvent`, each
+  other type narrows to its own class, and `if event.type is None:` narrows
+  to `UnknownMessageEvent`. Annotate a
   handler that takes any of them with `MessageEvent`.
   `INBOUND_MESSAGE_EVENT_TYPES` and `OUTBOUND_MESSAGE_EVENT_TYPES` still
   hold the type names, but a check against a set does not narrow.
@@ -1225,17 +1230,17 @@ when it is `None`, use your own backoff.
 | `client.inbound_messages.list(*, number=None, from_=None, kind=None, received_after=None, received_before=None, ids=None, after=None, before=None, page_size=None)` | `numbers:read` or `numbers:messaging` | An `InboundMessagePage` of texts sent to your numbers, newest first: iterable, with `next_cursor`. |
 | `client.inbound_messages.get(inbound_message_id)` | `numbers:read` or `numbers:messaging` | One `InboundMessage`. A message to a number you do not carry text messaging for is a 404. |
 | `webhooks.verify(payload, header, secret, *, tolerance=300)` | — | Raises unless the body is genuine and fresh. |
-| `webhooks.parse_message_event(payload)` | — | A `MessageEvent` from a decoded body: an `InboundMessageEvent` (`message.received`), an `OutboundMessageEvent` (`message.sent`, `message.delivered`), a `MessageFailedEvent` (`message.failed`) or an `UnknownMessageEvent` (anything else). Never raises on content. |
+| `webhooks.parse_message_event(payload)` | — | A `MessageEvent` from a decoded body: a `MessageReceivedEvent`, `MessageSentEvent`, `MessageDeliveredEvent` or `MessageFailedEvent`, one per event type, or an `UnknownMessageEvent` for anything else. Never raises on content. |
 | `sender_label(text)` | — | A valid record label made from any text. |
 | `is_retryable(error)` | — | Whether the API's contract allows the same call again. |
 
 `CallRecord`, `CallRecordPage`, `Customer`, `CustomerPage`, `Fax`,
 `FaxAccount`, `FaxAccountNumber`, `FaxAccountPage`, `FaxAccountUser`,
 `FaxAccountUserPage`, `FaxDocument`, `FaxPage`, `InboundMessage`,
-`InboundMessageEvent`, `InboundMessageEventData`, `InboundMessagePage`,
-`MediaLink`, `MessageFailedEvent`, `MessageFailedEventData`,
-`MessageMediaPart`, `MessageSender`, `OutboundMessage`,
-`OutboundMessageEvent`, `OutboundMessageEventData`, `PbxCall`,
+`InboundMessagePage`, `MediaLink`, `MessageDeliveredEvent`,
+`MessageFailedEvent`, `MessageFailedEventData`, `MessageMediaPart`,
+`MessageReceivedEvent`, `MessageReceivedEventData`, `MessageSender`,
+`MessageSentEvent`, `OutboundMessage`, `OutboundMessageEventData`, `PbxCall`,
 `PbxDevice`, `PbxDevicePage`, `PbxSubscriber`, `PbxSubscriberPage`, `Recording`,
 `Transcript`, `TranscriptChannel`, `TranscriptSegment`, `UnknownMessageEvent`,
 `WebhookDelivery`, `WebhookDeliveryPage`, `WebhookEndpoint`

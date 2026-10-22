@@ -32,12 +32,13 @@ import pytest
 import ringivo
 from ringivo import (
     FailureCause,
-    InboundMessageEvent,
-    InboundMessageEventData,
+    MessageDeliveredEvent,
     MessageEvent,
     MessageFailedEvent,
     MessageFailedEventData,
-    OutboundMessageEvent,
+    MessageReceivedEvent,
+    MessageReceivedEventData,
+    MessageSentEvent,
     OutboundMessageEventData,
     SignatureVerificationError,
     UnknownMessageEvent,
@@ -338,20 +339,22 @@ def test_the_event_type_sets_are_exported() -> None:
 def test_the_variants_are_exported_and_the_shared_shape_is_gone() -> None:
     names = {
         "FailureCause",
-        "InboundMessageEvent",
-        "InboundMessageEventData",
+        "MessageDeliveredEvent",
         "MessageEvent",
         "MessageFailedEvent",
         "MessageFailedEventData",
-        "OutboundMessageEvent",
+        "MessageReceivedEvent",
+        "MessageReceivedEventData",
+        "MessageSentEvent",
         "OutboundMessageEventData",
         "UnknownMessageEvent",
     }
     assert names <= set(ringivo.__all__)
     assert names <= set(models.__all__)
-    assert "MessageEventData" not in ringivo.__all__
-    assert not hasattr(ringivo, "MessageEventData")
-    assert not hasattr(models, "MessageEventData")
+    for gone in ("MessageEventData", "InboundMessageEvent", "OutboundMessageEvent"):
+        assert gone not in ringivo.__all__
+        assert not hasattr(ringivo, gone)
+        assert not hasattr(models, gone)
 
 
 def test_message_event_is_now_the_union_of_the_variants() -> None:
@@ -359,11 +362,34 @@ def test_message_event_is_now_the_union_of_the_variants() -> None:
     union `parse_message_event()` returns, the same as the TypeScript client.
     """
     assert set(get_args(MessageEvent)) == {
-        InboundMessageEvent,
-        OutboundMessageEvent,
+        MessageReceivedEvent,
+        MessageSentEvent,
+        MessageDeliveredEvent,
         MessageFailedEvent,
         UnknownMessageEvent,
     }
+
+
+@pytest.mark.parametrize(
+    ("payload", "variant"),
+    [
+        ({"type": "message.received"}, MessageReceivedEvent),
+        ({"type": "message.sent"}, MessageSentEvent),
+        ({"type": "message.delivered"}, MessageDeliveredEvent),
+        ({"type": "message.failed"}, MessageFailedEvent),
+    ],
+)
+def test_each_event_type_parses_to_the_class_named_after_it(
+    payload: dict[str, Any], variant: type
+) -> None:
+    """One class per event type, named after it, as in the TypeScript
+    client: `message.sent` is a `MessageSentEvent`, and so on.
+    """
+    event = webhooks.parse_message_event(payload)
+
+    assert type(event) is variant
+    assert event.type == payload["type"]
+    assert variant.__name__ == "Message" + payload["type"].split(".")[1].title() + "Event"
 
 
 def _field_names(model: type) -> set[str]:
@@ -376,13 +402,14 @@ def test_each_variant_carries_only_its_own_members() -> None:
     off a customer's text and take it for a staff reply.
     """
     envelope = {"type", "event_id", "occurred_at", "raw"}
-    assert _field_names(InboundMessageEvent) == envelope | {"message"}
-    assert _field_names(OutboundMessageEvent) == envelope | {"message"}
+    assert _field_names(MessageReceivedEvent) == envelope | {"message"}
+    assert _field_names(MessageSentEvent) == envelope | {"message"}
+    assert _field_names(MessageDeliveredEvent) == envelope | {"message"}
     assert _field_names(MessageFailedEvent) == envelope | {"message"}
     assert _field_names(UnknownMessageEvent) == envelope
 
     shared = {"id", "tenant_id", "customer_id", "kind", "from_", "to", "body", "media", "raw"}
-    assert _field_names(InboundMessageEventData) == shared | {"received_at"}
+    assert _field_names(MessageReceivedEventData) == shared | {"received_at"}
     outbound = shared | {
         "source",
         "status",
@@ -397,10 +424,11 @@ def test_each_variant_carries_only_its_own_members() -> None:
 
 
 @pytest.mark.parametrize("payload", [MESSAGE_SENT, MESSAGE_DELIVERED])
-def test_a_sent_or_delivered_event_parses_as_outbound(payload: dict[str, Any]) -> None:
+def test_a_sent_or_delivered_event_carries_the_outbound_shape(payload: dict[str, Any]) -> None:
     event = webhooks.parse_message_event(payload)
 
-    assert isinstance(event, OutboundMessageEvent)
+    assert isinstance(event, (MessageSentEvent, MessageDeliveredEvent))
+    assert type(event.message) is OutboundMessageEventData
     assert event.type == payload["type"]
     assert event.type in webhooks.OUTBOUND_MESSAGE_EVENT_TYPES
     assert not hasattr(event.message, "received_at")
@@ -417,12 +445,12 @@ def test_a_failed_event_parses_as_its_own_variant() -> None:
     assert not hasattr(event.message, "received_at")
 
 
-def test_the_specs_message_received_example_parses_as_inbound(
+def test_the_specs_message_received_example_parses_as_received(
     openapi_spec: dict[str, Any],
 ) -> None:
     event = webhooks.parse_message_event(_received_example(openapi_spec))
 
-    assert isinstance(event, InboundMessageEvent)
+    assert isinstance(event, MessageReceivedEvent)
     assert event.type in webhooks.INBOUND_MESSAGE_EVENT_TYPES
     for member in ("source", "status", "sent_by", "sent_at", "failure_cause"):
         assert not hasattr(event.message, member)
@@ -458,7 +486,7 @@ def test_the_specs_message_received_example_parses(openapi_spec: dict[str, Any])
 
     event = webhooks.parse_message_event(json.loads(raw))
 
-    assert isinstance(event, InboundMessageEvent)
+    assert isinstance(event, MessageReceivedEvent)
     assert event.type == "message.received"
     assert event.event_id == payload["eventId"]
     assert event.occurred_at == datetime(2026, 8, 16, 11, 14, 7, tzinfo=timezone.utc)
@@ -487,7 +515,7 @@ def test_outbound_members_on_a_received_body_are_not_read() -> None:
     data = {"id": "x", "sentBy": {"kind": "phone_system_user", "name": "Dana"}, "source": "api"}
     event = webhooks.parse_message_event({"type": "message.received", "data": data})
 
-    assert isinstance(event, InboundMessageEvent)
+    assert isinstance(event, MessageReceivedEvent)
     assert not hasattr(event.message, "sent_by")
     assert event.message.raw["sentBy"] == data["sentBy"]
 
@@ -502,7 +530,7 @@ def test_outbound_members_on_a_received_body_are_not_read() -> None:
 )
 def test_a_malformed_message_received_body_never_raises(data: Any) -> None:
     event = webhooks.parse_message_event({"type": "message.received", "data": data})
-    assert isinstance(event, InboundMessageEvent)
+    assert isinstance(event, MessageReceivedEvent)
     assert event.type == "message.received"
     assert event.message.received_at is None
     assert event.message.customer_id is None
@@ -515,7 +543,7 @@ def test_a_verified_message_sent_body_parses() -> None:
 
     event = webhooks.parse_message_event(json.loads(raw))
 
-    assert isinstance(event, OutboundMessageEvent)
+    assert isinstance(event, MessageSentEvent)
     assert event.event_id == "0192f0c2-1a7b-7c4d-9e8f-0a1b2c3d4e5f"
     assert event.type == "message.sent"
     assert event.occurred_at == datetime(2026, 10, 19, 15, 6, 1, tzinfo=timezone.utc)
@@ -541,7 +569,7 @@ def test_a_verified_message_sent_body_parses() -> None:
 
 def test_message_delivered_parses() -> None:
     event = webhooks.parse_message_event(MESSAGE_DELIVERED)
-    assert isinstance(event, OutboundMessageEvent)
+    assert isinstance(event, MessageDeliveredEvent)
     assert event.type == "message.delivered"
     assert event.message.status == "delivered"
 
@@ -563,7 +591,7 @@ def test_only_message_failed_reads_a_failure_cause(payload: dict[str, Any]) -> N
     data = {**_MESSAGE_DATA, "failure": {"cause": "provider_refused"}}
     event = webhooks.parse_message_event({**payload, "data": data})
 
-    assert isinstance(event, OutboundMessageEvent)
+    assert isinstance(event, (MessageSentEvent, MessageDeliveredEvent))
     assert not hasattr(event.message, "failure_cause")
     assert event.message.raw["failure"] == {"cause": "provider_refused"}
 
@@ -638,7 +666,7 @@ def test_picture_parts_read_the_bytes_member() -> None:
     event = webhooks.parse_message_event(
         {**MESSAGE_SENT, "data": {**_MESSAGE_DATA, "kind": "mms", "media": media}}
     )
-    assert isinstance(event, OutboundMessageEvent)
+    assert isinstance(event, MessageSentEvent)
     (part,) = event.message.media
     assert part.content_type == "image/jpeg"
     assert part.filename is None
@@ -737,7 +765,7 @@ def test_garbage_parses_as_unknown_and_never_raises(payload: Any) -> None:
 def test_a_malformed_outbound_body_reads_none_and_never_raises(payload: Any) -> None:
     event = webhooks.parse_message_event(payload)
 
-    assert isinstance(event, (OutboundMessageEvent, MessageFailedEvent))
+    assert isinstance(event, (MessageSentEvent, MessageDeliveredEvent, MessageFailedEvent))
     assert event.type == payload["type"]
     assert event.event_id is None
     assert event.occurred_at is None

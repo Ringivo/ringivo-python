@@ -22,7 +22,7 @@ from __future__ import annotations
 from collections.abc import Iterator, Mapping
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Any, Literal, TypeAlias, get_args
+from typing import Any, Literal, TypeAlias
 
 from typing_extensions import deprecated
 
@@ -41,17 +41,18 @@ __all__ = [
     "FaxDocument",
     "FaxPage",
     "InboundMessage",
-    "InboundMessageEvent",
-    "InboundMessageEventData",
     "InboundMessagePage",
     "MediaLink",
+    "MessageDeliveredEvent",
     "MessageEvent",
     "MessageFailedEvent",
     "MessageFailedEventData",
     "MessageMediaPart",
+    "MessageReceivedEvent",
+    "MessageReceivedEventData",
     "MessageSender",
+    "MessageSentEvent",
     "OutboundMessage",
-    "OutboundMessageEvent",
     "OutboundMessageEventData",
     "PbxCall",
     "PbxDevice",
@@ -1833,15 +1834,9 @@ FailureCause = Literal[
     "undelivered",
 ]
 
-# The two event types that parse to `OutboundMessageEvent`. `message.failed`
-# is its own variant, `MessageFailedEvent`. This tuple exists so the parser
-# can hand pyright a `Literal`, not a `str`.
-_SentOrDeliveredType = Literal["message.sent", "message.delivered"]
-_SENT_OR_DELIVERED_TYPES: tuple[_SentOrDeliveredType, ...] = get_args(_SentOrDeliveredType)
-
 
 @dataclass(frozen=True)
-class InboundMessageEventData:
+class MessageReceivedEventData:
     """The message a `message.received` event carries: one somebody sent TO
     one of your numbers.
 
@@ -1866,7 +1861,7 @@ class InboundMessageEventData:
     raw: Mapping[str, Any] = field(default_factory=dict, repr=False)
 
     @classmethod
-    def _from_json(cls, source: Mapping[str, Any]) -> InboundMessageEventData:
+    def _from_json(cls, source: Mapping[str, Any]) -> MessageReceivedEventData:
         return cls(
             id=_text(source, "id"),
             tenant_id=_text(source, "tenantId"),
@@ -1964,7 +1959,7 @@ class MessageFailedEventData(OutboundMessageEventData):
 
 
 @dataclass(frozen=True)
-class InboundMessageEvent:
+class MessageReceivedEvent:
     """A `message.received` delivery: a text or picture message somebody
     sent to one of your numbers.
 
@@ -1976,22 +1971,38 @@ class InboundMessageEvent:
     type: Literal["message.received"] = "message.received"
     event_id: str | None = None
     occurred_at: datetime | None = None
-    message: InboundMessageEventData = field(default_factory=InboundMessageEventData)
+    message: MessageReceivedEventData = field(default_factory=MessageReceivedEventData)
     raw: Mapping[str, Any] = field(default_factory=dict, repr=False)
 
 
 @dataclass(frozen=True)
-class OutboundMessageEvent:
-    """A `message.sent` or `message.delivered` delivery: news about a
-    message sent from one of your numbers. `message.failed` is its own
-    variant, `MessageFailedEvent`.
+class MessageSentEvent:
+    """A `message.sent` delivery: the messaging provider accepted a message
+    sent from one of your numbers.
 
-    `type` says which of the two it is. `event_id` is the delivery's own
-    id; dedupe on it, because delivery is at least once. `raw` is the whole
-    decoded body, as it was handed to the parser.
+    `event_id` is the delivery's own id; dedupe on it, because delivery is
+    at least once. `raw` is the whole decoded body, as it was handed to the
+    parser.
     """
 
-    type: _SentOrDeliveredType
+    type: Literal["message.sent"] = "message.sent"
+    event_id: str | None = None
+    occurred_at: datetime | None = None
+    message: OutboundMessageEventData = field(default_factory=OutboundMessageEventData)
+    raw: Mapping[str, Any] = field(default_factory=dict, repr=False)
+
+
+@dataclass(frozen=True)
+class MessageDeliveredEvent:
+    """A `message.delivered` delivery: the recipient's carrier took a
+    message sent from one of your numbers.
+
+    `event_id` is the delivery's own id; dedupe on it, because delivery is
+    at least once. `raw` is the whole decoded body, as it was handed to the
+    parser.
+    """
+
+    type: Literal["message.delivered"] = "message.delivered"
     event_id: str | None = None
     occurred_at: datetime | None = None
     message: OutboundMessageEventData = field(default_factory=OutboundMessageEventData)
@@ -2032,14 +2043,18 @@ class UnknownMessageEvent:
     raw: Mapping[str, Any] = field(default_factory=dict, repr=False)
 
 
-#: What `webhooks.parse_message_event()` returns: one variant per direction,
-#: a variant of its own for `message.failed`, and `UnknownMessageEvent` for
-#: anything else. Told apart by `type`, `isinstance()` or `match`.
+#: What `webhooks.parse_message_event()` returns: one variant per message
+#: event type, and `UnknownMessageEvent` for anything else. Told apart by
+#: `type`, `isinstance()` or `match`.
 #:
 #: Before 0.23.0 this name was a single class that covered all four event
 #: types. It is now this union.
 MessageEvent: TypeAlias = (
-    InboundMessageEvent | OutboundMessageEvent | MessageFailedEvent | UnknownMessageEvent
+    MessageReceivedEvent
+    | MessageSentEvent
+    | MessageDeliveredEvent
+    | MessageFailedEvent
+    | UnknownMessageEvent
 )
 
 
@@ -2058,10 +2073,26 @@ def _message_event_from_json(payload: Any) -> MessageEvent:
     data = _mapping(source, "data") or {}
 
     if event_type == "message.received":
-        return InboundMessageEvent(
+        return MessageReceivedEvent(
             event_id=event_id,
             occurred_at=occurred_at,
-            message=InboundMessageEventData._from_json(data),
+            message=MessageReceivedEventData._from_json(data),
+            raw=source,
+        )
+
+    if event_type == "message.sent":
+        return MessageSentEvent(
+            event_id=event_id,
+            occurred_at=occurred_at,
+            message=OutboundMessageEventData._from_json(data),
+            raw=source,
+        )
+
+    if event_type == "message.delivered":
+        return MessageDeliveredEvent(
+            event_id=event_id,
+            occurred_at=occurred_at,
+            message=OutboundMessageEventData._from_json(data),
             raw=source,
         )
 
@@ -2072,15 +2103,5 @@ def _message_event_from_json(payload: Any) -> MessageEvent:
             message=MessageFailedEventData._from_json(data),
             raw=source,
         )
-
-    for sent_or_delivered in _SENT_OR_DELIVERED_TYPES:
-        if event_type == sent_or_delivered:
-            return OutboundMessageEvent(
-                type=sent_or_delivered,
-                event_id=event_id,
-                occurred_at=occurred_at,
-                message=OutboundMessageEventData._from_json(data),
-                raw=source,
-            )
 
     return UnknownMessageEvent(event_id=event_id, occurred_at=occurred_at, raw=source)

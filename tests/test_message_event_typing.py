@@ -25,22 +25,30 @@ from typing_extensions import assert_never, assert_type
 
 from ringivo import (
     FailureCause,
-    InboundMessageEvent,
-    InboundMessageEventData,
+    MessageDeliveredEvent,
     MessageEvent,
     MessageFailedEvent,
     MessageFailedEventData,
+    MessageReceivedEvent,
+    MessageReceivedEventData,
     MessageSender,
-    OutboundMessageEvent,
+    MessageSentEvent,
     OutboundMessageEventData,
     UnknownMessageEvent,
     webhooks,
 )
 
-_Event = InboundMessageEvent | OutboundMessageEvent | MessageFailedEvent | UnknownMessageEvent
+_Event = (
+    MessageReceivedEvent
+    | MessageSentEvent
+    | MessageDeliveredEvent
+    | MessageFailedEvent
+    | UnknownMessageEvent
+)
 
 _RECEIVED: dict[str, Any] = {"type": "message.received", "data": {"id": "a"}}
 _SENT: dict[str, Any] = {"type": "message.sent", "data": {"id": "b"}}
+_DELIVERED: dict[str, Any] = {"type": "message.delivered", "data": {"id": "b"}}
 _FAILED: dict[str, Any] = {
     "type": "message.failed",
     "data": {"id": "c", "failure": {"cause": "opted_out"}},
@@ -55,52 +63,58 @@ def test_the_parser_returns_the_message_event_union() -> None:
 
 def _route_on_type(event: _Event) -> str:
     if event.type == "message.received":
-        assert_type(event, InboundMessageEvent)
-        assert_type(event.message, InboundMessageEventData)
+        assert_type(event, MessageReceivedEvent)
+        assert_type(event.message, MessageReceivedEventData)
         assert_type(event.message.received_at, datetime | None)
-        return "inbound"
-    if event.type is None:
-        assert_type(event, UnknownMessageEvent)
-        return "unknown"
+        return "received"
+    if event.type == "message.sent":
+        assert_type(event, MessageSentEvent)
+        assert_type(event.message, OutboundMessageEventData)
+        assert_type(event.message.sent_by, MessageSender | None)
+        return "sent"
+    if event.type == "message.delivered":
+        assert_type(event, MessageDeliveredEvent)
+        assert_type(event.message, OutboundMessageEventData)
+        return "delivered"
     if event.type == "message.failed":
         assert_type(event, MessageFailedEvent)
         assert_type(event.message, MessageFailedEventData)
         assert_type(event.message.sent_by, MessageSender | None)
         assert_type(event.message.failure_cause, FailureCause | str | None)
         return "failed"
-    assert_type(event, OutboundMessageEvent)
-    assert_type(event.type, Literal["message.sent", "message.delivered"])
-    assert_type(event.message, OutboundMessageEventData)
-    assert_type(event.message.sent_by, MessageSender | None)
-    return "outbound"
-
-
-def _route_on_isinstance(event: _Event) -> str:
-    if isinstance(event, InboundMessageEvent):
-        assert_type(event.type, Literal["message.received"])
-        return "inbound"
-    if isinstance(event, OutboundMessageEvent):
-        assert_type(event.message, OutboundMessageEventData)
-        return "outbound"
-    if isinstance(event, MessageFailedEvent):
-        assert_type(event.type, Literal["message.failed"])
-        return "failed"
     assert_type(event, UnknownMessageEvent)
     assert_type(event.type, None)
     return "unknown"
 
 
+def _route_on_isinstance(event: _Event) -> str:
+    if isinstance(event, MessageReceivedEvent):
+        assert_type(event.type, Literal["message.received"])
+        return "received"
+    if isinstance(event, MessageSentEvent):
+        assert_type(event.type, Literal["message.sent"])
+        return "sent"
+    if isinstance(event, MessageDeliveredEvent):
+        assert_type(event.type, Literal["message.delivered"])
+        return "delivered"
+    if isinstance(event, MessageFailedEvent):
+        assert_type(event.type, Literal["message.failed"])
+        return "failed"
+    assert_type(event, UnknownMessageEvent)
+    return "unknown"
+
+
 def _route_on_match(event: _Event) -> str:
     match event:
-        case InboundMessageEvent(message=message):
-            assert_type(message, InboundMessageEventData)
-            return "inbound"
+        case MessageReceivedEvent(message=message):
+            assert_type(message, MessageReceivedEventData)
+            return "received"
+        case MessageSentEvent(message=message) | MessageDeliveredEvent(message=message):
+            assert_type(message, OutboundMessageEventData)
+            return "sent or delivered"
         case MessageFailedEvent(message=message):
             assert_type(message.failure_cause, FailureCause | str | None)
             return "failed"
-        case OutboundMessageEvent(message=message):
-            assert_type(message, OutboundMessageEventData)
-            return "outbound"
         case UnknownMessageEvent():
             return "unknown"
         case _:
@@ -110,8 +124,9 @@ def _route_on_match(event: _Event) -> str:
 @pytest.mark.parametrize(
     ("payload", "on_type", "on_isinstance", "on_match"),
     [
-        (_RECEIVED, "inbound", "inbound", "inbound"),
-        (_SENT, "outbound", "outbound", "outbound"),
+        (_RECEIVED, "received", "received", "received"),
+        (_SENT, "sent", "sent", "sent or delivered"),
+        (_DELIVERED, "delivered", "delivered", "sent or delivered"),
         (_FAILED, "failed", "failed", "failed"),
         (_OTHER, "unknown", "unknown", "unknown"),
         (None, "unknown", "unknown", "unknown"),
@@ -139,14 +154,14 @@ def _reads_pyright_must_refuse(event: _Event) -> None:
     """Never called: see the module docstring."""
     _ = event.message  # pyright: ignore[reportAttributeAccessIssue]
 
-    if isinstance(event, InboundMessageEvent):
+    if isinstance(event, MessageReceivedEvent):
         _ = event.message.sent_by  # pyright: ignore[reportAttributeAccessIssue]
         _ = event.message.source  # pyright: ignore[reportAttributeAccessIssue]
         _ = event.message.status  # pyright: ignore[reportAttributeAccessIssue]
         _ = event.message.sent_at  # pyright: ignore[reportAttributeAccessIssue]
         _ = event.message.provider_message_id  # pyright: ignore[reportAttributeAccessIssue]
         _ = event.message.failure_cause  # pyright: ignore[reportAttributeAccessIssue]
-    elif isinstance(event, OutboundMessageEvent):
+    elif isinstance(event, (MessageSentEvent, MessageDeliveredEvent)):
         _ = event.message.received_at  # pyright: ignore[reportAttributeAccessIssue]
         _ = event.message.failure_cause  # pyright: ignore[reportAttributeAccessIssue]
     elif isinstance(event, MessageFailedEvent):
