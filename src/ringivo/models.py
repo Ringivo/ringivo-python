@@ -41,19 +41,20 @@ __all__ = [
     "FaxDocument",
     "FaxPage",
     "InboundMessage",
+    "InboundMessageMediaItem",
     "InboundMessagePage",
     "MediaLink",
     "MessageDeliveredEvent",
     "MessageEvent",
     "MessageFailedEvent",
     "MessageFailedEventData",
-    "MessageMediaPart",
     "MessageReceivedEvent",
     "MessageReceivedEventData",
     "MessageSender",
     "MessageSentEvent",
     "OutboundMessage",
     "OutboundMessageEventData",
+    "OutboundMessageMediaItem",
     "PbxCall",
     "PbxDevice",
     "PbxDevicePage",
@@ -1639,40 +1640,65 @@ class CustomerPage:
 
 
 @dataclass(frozen=True)
-class MessageMediaPart:
-    """One attachment part of a message, DESCRIBED: there is no file and no URL.
+class OutboundMessageMediaItem:
+    """One media item of an MMS sent from your number, DESCRIBED: there are
+    no bytes and no URL.
 
-    An attachment is any type — a picture, a contact card, audio, a PDF.
-    `byte_size` is read from the wire member `bytes` (the part's size).
-    `filename` and `encoding` are null for a part the platform sent; they
-    are kept because the member exists on the wire. A received message's
-    parts carry all four.
+    A media item is any type — an image, a contact card, audio, a PDF.
+    `size` is its size in bytes. It has no `filename`: the platform does not
+    keep one for a message sent from your number.
     """
 
     content_type: str | None = None
-    filename: str | None = None
-    encoding: str | None = None
-    byte_size: int | None = None
+    size: int | None = None
     raw: Mapping[str, Any] = field(default_factory=dict, repr=False)
 
     @classmethod
-    def _from_json(cls, source: Mapping[str, Any]) -> MessageMediaPart:
+    def _from_json(cls, source: Mapping[str, Any]) -> OutboundMessageMediaItem:
         return cls(
             content_type=_text(source, "contentType"),
-            filename=_text(source, "filename"),
-            encoding=_text(source, "encoding"),
-            byte_size=_integer(source, "bytes"),
+            size=_integer(source, "size"),
             raw=source,
         )
 
 
-def _media_parts(source: Mapping[str, Any]) -> tuple[MessageMediaPart, ...]:
+@dataclass(frozen=True)
+class InboundMessageMediaItem:
+    """One media item of an MMS sent to your number, DESCRIBED: there are no
+    bytes and no URL. Ask your messaging provider for the file.
+
+    `size` is its size in bytes. `filename` is the name the sender's carrier
+    gave the item, and None when it gave none.
+    """
+
+    content_type: str | None = None
+    filename: str | None = None
+    size: int | None = None
+    raw: Mapping[str, Any] = field(default_factory=dict, repr=False)
+
+    @classmethod
+    def _from_json(cls, source: Mapping[str, Any]) -> InboundMessageMediaItem:
+        return cls(
+            content_type=_text(source, "contentType"),
+            filename=_text(source, "filename"),
+            size=_integer(source, "size"),
+            raw=source,
+        )
+
+
+def _media_items(source: Mapping[str, Any]) -> list[Mapping[str, Any]]:
     value = source.get("media")
-    return tuple(
-        MessageMediaPart._from_json(item)
-        for item in (value if isinstance(value, list) else [])
-        if isinstance(item, Mapping)
-    )
+    return [
+        item for item in (value if isinstance(value, list) else []) if isinstance(item, Mapping)
+    ]
+
+
+def _outbound_media(source: Mapping[str, Any]) -> tuple[OutboundMessageMediaItem, ...]:
+    return tuple(OutboundMessageMediaItem._from_json(item) for item in _media_items(source))
+
+
+def _inbound_media(source: Mapping[str, Any]) -> tuple[InboundMessageMediaItem, ...]:
+    return tuple(InboundMessageMediaItem._from_json(item) for item in _media_items(source))
 
 
 @dataclass(frozen=True)
@@ -1693,7 +1719,7 @@ class OutboundMessage:
     from_: str | None = None
     to: str | None = None
     body: str | None = None
-    media: tuple[MessageMediaPart, ...] = ()
+    media: tuple[OutboundMessageMediaItem, ...] = ()
     sender_label: str | None = None
     mark_conversation_read: bool | None = None
     sent_at: datetime | None = None
@@ -1717,7 +1743,7 @@ class OutboundMessage:
             from_=_text(attributes, "from"),
             to=_text(attributes, "to"),
             body=_text(attributes, "body"),
-            media=_media_parts(attributes),
+            media=_outbound_media(attributes),
             sender_label=_text(attributes, "senderLabel"),
             mark_conversation_read=_boolean(attributes, "markConversationRead"),
             sent_at=_parse_datetime(attributes.get("sentAt")),
@@ -1731,15 +1757,15 @@ class OutboundMessage:
 
 @dataclass(frozen=True)
 class InboundMessage:
-    """A text or picture message somebody sent to one of your numbers.
+    """A text message (SMS or MMS) somebody sent to one of your numbers.
 
     `from_` is the sender and `to` is your number. `kind` is `sms` or
     `mms`, and is not derivable from `media`: an MMS with only a caption
-    and an SMS both arrive with a body and no attachment. `body` is None
+    and an SMS both arrive with a body and no media item. `body` is None
     for an MMS with no caption.
 
-    `media` DESCRIBES each attachment — type, filename, encoding and size —
-    and carries no file and no URL: the platform does not keep the bytes.
+    `media` DESCRIBES each media item — content type, filename and size —
+    and carries no bytes and no URL: the platform does not serve the bytes.
     Ask your messaging provider for the file.
 
     `received_at` is when the message was SENT, and is what the date
@@ -1752,7 +1778,7 @@ class InboundMessage:
     from_: str | None = None
     to: str | None = None
     body: str | None = None
-    media: tuple[MessageMediaPart, ...] = ()
+    media: tuple[InboundMessageMediaItem, ...] = ()
     received_at: datetime | None = None
     created_at: datetime | None = None
     updated_at: datetime | None = None
@@ -1769,7 +1795,7 @@ class InboundMessage:
             from_=_text(attributes, "from"),
             to=_text(attributes, "to"),
             body=_text(attributes, "body"),
-            media=_media_parts(attributes),
+            media=_inbound_media(attributes),
             received_at=_parse_datetime(attributes.get("receivedAt")),
             created_at=_parse_datetime(attributes.get("createdAt")),
             updated_at=_parse_datetime(attributes.get("updatedAt")),
@@ -1819,15 +1845,19 @@ class MessageSender:
 
 
 #: Why a sent message did not reach its recipient: the `failure.cause` of a
-#: `message.failed` event. These are the causes the API documents today.
-#: More can be added, so `MessageFailedEventData.failure_cause` is typed
-#: `FailureCause | str`: a cause this release does not know still arrives,
-#: as a plain string. Treat a cause you do not know as a failure.
+#: `message.failed` event. These are the causes the API documents today
+#: (its `OutboundMessageFailureCause` enum). More can be added, so
+#: `MessageFailedEventData.failure_cause` is typed `FailureCause | str`: a
+#: cause this release does not know still arrives, as a plain string. Treat
+#: a cause you do not know as a failure.
+#:
+#: `send_interrupted` means the send was interrupted before the carrier
+#: confirmed it. Treat the text as not sent; rarely, it may still arrive.
+#: The platform never sends it again.
 FailureCause = Literal[
     "provider_refused",
     "provider_unreachable",
-    "outcome_unknown",
-    "submission_interrupted",
+    "send_interrupted",
     "opted_out",
     "no_send_key",
     "media_unavailable",
@@ -1856,7 +1886,7 @@ class MessageReceivedEventData:
     from_: str | None = None
     to: str | None = None
     body: str | None = None
-    media: tuple[MessageMediaPart, ...] = ()
+    media: tuple[InboundMessageMediaItem, ...] = ()
     received_at: datetime | None = None
     raw: Mapping[str, Any] = field(default_factory=dict, repr=False)
 
@@ -1870,7 +1900,7 @@ class MessageReceivedEventData:
             from_=_text(source, "from"),
             to=_text(source, "to"),
             body=_text(source, "body"),
-            media=_media_parts(source),
+            media=_inbound_media(source),
             received_at=_parse_datetime(source.get("receivedAt")),
             raw=source,
         )
@@ -1890,7 +1920,7 @@ def _outbound_message_members(source: Mapping[str, Any]) -> dict[str, Any]:
         "from_": _text(source, "from"),
         "to": _text(source, "to"),
         "body": _text(source, "body"),
-        "media": _media_parts(source),
+        "media": _outbound_media(source),
         "status": _text(source, "status"),
         "sent_by": MessageSender._from_json(sent_by) if sent_by is not None else None,
         "sent_at": _parse_datetime(source.get("sentAt")),
@@ -1911,10 +1941,11 @@ class OutboundMessageEventData:
     can be added, and a value this release does not know must still reach
     you.
 
-    `sent_at` and `provider_message_id` are None for a message the provider
-    never accepted, and `provider_part_ids` is `()` for it. Both provider
-    members are None for a message on a provider account that is not
-    yours. `sent_by` is None unless `source` is `phone_system`.
+    `sent_at`, `provider_message_id` and `provider_part_ids` are None for a
+    message the provider never accepted. Both provider members are None for
+    a message on a provider account that is not yours. `provider_part_ids`
+    is None exactly when `provider_message_id` is None, and never `()`.
+    `sent_by` is None unless `source` is `phone_system`.
 
     It has no `received_at`: that is a member of a received message only.
     """
@@ -1927,7 +1958,7 @@ class OutboundMessageEventData:
     from_: str | None = None
     to: str | None = None
     body: str | None = None
-    media: tuple[MessageMediaPart, ...] = ()
+    media: tuple[OutboundMessageMediaItem, ...] = ()
     status: str | None = None
     sent_by: MessageSender | None = None
     sent_at: datetime | None = None
@@ -1960,7 +1991,7 @@ class MessageFailedEventData(OutboundMessageEventData):
 
 @dataclass(frozen=True)
 class MessageReceivedEvent:
-    """A `message.received` delivery: a text or picture message somebody
+    """A `message.received` delivery: a text message (SMS or MMS) somebody
     sent to one of your numbers.
 
     `event_id` is the delivery's own id; dedupe on it, because delivery is

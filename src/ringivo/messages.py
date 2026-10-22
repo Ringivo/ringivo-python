@@ -16,30 +16,45 @@ call files it in the conversation with your label in front of it.
 
 -- NO IDEMPOTENCY-KEY ------------------------------------------------------------
 The provider message id IS the key, by contract. A repeat with the same id
-and the same `from`, `to`, `body` and attachment count answers 200 with the
+and the same `from`, `to`, `body` and media count answers 200 with the
 first record and stores nothing new; `OutboundMessage.replayed` is then
 True. A repeat with different content is a 409. So a retry is the same call
-with the same arguments — and NEW presigned attachment links, because the
-platform fetches the attachments during the call and never fetches a link
-again.
+with the same arguments — and NEW presigned media links, because the
+platform fetches the media during the call and never fetches a link again.
 
--- ATTACHMENTS ------------------------------------------------------------------
-`media_urls` links to ATTACHMENTS of any type: a picture, a contact card
-(vCard), audio, video, a PDF or any other file. Each is copied into the
-staff threads as you sent it. The API's limits: at most 10 attachments, at
-most 10 MB each and at most 20 MB together, all fetched within 20 seconds.
-It refuses `text/plain` (put the text in `body`), a SMIL layout, HTML, XML,
-SVG and script, by the declared type and by the file's own first bytes.
-Only the count and the `https` scheme are checked here — the type and the
-size are known only once the API fetches the link, so those refusals are a
-422 from the API.
+-- MEDIA ------------------------------------------------------------------------
+`media_urls` links to MEDIA ITEMS of any type: an image, a contact card
+(vCard), audio, video, a PDF or any other file. They go on the wire as
+`mediaUrls`. Each is copied into the staff threads as you sent it. The
+API's limits: at most 10 media items, at most 10 MB each and at most 20 MB
+together. It refuses `text/plain` (put the text in `body`), a SMIL layout,
+HTML, XML, SVG and script, by the declared type and by the file's own
+first bytes. Only the count and the `https` scheme are checked here — the
+type and the size are known only once the API fetches the link, so those
+refusals come from the API. The answer describes the media in
+`OutboundMessage.media` (content type and size), never with your links.
+
+If any link fails, nothing is stored. The `ApiError` names the link in
+`errors[0].source["pointer"]` (`/data/attributes/mediaUrls/<index>`) and
+the reason in `code`:
+
+- 422 `media_rejected`: the link or what it served can never be used. Fix
+  the link; do not retry it unchanged.
+- 504 `media_timeout`: the link did not finish within 10 seconds.
+- 502 `media_unreachable`: its host answered 5xx, refused the connection,
+  or does not resolve.
+- 503 `media_store_unavailable`: the platform could not keep the media
+  right now.
+
+The last three carry `Retry-After` and `is_retryable()` is True for them:
+retry after `retry_after` seconds, with NEW links for the first two.
 
 -- REFUSED BEFORE ANY REQUEST -----------------------------------------------------
 What the API would answer with a 422 that no retry can fix is a
 `ValueError` here instead, before a request goes out — the same rule as the
 empty-page refusal in faxes.py: an empty provider message id or part-id
-list, a `sent_at` without a time zone, a text with neither a body nor an
-attachment, more than ten attachment links, a link that is not `https`, and a
+list, a `sent_at` without a time zone, a text with neither a body nor a
+media link, more than ten media links, a link that is not `https`, and a
 label that breaks the label rule. A `ValueError` is never worth retrying,
 and your queue should not see it as an API failure.
 
@@ -57,11 +72,13 @@ The API also limits the label, a colon, a space and the body together to
 after its own trim; a text over it is a 422.
 
 -- THE TIMEOUT -----------------------------------------------------------------
-The call fetches your attachments before it answers, for up to 20 seconds
-together. A client built with a shorter timeout would give up on a call
-that was going to succeed, and the retry would fetch the attachments again.
-So this one call waits at least `RECORD_MIN_TIMEOUT_SECONDS`, whatever the
-client's own timeout is; a longer client timeout is kept. A client built
+The call fetches your media before it answers: all links at once, each
+within 10 seconds, and then stores up to 20 MB. The API ends any request
+at 30 seconds. A client built with a shorter timeout would give up on a
+call that was about to succeed; the retry is then answered 200, but it
+fetches the media again. So this one call waits at least
+`RECORD_MIN_TIMEOUT_SECONDS` (30), whatever the client's own timeout is; a
+longer client timeout is kept. A client built
 with an `httpx.Timeout` has its read timeout raised and its connect, write
 and pool timeouts kept (`_record_timeout`).
 """
@@ -96,15 +113,16 @@ __all__ = [
 #: `senderLabel.maxLength` (tests/test_messages.py reads it from the spec).
 MAX_SENDER_LABEL_CODE_POINTS = 40
 
-#: The most attachment links one record may carry — the spec's `media.maxItems`.
+#: The most media links one record may carry — the spec's `mediaUrls.maxItems`.
 MAX_MEDIA = 10
 
 #: The longest provider message id or part id — the spec's `maxLength`.
 MAX_PROVIDER_ID_LENGTH = 128
 
-#: The shortest timeout `record()` uses: the API fetches attachments for up to
-#: 20 seconds before it answers, plus room for the record itself.
-RECORD_MIN_TIMEOUT_SECONDS = 25.0
+#: The shortest timeout `record()` uses: the API's own cut for any request.
+#: It fetches every media link at once, each within 10 seconds, then stores
+#: the media, all before it answers.
+RECORD_MIN_TIMEOUT_SECONDS = 30.0
 
 #: What the record call sends and accepts. `client.JSONAPI_MEDIA_TYPE` is the
 #: same string; this module cannot import it (client imports this module).
@@ -255,12 +273,12 @@ def _record_body(
         raise ValueError("media_urls must be a list of links, not one string")
     links = list(media_urls)
     if len(links) > MAX_MEDIA:
-        raise ValueError(f"a record carries at most {MAX_MEDIA} attachments; got {len(links)}")
+        raise ValueError(f"a record carries at most {MAX_MEDIA} media links; got {len(links)}")
     for index, link in enumerate(links):
         if urlsplit(link).scheme != "https" or not urlsplit(link).netloc:
             raise ValueError(f"media_urls[{index}] must be an https link")
     if not body and not links:
-        raise ValueError("a recorded text needs a body or at least one attachment")
+        raise ValueError("a recorded text needs a body or at least one media link")
     refusal = _label_refusal(sender_label)
     if refusal is not None:
         raise ValueError(refusal)
@@ -275,7 +293,7 @@ def _record_body(
                 "from": from_,
                 "to": to,
                 "body": body,
-                "media": [{"url": link} for link in links],
+                "mediaUrls": links,
                 "senderLabel": sender_label,
                 "markConversationRead": mark_conversation_read,
                 "alreadySent": {
@@ -302,7 +320,7 @@ def _record_timeout(
     A client may be built with a number or with an `httpx.Timeout`. A
     number is one timeout for every phase and is raised as a whole. A
     `Timeout` is raised in its READ phase only — the wait for the answer,
-    which is where the API spends its attachment fetches — and its
+    which is where the API spends its media fetches — and its
     connect, write and pool timeouts stay the caller's. A read phase of
     None (no read timeout) is kept, as a None client timeout is.
     """
@@ -360,12 +378,12 @@ class Messages:
             sent_at: When your provider accepted the text. Must carry a
                 time zone.
             body: The text as you sent it. Required unless `media_urls`
-                names an attachment.
-            media_urls: Up to ten `https` links to the attachments you
-                sent, in order — any type but plain text, at most 10 MB
-                each and 20 MB together (module docstring). Make NEW
-                presigned links for each attempt: they are fetched during
-                this call and never again.
+                names a media item.
+            media_urls: Up to ten `https` links to the media you sent, in
+                order — any type but plain text, at most 10 MB each and
+                20 MB together (module docstring). Make NEW presigned
+                links for each attempt: they are all fetched at once
+                during this call, each within 10 seconds, and never again.
             mark_conversation_read: True marks the staff threads read — for
                 a reply a person typed in your own inbox. False (the
                 default) leaves the read marks as they were.
@@ -379,8 +397,8 @@ class Messages:
                 with a 422 that no retry can fix.
             ApiError: the API refused. Retry only what `is_retryable()`
                 says is retryable, after `retry_after` when it is set. A
-                404 means recording texts is not turned on for the
-                platform yet: retry it only slowly, after that changes.
+                media link that failed is named by `code` and
+                `source["pointer"]` (module docstring).
         """
         document = _record_body(
             from_=from_,

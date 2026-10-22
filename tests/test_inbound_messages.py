@@ -15,7 +15,13 @@ import httpx
 import pytest
 import respx
 
-from ringivo import ApiError, InboundMessage, InboundMessagePage, Ringivo
+from ringivo import (
+    ApiError,
+    InboundMessage,
+    InboundMessageMediaItem,
+    InboundMessagePage,
+    Ringivo,
+)
 
 BASE_URL = "https://api.yourprovider.example"
 TOKEN_URL = f"{BASE_URL}/oauth/token"
@@ -70,12 +76,7 @@ def _mms_resource() -> dict[str, Any]:
             "to": "+13215550101",
             "body": None,
             "media": [
-                {
-                    "contentType": "text/vcard",
-                    "filename": "dana.vcf",
-                    "encoding": "base64",
-                    "bytes": 512,
-                },
+                {"contentType": "text/vcard", "filename": "dana.vcf", "size": 512},
             ],
             "receivedAt": "2026-09-03T09:14:02.000000Z",
             "createdAt": "2026-09-03T09:14:03.000000Z",
@@ -180,9 +181,7 @@ def test_every_list_filter_is_one_the_spec_publishes(
     assert sent == published
 
 
-def test_get_reads_one_message_and_its_attachments(
-    client: Ringivo, respx_mock: respx.MockRouter
-) -> None:
+def test_get_reads_one_message_and_its_media(client: Ringivo, respx_mock: respx.MockRouter) -> None:
     route = respx_mock.get(f"{MESSAGES_URL}/{MESSAGE_ID}").mock(
         return_value=httpx.Response(200, json={"data": _mms_resource()})
     )
@@ -193,11 +192,11 @@ def test_get_reads_one_message_and_its_attachments(
     assert route.called
     assert message.kind == "mms"
     assert message.body is None
-    (part,) = message.media
-    assert part.content_type == "text/vcard"
-    assert part.filename == "dana.vcf"
-    assert part.encoding == "base64"
-    assert part.byte_size == 512
+    (item,) = message.media
+    assert isinstance(item, InboundMessageMediaItem)
+    assert item.content_type == "text/vcard"
+    assert item.filename == "dana.vcf"
+    assert item.size == 512
 
 
 def test_an_inbound_message_id_stays_inside_its_own_path_segment(

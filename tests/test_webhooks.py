@@ -32,6 +32,7 @@ import pytest
 import ringivo
 from ringivo import (
     FailureCause,
+    InboundMessageMediaItem,
     MessageDeliveredEvent,
     MessageEvent,
     MessageFailedEvent,
@@ -40,6 +41,7 @@ from ringivo import (
     MessageReceivedEventData,
     MessageSentEvent,
     OutboundMessageEventData,
+    OutboundMessageMediaItem,
     SignatureVerificationError,
     UnknownMessageEvent,
     models,
@@ -500,11 +502,11 @@ def test_the_specs_message_received_example_parses(openapi_spec: dict[str, Any])
     assert message.to == "+14075550100"
     assert message.body == "Here is the referral form."
     assert message.received_at == datetime(2026, 8, 16, 11, 14, 7, tzinfo=timezone.utc)
-    (part,) = message.media
-    assert part.content_type == "image/jpeg"
-    assert part.filename == "photo.jpg"
-    assert part.encoding == "base64"
-    assert part.byte_size == 40213
+    (item,) = message.media
+    assert isinstance(item, InboundMessageMediaItem)
+    assert item.content_type == "image/jpeg"
+    assert item.filename == "photo.jpg"
+    assert item.size == 40213
 
 
 def test_outbound_members_on_a_received_body_are_not_read() -> None:
@@ -525,7 +527,7 @@ def test_outbound_members_on_a_received_body_are_not_read() -> None:
     [
         "not an object",
         {"receivedAt": "not a date", "media": "x", "customerId": 7},
-        {"receivedAt": 1755331200, "media": [None, "x", {"bytes": "big"}]},
+        {"receivedAt": 1755331200, "media": [None, "x", {"size": "big"}]},
     ],
 )
 def test_a_malformed_message_received_body_never_raises(data: Any) -> None:
@@ -534,7 +536,7 @@ def test_a_malformed_message_received_body_never_raises(data: Any) -> None:
     assert event.type == "message.received"
     assert event.message.received_at is None
     assert event.message.customer_id is None
-    assert all(part.byte_size is None for part in event.message.media)
+    assert all(item.size is None for item in event.message.media)
 
 
 def test_a_verified_message_sent_body_parses() -> None:
@@ -597,18 +599,36 @@ def test_only_message_failed_reads_a_failure_cause(payload: dict[str, Any]) -> N
 
 
 def _documented_failure_causes(spec: dict[str, Any]) -> set[str]:
-    failed = spec["components"]["schemas"]["MessageFailedEventData"]["allOf"][1]
-    description = failed["properties"]["failure"]["properties"]["cause"]["description"]
-    listed = description.split("One of", 1)[1].split("— see", 1)[0]
-    return set(re.findall(r"`([a-z_]+)`", listed))
+    """The `OutboundMessageFailureCause` enum, after checking that
+    `failure.cause` is typed by it."""
+    schemas = spec["components"]["schemas"]
+    failed = schemas["MessageFailedEventData"]["allOf"][1]
+    cause = failed["properties"]["failure"]["properties"]["cause"]
+    assert cause["allOf"] == [{"$ref": "#/components/schemas/OutboundMessageFailureCause"}]
+    return set(schemas["OutboundMessageFailureCause"]["enum"])
+
+
+def _causes_on_the_failed_webhook(spec: dict[str, Any]) -> set[str]:
+    """The causes the `message.failed` webhook's description explains, one
+    `` - `cause` `` bullet each (two share the `no_send_key` bullet)."""
+    description = spec["webhooks"]["message.failed"]["post"]["description"]
+    bullets = [line for line in description.splitlines() if line.startswith("- `")]
+    return {name for line in bullets for name in re.findall(r"`([a-z_]+)`", line.split("—")[0])}
 
 
 def test_failure_causes_are_the_causes_the_spec_documents(openapi_spec: dict[str, Any]) -> None:
     documented = _documented_failure_causes(openapi_spec)
 
-    assert len(documented) == 8, f"{sorted(documented)} — the spec's list moved; read it again"
+    assert len(documented) == 7, f"{sorted(documented)} — the spec's list moved; read it again"
     assert webhooks.FAILURE_CAUSES == documented
     assert webhooks.FAILURE_CAUSES == frozenset(get_args(FailureCause))
+    assert _causes_on_the_failed_webhook(openapi_spec) == documented
+
+
+def test_send_interrupted_replaced_the_two_uncertain_causes() -> None:
+    assert "send_interrupted" in webhooks.FAILURE_CAUSES
+    assert "outcome_unknown" not in webhooks.FAILURE_CAUSES
+    assert "submission_interrupted" not in webhooks.FAILURE_CAUSES
 
 
 @pytest.mark.parametrize("cause", sorted(webhooks.FAILURE_CAUSES))
@@ -628,7 +648,7 @@ def test_a_message_that_never_left_reads_none_for_the_provider_members() -> None
         "sentBy": None,
         "sentAt": None,
         "providerMessageId": None,
-        "providerPartIds": [],
+        "providerPartIds": None,
         "failure": {"cause": "provider_refused"},
     }
     event = webhooks.parse_message_event({**MESSAGE_FAILED, "data": data})
@@ -636,8 +656,18 @@ def test_a_message_that_never_left_reads_none_for_the_provider_members() -> None
     assert event.message.sent_by is None
     assert event.message.sent_at is None
     assert event.message.provider_message_id is None
-    assert event.message.provider_part_ids == ()
+    assert event.message.provider_part_ids is None
     assert event.message.failure_cause == "provider_refused"
+
+
+def test_an_empty_part_id_list_still_reads_as_an_empty_tuple() -> None:
+    """The API never sends `[]` any more (null exactly when the message id is
+    null), but the reader does not flatten `[]` into None: what arrived is
+    what you read."""
+    data = {**_MESSAGE_DATA, "providerMessageId": None, "providerPartIds": []}
+    event = webhooks.parse_message_event({**MESSAGE_FAILED, "data": data})
+    assert isinstance(event, MessageFailedEvent)
+    assert event.message.provider_part_ids == ()
 
 
 def test_unknown_values_and_members_are_kept_not_refused() -> None:
@@ -659,19 +689,32 @@ def test_unknown_values_and_members_are_kept_not_refused() -> None:
     assert event.raw["extra"] is True
 
 
-def test_picture_parts_read_the_bytes_member() -> None:
-    media = [
-        {"contentType": "image/jpeg", "filename": None, "encoding": None, "bytes": 40213},
-    ]
+def test_outbound_media_items_read_content_type_and_size() -> None:
+    media = [{"contentType": "image/jpeg", "size": 40213}]
     event = webhooks.parse_message_event(
         {**MESSAGE_SENT, "data": {**_MESSAGE_DATA, "kind": "mms", "media": media}}
     )
     assert isinstance(event, MessageSentEvent)
-    (part,) = event.message.media
-    assert part.content_type == "image/jpeg"
-    assert part.filename is None
-    assert part.encoding is None
-    assert part.byte_size == 40213
+    (item,) = event.message.media
+    assert item == OutboundMessageMediaItem(
+        content_type="image/jpeg", size=40213, raw={"contentType": "image/jpeg", "size": 40213}
+    )
+    # An outbound item has no filename: the platform keeps none for it.
+    assert not hasattr(item, "filename")
+
+
+def test_the_old_media_members_are_no_longer_read() -> None:
+    """`bytes` and `encoding` left the wire in 0.23.0; an item that still
+    carries them reads no size, and the old members stay on `raw` only."""
+    media = [{"contentType": "image/jpeg", "filename": "a.jpg", "encoding": "base64", "bytes": 9}]
+    event = webhooks.parse_message_event(
+        {"type": "message.received", "data": {"kind": "mms", "media": media}}
+    )
+    assert isinstance(event, MessageReceivedEvent)
+    (item,) = event.message.media
+    assert item.size is None
+    assert not hasattr(item, "encoding")
+    assert item.raw["bytes"] == 9
 
 
 @pytest.mark.parametrize(

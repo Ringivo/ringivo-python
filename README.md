@@ -852,10 +852,11 @@ recorded = client.messages.record(
         "01JC8ZA1F5T3R8C2P6M0L4JSWQ"
     ],  # every part; a one-part text names its own id
     sent_at=datetime(2026, 10, 19, 15, 2, 44, tzinfo=timezone.utc),
-    media_urls=[],  # up to 10 https links to attachments
+    media_urls=[],  # up to 10 https links to media; sent as `mediaUrls`
     mark_conversation_read=False,
 )
 recorded.id, recorded.status, recorded.replayed
+recorded.media  # each an OutboundMessageMediaItem(content_type, size)
 ```
 
 - **Staff see `"<sender_label>: <body>"`.** A label is one line, has at
@@ -867,22 +868,38 @@ recorded.id, recorded.status, recorded.replayed
   left.
 - **The provider message id is the dedupe key.** No `Idempotency-Key` is
   sent. A repeat with the same id and the same `from`, `to`, `body` and
-  attachment count answers 200 with the first record (`replayed` is True);
-  the same id with different content is a 409.
-- **`media_urls` links to attachments of any type**: a picture, a contact
-  card (vCard), audio, video, a PDF or any other file, copied into the staff
-  threads as you sent it. The limits are **at most 10 attachments, at most
+  media count answers 200 with the first record (`replayed` is True); the
+  same id with different content is a 409.
+- **`media_urls` links to media of any type**: an image, a contact card
+  (vCard), audio, video, a PDF or any other file, copied into the staff
+  threads as you sent it. The limits are **at most 10 media items, at most
   10 MB each and at most 20 MB together**. The API refuses `text/plain` (put
   the text in `body`), a SMIL layout, HTML, XML, SVG and script, by the
-  declared type and by the file's first bytes, with a 422.
-- **Attachments are fetched during the call and never again**, so make new
-  presigned links for each attempt. The call can take up to 20 seconds to
-  fetch them, so `record()` waits at least 25 seconds whatever the client's
-  own timeout is. With an `httpx.Timeout`, the read timeout is raised and the
-  others are kept.
+  declared type and by the file's first bytes, with a 422. The answer
+  describes each item in `recorded.media` by content type and size, never
+  by your link.
+- **Media is fetched during the call and never again**, so make new
+  presigned links for each attempt. The API fetches all links at once and
+  gives each one 10 seconds, then stores the media. It ends any request at
+  30 seconds, so `record()` waits at least 30 seconds
+  (`RECORD_MIN_TIMEOUT_SECONDS`) whatever the client's own timeout is. A
+  shorter timeout can give up on a record that is about to succeed. With an
+  `httpx.Timeout`, the read timeout is raised and the others are kept.
+- **If any link fails, nothing is stored.** The `ApiError` names the link in
+  `error.errors[0].source["pointer"]` (`/data/attributes/mediaUrls/<index>`)
+  and the reason in `error.code`:
+
+  | Status | `error.code` | What happened | What to do |
+  |---|---|---|---|
+  | 422 | `media_rejected` | The link, or what it served, can never be used. | Fix the link. Do not retry it unchanged. |
+  | 504 | `media_timeout` | The link did not finish within 10 seconds. | Retry after `error.retry_after`, with a new link. |
+  | 502 | `media_unreachable` | Its host answered 5xx, refused the connection, or does not resolve. | Retry after `error.retry_after`, with a new link. |
+  | 503 | `media_store_unavailable` | The platform could not keep the media right now. | Retry after `error.retry_after`. |
+
+  `is_retryable()` is True for the last three.
 - **Refused before any request** (`ValueError`): an empty provider id or
-  part-id list, a `sent_at` with no time zone, neither a body nor an
-  attachment, more than ten links, a link that is not `https`, a label that
+  part-id list, a `sent_at` with no time zone, neither a body nor a media
+  link, more than ten links, a link that is not `https`, a label that
   breaks the rule. None of these is worth retrying.
 - **`mark_conversation_read=True`** marks the staff threads read — for a
   reply a person typed in your own inbox. The default leaves them as they
@@ -896,7 +913,7 @@ a recorded text, but its delivery reports raise `message.delivered` and
 
 ## Read the texts sent to your numbers
 
-`client.inbound_messages` reads every text and picture message somebody sent
+`client.inbound_messages` reads every text message (SMS or MMS) somebody sent
 to one of your text-enabled numbers, newest first. It needs `numbers:read`
 or `numbers:messaging`.
 
@@ -926,10 +943,12 @@ if page:  # a page can be empty
   `before` and `page_size`, as on every list here.
 - **`received_at` is when the message was sent**, and the date filters match
   it. `created_at` is when the platform stored it.
-- **Attachments are described, never carried**: `media` holds
-  `MessageMediaPart(content_type, filename, encoding, byte_size)` and no
-  file or URL. The platform does not keep the bytes, so ask your messaging
-  provider for the file. `body` is `None` for an MMS with no caption.
+- **Media is described, never carried**: `media` holds
+  `InboundMessageMediaItem(content_type, filename, size)` and no bytes or
+  URL. `size` is in bytes; `filename` is the name the sender's carrier gave
+  the item, or `None`. The platform does not serve the bytes, so ask your
+  messaging provider for the file. `body` is `None` for an MMS with no
+  caption.
 
 ## The async client
 
@@ -1104,19 +1123,28 @@ def receive(request):
   is a `Literal` of the causes the API documents today, and
   `webhooks.FAILURE_CAUSES` is the same values as a `frozenset`. The API
   can add causes, and a cause this release does not know still arrives, as
-  a plain `str`. **Treat a cause you do not know as a failure.**
+  a plain `str`. **Treat a cause you do not know as a failure.** The seven
+  causes are `provider_refused`, `provider_unreachable`, `send_interrupted`,
+  `opted_out`, `no_send_key`, `media_unavailable` and `undelivered`.
+  `send_interrupted` means the send was interrupted before the carrier
+  confirmed it: treat the text as not sent (rarely, it may still arrive).
+  The platform never sends it again.
 - **`source` is a string, not an enum**: the API can add values, and a
   value this release does not know still reaches you.
 - **`sent_by`** is set only for a staff reply (`source == "phone_system"`),
   and its `name` can be `None`. For a message the provider never accepted,
-  **`sent_at` and `provider_message_id` are `None` and `provider_part_ids`
-  is `()`**. The provider ids are set only on your own provider account; on
-  any other account both are `None`.
+  **`sent_at`, `provider_message_id` and `provider_part_ids` are `None`**.
+  The provider ids are set only on your own provider account; on any other
+  account both are `None`. `provider_part_ids` is `None` exactly when
+  `provider_message_id` is `None`, and never `()`.
 - **On `message.received`**, `message.id` is the id
   `client.inbound_messages.get()` takes, and `received_at` is when it was
   sent.
-- **Attachment parts are described, never linked**: `media` holds
-  `MessageMediaPart(content_type, filename, encoding, byte_size)`.
+- **Media items are described, never linked.** On `message.received`,
+  `media` holds `InboundMessageMediaItem(content_type, filename, size)`. On
+  the three outbound events it holds
+  `OutboundMessageMediaItem(content_type, size)`, with no filename. `size`
+  is in bytes.
 - Deliveries are at least once, and the three outbound events can arrive
   in any order. Dedupe on `event.event_id`, or on the pair
   (`message.id`, `event.type`). Never on the message id alone: that would
@@ -1157,8 +1185,8 @@ contract — True for no answer (an `httpx.TransportError`, except the
 409, 422): the same request gets the same answer until something changes
 first. Fix the request for a 400, 409 or 422 — never retry those
 unchanged. A 401, 403 or 404 can be an account setting that is fixed
-later: `messages.record()` answers 404 while recording texts is not turned
-on for the platform yet. A queue may retry those slowly, after the change.
+later, such as a missing scope. A queue may retry those slowly, after the
+change.
 
 ```python
 import httpx
@@ -1174,8 +1202,8 @@ except (ApiError, httpx.TransportError) as error:
         wait = getattr(error, "retry_after", None)  # seconds the server asked for, or None
         queue.retry_later(seconds=wait or your_backoff(attempt))
     elif isinstance(error, ApiError) and error.status_code in (401, 403, 404):
-        # An account setting, such as a missing scope, or recording texts not
-        # turned on yet (404): retry slowly, and alert someone to fix it.
+        # An account setting, such as a missing scope: retry slowly, and
+        # alert someone to fix it.
         queue.retry_later(seconds=your_slow_backoff(attempt))
     else:
         queue.give_up()  # 400, 409, 422: never retry unchanged
@@ -1239,10 +1267,11 @@ when it is `None`, use your own backoff.
 `CallRecord`, `CallRecordPage`, `Customer`, `CustomerPage`, `Fax`,
 `FaxAccount`, `FaxAccountNumber`, `FaxAccountPage`, `FaxAccountUser`,
 `FaxAccountUserPage`, `FaxDocument`, `FaxPage`, `InboundMessage`,
-`InboundMessagePage`, `MediaLink`, `MessageDeliveredEvent`,
-`MessageFailedEvent`, `MessageFailedEventData`, `MessageMediaPart`,
+`InboundMessageMediaItem`, `InboundMessagePage`, `MediaLink`,
+`MessageDeliveredEvent`, `MessageFailedEvent`, `MessageFailedEventData`,
 `MessageReceivedEvent`, `MessageReceivedEventData`, `MessageSender`,
-`MessageSentEvent`, `OutboundMessage`, `OutboundMessageEventData`, `PbxCall`,
+`MessageSentEvent`, `OutboundMessage`, `OutboundMessageEventData`,
+`OutboundMessageMediaItem`, `PbxCall`,
 `PbxDevice`, `PbxDevicePage`, `PbxSubscriber`, `PbxSubscriberPage`, `Recording`,
 `Transcript`, `TranscriptChannel`, `TranscriptSegment`, `UnknownMessageEvent`,
 `WebhookDelivery`, `WebhookDeliveryPage`, `WebhookEndpoint`

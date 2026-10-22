@@ -16,7 +16,14 @@ import httpx
 import pytest
 import respx
 
-from ringivo import ApiError, OutboundMessage, Ringivo, sender_label
+from ringivo import (
+    ApiError,
+    OutboundMessage,
+    OutboundMessageMediaItem,
+    Ringivo,
+    is_retryable,
+    sender_label,
+)
 from ringivo.messages import (
     MAX_MEDIA,
     MAX_PROVIDER_ID_LENGTH,
@@ -129,7 +136,7 @@ def test_a_200_is_a_replay_of_the_first_record(
     assert recorded.id == "0192f0c0-5d2e-7a1b-8c3d-4e5f60718293"
 
 
-def test_pictures_mark_read_and_every_part_are_sent(
+def test_media_urls_mark_read_and_every_part_are_sent(
     client: Ringivo, respx_mock: respx.MockRouter, response_example: dict[str, Any]
 ) -> None:
     route = respx_mock.post(RECORD_URL).mock(
@@ -149,10 +156,12 @@ def test_pictures_mark_read_and_every_part_are_sent(
 
     attributes = json.loads(route.calls.last.request.content)["data"]["attributes"]
     assert attributes["body"] is None
-    assert attributes["media"] == [
-        {"url": "https://media.example.com/a.jpg"},
-        {"url": "https://media.example.com/b.jpg"},
+    # `mediaUrls` is a list of strings; the API answers `media` with a 422.
+    assert attributes["mediaUrls"] == [
+        "https://media.example.com/a.jpg",
+        "https://media.example.com/b.jpg",
     ]
+    assert "media" not in attributes
     assert attributes["markConversationRead"] is True
     assert attributes["alreadySent"]["providerPartIds"] == ["part-1", "part-2"]
     # Converted to UTC, sub-seconds kept.
@@ -192,6 +201,74 @@ def test_a_409_raises(client: Ringivo, respx_mock: respx.MockRouter) -> None:
         client.messages.record(**_arguments())  # type: ignore[arg-type]
 
     assert caught.value.status_code == 409
+
+
+def test_the_answer_describes_the_media_by_type_and_size(
+    client: Ringivo, respx_mock: respx.MockRouter, response_example: dict[str, Any]
+) -> None:
+    resource = response_example["data"]
+    attributes = {
+        **resource["attributes"],
+        "kind": "mms",
+        "media": [{"contentType": "image/jpeg", "size": 40213}],
+    }
+    respx_mock.post(RECORD_URL).mock(
+        return_value=httpx.Response(201, json={"data": {**resource, "attributes": attributes}})
+    )
+
+    recorded = client.messages.record(
+        **_arguments(media_urls=["https://media.example.com/rex.jpg"])  # type: ignore[arg-type]
+    )
+
+    assert recorded.media == (
+        OutboundMessageMediaItem(
+            content_type="image/jpeg",
+            size=40213,
+            raw={"contentType": "image/jpeg", "size": 40213},
+        ),
+    )
+
+
+@pytest.mark.parametrize(
+    ("status", "code", "retryable"),
+    [
+        (422, "media_rejected", False),
+        (504, "media_timeout", True),
+        (502, "media_unreachable", True),
+        (503, "media_store_unavailable", True),
+    ],
+)
+def test_a_media_refusal_names_the_link_and_the_reason(
+    client: Ringivo, respx_mock: respx.MockRouter, status: int, code: str, retryable: bool
+) -> None:
+    respx_mock.post(RECORD_URL).mock(
+        return_value=httpx.Response(
+            status,
+            headers={} if status == 422 else {"Retry-After": "5"},
+            json={
+                "errors": [
+                    {
+                        "status": str(status),
+                        "code": code,
+                        "source": {"pointer": "/data/attributes/mediaUrls/1"},
+                    }
+                ]
+            },
+        )
+    )
+
+    with pytest.raises(ApiError) as caught:
+        client.messages.record(
+            **_arguments(  # type: ignore[arg-type]
+                media_urls=["https://media.example.com/a.jpg", "https://media.example.com/b.jpg"]
+            )
+        )
+
+    assert caught.value.status_code == status
+    assert caught.value.code == code
+    assert caught.value.errors[0].source == {"pointer": "/data/attributes/mediaUrls/1"}
+    assert is_retryable(caught.value) is retryable
+    assert caught.value.retry_after == (None if status == 422 else 5)
 
 
 @pytest.mark.parametrize("status", [429, 503])
@@ -322,7 +399,7 @@ def test_an_httpx_timeout_keeps_a_longer_or_absent_read(
         ({"media_urls": [f"https://m.example.com/{n}.jpg" for n in range(11)]}, "at most 10"),
         ({"media_urls": ["http://m.example.com/a.jpg"]}, "https"),
         ({"media_urls": "https://m.example.com/a.jpg"}, "not one string"),
-        ({"body": None}, "body or at least one attachment"),
+        ({"body": None}, "body or at least one media link"),
         ({"sender_label": "  "}, "empty"),
         ({"sender_label": "Dana\nSmith"}, "one line"),
         ({"sender_label": "Dana Smith"}, "one line"),
@@ -409,11 +486,14 @@ def test_the_label_limit_is_the_specs(openapi_spec: dict[str, Any]) -> None:
     assert label["minLength"] == 1
 
 
-def test_the_attachment_limit_is_the_specs(openapi_spec: dict[str, Any]) -> None:
-    assert _record_attributes(openapi_spec)["media"]["maxItems"] == MAX_MEDIA
+def test_the_media_limit_is_the_specs(openapi_spec: dict[str, Any]) -> None:
+    attributes = _record_attributes(openapi_spec)
+    assert attributes["mediaUrls"]["maxItems"] == MAX_MEDIA
+    assert attributes["mediaUrls"]["items"]["type"] == "string"
+    assert "media" not in attributes
 
 
-def test_the_documented_attachment_sizes_are_the_specs(openapi_spec: dict[str, Any]) -> None:
+def test_the_documented_media_sizes_are_the_specs(openapi_spec: dict[str, Any]) -> None:
     """The size limits are not checked here (only the API can see a link's
     size), but they are DOCUMENTED here, so a spec that changes them must
     fail this test instead of leaving the docstring behind."""
@@ -421,12 +501,42 @@ def test_the_documented_attachment_sizes_are_the_specs(openapi_spec: dict[str, A
 
     description = openapi_spec["paths"]["/v1/outbound-messages"]["post"]["description"]
     flat = " ".join(description.split())
-    assert "must be an attachment of at most 10 MB" in flat
-    assert "at most 20 MB of attachments together" in flat
+    assert "must be a media item of at most 10 MB" in flat
+    assert "at most 20 MB of media together" in flat
+    assert "**each must finish within 10 seconds**" in flat
     assert "`text/plain` is refused" in flat
 
     documented = " ".join((ringivo.messages.__doc__ or "").split())
-    assert "at most 10 attachments, at most 10 MB each and at most 20 MB together" in documented
+    assert "at most 10 media items, at most 10 MB each and at most 20 MB together" in documented
+    assert "each within 10 seconds" in documented
+
+
+def test_the_record_timeout_floor_is_the_specs(openapi_spec: dict[str, Any]) -> None:
+    """The spec tells a caller what timeout to set for this one call; the
+    floor is that number, so a spec that moves it fails here."""
+    description = openapi_spec["paths"]["/v1/outbound-messages"]["post"]["description"]
+    flat = " ".join(description.split())
+    assert "**Set your client timeout to 30 seconds**" in flat
+    assert RECORD_MIN_TIMEOUT_SECONDS == 30.0
+
+
+@pytest.mark.parametrize(
+    ("status", "code"),
+    [
+        (422, "media_rejected"),
+        (504, "media_timeout"),
+        (502, "media_unreachable"),
+        (503, "media_store_unavailable"),
+    ],
+)
+def test_the_media_error_codes_are_the_specs(
+    openapi_spec: dict[str, Any], status: int, code: str
+) -> None:
+    """The four media refusals the module docstring and the README name: each
+    is an `ErrorCode` and is documented on its status."""
+    assert code in openapi_spec["components"]["schemas"]["ErrorCode"]["enum"]
+    responses = openapi_spec["paths"]["/v1/outbound-messages"]["post"]["responses"]
+    assert f"`{code}`" in responses[str(status)]["description"]
 
 
 def test_the_provider_id_limits_are_the_specs(openapi_spec: dict[str, Any]) -> None:
