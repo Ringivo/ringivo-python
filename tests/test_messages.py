@@ -9,6 +9,7 @@ assert that NO request went out: a `ValueError` must cost nothing.
 from __future__ import annotations
 
 import json
+import re
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
@@ -511,13 +512,19 @@ def test_the_documented_media_sizes_are_the_specs(openapi_spec: dict[str, Any]) 
     assert "each within 10 seconds" in documented
 
 
-def test_the_record_timeout_floor_is_the_specs(openapi_spec: dict[str, Any]) -> None:
-    """The spec tells a caller what timeout to set for this one call; the
-    floor is that number, so a spec that moves it fails here."""
+def test_the_record_timeout_floor_is_above_the_specs(openapi_spec: dict[str, Any]) -> None:
+    """The spec tells a caller what timeout to set for this one call — the
+    API's own cut. The floor is that number plus a 5-second margin, because
+    this client's clock starts before the API's. A spec that moves the
+    number fails here."""
     description = openapi_spec["paths"]["/v1/outbound-messages"]["post"]["description"]
     flat = " ".join(description.split())
-    assert "**Set your client timeout to 30 seconds**" in flat
-    assert RECORD_MIN_TIMEOUT_SECONDS == 30.0
+    found = re.search(r"\*\*Set your client timeout to (\d+) seconds\*\*", flat)
+    assert found is not None, "the spec no longer says what timeout to set; read it again"
+    documented = float(found.group(1))
+    assert documented == 30.0
+    assert RECORD_MIN_TIMEOUT_SECONDS >= documented + 5.0
+    assert RECORD_MIN_TIMEOUT_SECONDS == 35.0
 
 
 @pytest.mark.parametrize(

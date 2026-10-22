@@ -74,13 +74,21 @@ after its own trim; a text over it is a 422.
 -- THE TIMEOUT -----------------------------------------------------------------
 The call fetches your media before it answers: all links at once, each
 within 10 seconds, and then stores up to 20 MB. The API ends any request
-at 30 seconds. A client built with a shorter timeout would give up on a
-call that was about to succeed; the retry is then answered 200, but it
-fetches the media again. So this one call waits at least
-`RECORD_MIN_TIMEOUT_SECONDS` (30), whatever the client's own timeout is; a
-longer client timeout is kept. A client built
-with an `httpx.Timeout` has its read timeout raised and its connect, write
-and pool timeouts kept (`_record_timeout`).
+at 30 seconds of its own time. A client that gives up first can abandon a
+call that was about to succeed. Its retry is then answered 200 (the API
+looks for a repeat before it fetches anything), but the wait was wasted.
+This client's clock starts before the API's does — the request still has
+to reach it — so this one call waits at least `RECORD_MIN_TIMEOUT_SECONDS`
+(35): the API's cut plus a margin, so that you always get the API's own
+answer. That is whatever the client's own timeout is; a longer client
+timeout is kept. A client built with an `httpx.Timeout` has its read
+timeout raised and its connect, write and pool timeouts kept
+(`_record_timeout`).
+
+The floor bounds the WAIT FOR THE ANSWER (httpx's read timeout), which
+starts once the request is sent. The TypeScript client's floor bounds the
+whole request instead — connect, send and wait — because `fetch` has no
+separate read timeout. The 5-second margin covers that difference too.
 """
 
 from __future__ import annotations
@@ -119,10 +127,12 @@ MAX_MEDIA = 10
 #: The longest provider message id or part id — the spec's `maxLength`.
 MAX_PROVIDER_ID_LENGTH = 128
 
-#: The shortest timeout `record()` uses: the API's own cut for any request.
-#: It fetches every media link at once, each within 10 seconds, then stores
-#: the media, all before it answers.
-RECORD_MIN_TIMEOUT_SECONDS = 30.0
+#: The shortest timeout `record()` uses: the API's own cut plus a margin.
+#: The API fetches every media link at once, each within 10 seconds, stores
+#: the media, all before it answers, and ends any request at 30 seconds.
+#: The floor adds 5 seconds to that cut, because this client's clock starts
+#: before the API's.
+RECORD_MIN_TIMEOUT_SECONDS = 35.0
 
 #: What the record call sends and accepts. `client.JSONAPI_MEDIA_TYPE` is the
 #: same string; this module cannot import it (client imports this module).

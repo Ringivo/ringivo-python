@@ -97,10 +97,19 @@ no longer carries code for the API's v1 naming cleanup.
 
 ### The API's messaging contract changes
 
-These items follow a change to the API itself. 0.23.0 needs the API that
-has it: an API from before the change refuses the `mediaUrls` member that
-`messages.record()` now sends. The TypeScript client changes in the same way
-and uses the same names.
+These items follow a change to the API itself. The TypeScript client changes
+in the same way and uses the same names.
+
+**Use 0.23.0 only with an API that has the change.** A mix of versions
+fails as follows:
+
+- **0.23.0 with an API from before the change** (for example, after the API
+  change is rolled back): the API refuses EVERY record with a 400, also a
+  record with no media. `messages.record()` always sends `mediaUrls` (as
+  `[]` when you give no links), and that API does not know the member.
+- **0.22.x with an API that has the change:** a record with no media still
+  works. A record with `media_urls` gets a 422, because 0.22.x sends
+  `media`. Nothing is stored, and a retry gets the same 422.
 
 - **`messages.record()` sends `mediaUrls`, a list of strings, in place of
   `media: [{url}]`.** The `media_urls` argument does not change. Migration:
@@ -127,16 +136,32 @@ and uses the same names.
   arrive). The platform never sends it again. `FailureCause` and
   `webhooks.FAILURE_CAUSES` hold seven causes. Migration: replace each check
   for `outcome_unknown` or `submission_interrupted` with `send_interrupted`.
-  The API sends the new value also for messages that failed before the
-  change.
+  A new event about a message that failed before the change also carries
+  `send_interrupted`. A redelivered old event does not (next item).
+- **A redelivered webhook keeps the values it was built with.** When the
+  API delivers an event again, it sends the stored body unchanged. So an
+  event built before the API change still carries the old values, and the
+  parser reads them as follows:
+  - A media item with `bytes` and `encoding`: `size` is `None`; `bytes` and
+    `encoding` stay on `raw`.
+  - The cause `outcome_unknown` or `submission_interrupted`: `failure_cause`
+    is that plain `str`, not in `FAILURE_CAUSES`. Treat it as
+    `send_interrupted`.
+  - `providerPartIds: []`: `provider_part_ids` is `()`.
+
+  The parser never raises on these. Migration: handle the old cause names
+  until no event from before the change can be delivered again.
 - **`provider_part_ids` is `None` for a message the provider never
   accepted**, not `()`. It is `None` exactly when `provider_message_id` is
   `None`. Migration: test `provider_part_ids is None`, or test
   `provider_message_id`.
-- **`messages.record()` waits at least 30 seconds, not 25**
-  (`RECORD_MIN_TIMEOUT_SECONDS` is `30.0`). The API now fetches all media
+- **`messages.record()` waits at least 35 seconds, not 25**
+  (`RECORD_MIN_TIMEOUT_SECONDS` is `35.0`). The API now fetches all media
   links at once, each within 10 seconds, and ends any request at 30
-  seconds. A longer client timeout is still kept.
+  seconds of its own time. The client's clock starts first, so the floor
+  adds a 5-second margin: you always get the API's own answer. The floor
+  is the wait for the answer (the read timeout). A longer client timeout is
+  still kept.
 - **A media link that fails has its own `code`.** If any link fails, nothing
   is stored, and `errors[0].source["pointer"]` names the link
   (`/data/attributes/mediaUrls/<index>`). 422 `media_rejected`: fix the

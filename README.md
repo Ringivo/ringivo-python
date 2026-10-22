@@ -881,10 +881,14 @@ recorded.media  # each an OutboundMessageMediaItem(content_type, size)
 - **Media is fetched during the call and never again**, so make new
   presigned links for each attempt. The API fetches all links at once and
   gives each one 10 seconds, then stores the media. It ends any request at
-  30 seconds, so `record()` waits at least 30 seconds
-  (`RECORD_MIN_TIMEOUT_SECONDS`) whatever the client's own timeout is. A
-  shorter timeout can give up on a record that is about to succeed. With an
-  `httpx.Timeout`, the read timeout is raised and the others are kept.
+  30 seconds of its own time. `record()` waits at least 35 seconds
+  (`RECORD_MIN_TIMEOUT_SECONDS`) whatever the client's own timeout is: the
+  API's cut plus a margin, because the client's clock starts first. So you
+  always get the API's own answer. A client that gives up sooner can abandon
+  a record that is about to succeed; its retry is answered 200, with no
+  second fetch. The floor is the wait for the answer (the read timeout).
+  With an `httpx.Timeout`, the read timeout is raised and the others are
+  kept.
 - **If any link fails, nothing is stored.** The `ApiError` names the link in
   `error.errors[0].source["pointer"]` (`/data/attributes/mediaUrls/<index>`)
   and the reason in `error.code`:
@@ -1145,6 +1149,13 @@ def receive(request):
   the three outbound events it holds
   `OutboundMessageMediaItem(content_type, size)`, with no filename. `size`
   is in bytes.
+- **A redelivery carries the values its event was built with.** An event
+  built before the API's 0.23.0 messaging change still has the old values
+  when it is delivered again: `bytes` and `encoding` on a media item (`size`
+  then reads `None`; the old members stay on `raw`), the causes
+  `outcome_unknown` and `submission_interrupted` (they arrive as plain
+  strings; treat them as `send_interrupted`), and `providerPartIds: []`
+  (reads `()`).
 - Deliveries are at least once, and the three outbound events can arrive
   in any order. Dedupe on `event.event_id`, or on the pair
   (`message.id`, `event.type`). Never on the message id alone: that would
