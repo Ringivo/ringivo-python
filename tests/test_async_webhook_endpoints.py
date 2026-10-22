@@ -277,8 +277,8 @@ async def test_update_never_sends_null_events_whatever_an_untyped_caller_passes(
 
         endpoint = await client.webhook_endpoints.update(
             ENDPOINT_ID,
-            events=None,
-            active=False,  # type: ignore[arg-type]
+            events=None,  # type: ignore[arg-type]
+            active=False,
         )
 
     attributes = jsonlib.loads(route.calls.last.request.content)["data"]["attributes"]
