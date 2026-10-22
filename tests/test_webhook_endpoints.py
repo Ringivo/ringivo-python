@@ -473,9 +473,7 @@ def test_a_scope_a_fax_token_may_not_register_is_a_typed_422(
 # -- update ----------------------------------------------------------------
 
 
-def test_update_sends_only_what_was_named(
-    respx_mock: respx.MockRouter, client: Ringivo
-) -> None:
+def test_update_sends_only_what_was_named(respx_mock: respx.MockRouter, client: Ringivo) -> None:
     # THE CASE THIS SURFACE WAS WRAPPED FOR: an integrator registered for
     # `fax.received` alone and then asked why the outbound lifecycle events
     # never arrived. Adding them must not disturb the URL or the switch, and
@@ -553,7 +551,9 @@ def test_update_never_sends_null_events_whatever_an_untyped_caller_passes(
         # Beside a member that IS sendable, the patch goes out without
         # `events`.
         endpoint = client.webhook_endpoints.update(
-            ENDPOINT_ID, events=None, active=False  # type: ignore[arg-type]
+            ENDPOINT_ID,
+            events=None,
+            active=False,  # type: ignore[arg-type]
         )
 
     attributes = jsonlib.loads(route.calls.last.request.content)["data"]["attributes"]
@@ -589,9 +589,7 @@ def test_update_refuses_a_change_that_changes_nothing(
     # to do nothing. It is far more likely a caller building the call from a
     # form that came back empty, so it is refused here, before anything is
     # sent.
-    route = respx_mock.patch(ENDPOINT_URL).mock(
-        return_value=httpx.Response(200, json={"data": {}})
-    )
+    route = respx_mock.patch(ENDPOINT_URL).mock(return_value=httpx.Response(200, json={"data": {}}))
 
     with client, pytest.raises(ValueError, match="at least one member to change"):
         client.webhook_endpoints.update(ENDPOINT_ID)

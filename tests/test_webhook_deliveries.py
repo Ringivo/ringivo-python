@@ -101,9 +101,7 @@ def _delivery_resource(
 def test_list_builds_the_filter_and_page_query(
     respx_mock: respx.MockRouter, client: Ringivo
 ) -> None:
-    route = respx_mock.get(DELIVERIES_URL).mock(
-        return_value=httpx.Response(200, json={"data": []})
-    )
+    route = respx_mock.get(DELIVERIES_URL).mock(return_value=httpx.Response(200, json={"data": []}))
 
     with client:
         client.webhook_deliveries.list(

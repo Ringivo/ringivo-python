@@ -314,7 +314,9 @@ class Fax:
         snake_case names they replaced are read as a fallback for this one
         release, so it works on either side of that deploy.
         """
-        wire = _bridged(_bridged(payload, "clientReference", "client_reference"), "createdAt", "created_at")
+        wire = _bridged(
+            _bridged(payload, "clientReference", "client_reference"), "createdAt", "created_at"
+        )
         return cls(
             id=_text(payload, "id") or "",
             status=_text(payload, "status"),

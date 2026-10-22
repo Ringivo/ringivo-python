@@ -418,7 +418,11 @@ async def test_devices_list_builds_the_filter_and_page_query(
 
     async with client:
         await client.pbx.devices.list(
-            customer=CUSTOMER_ID, subscriber=USER_ID, registered=True, before="0198c4a1", page_size=50
+            customer=CUSTOMER_ID,
+            subscriber=USER_ID,
+            registered=True,
+            before="0198c4a1",
+            page_size=50,
         )
 
     request = route.calls.last.request
@@ -994,7 +998,6 @@ async def test_a_mono_recording_has_an_empty_channels_tuple(
         transcript = await client.pbx.call_records.transcript(CALL_RECORD_ID, RECORDING_ID)
 
     assert transcript.channels == ()
-
 
 
 @pytest.mark.anyio

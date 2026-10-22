@@ -276,7 +276,9 @@ async def test_update_never_sends_null_events_whatever_an_untyped_caller_passes(
         assert respx_mock.calls.call_count == 0, "a null event list reached the wire"
 
         endpoint = await client.webhook_endpoints.update(
-            ENDPOINT_ID, events=None, active=False  # type: ignore[arg-type]
+            ENDPOINT_ID,
+            events=None,
+            active=False,  # type: ignore[arg-type]
         )
 
     attributes = jsonlib.loads(route.calls.last.request.content)["data"]["attributes"]

@@ -74,7 +74,11 @@ def client() -> Ringivo:
 
 
 def test_record_posts_the_spec_example_as_json_api(
-    client: Ringivo, respx_mock: respx.MockRouter, request_example: dict[str, Any], response_example: dict[str, Any]) -> None:
+    client: Ringivo,
+    respx_mock: respx.MockRouter,
+    request_example: dict[str, Any],
+    response_example: dict[str, Any],
+) -> None:
     route = respx_mock.post(RECORD_URL).mock(
         return_value=httpx.Response(201, json=response_example)
     )
@@ -91,7 +95,8 @@ def test_record_posts_the_spec_example_as_json_api(
 
 
 def test_a_201_reads_the_record_and_is_not_a_replay(
-    client: Ringivo, respx_mock: respx.MockRouter, response_example: dict[str, Any]) -> None:
+    client: Ringivo, respx_mock: respx.MockRouter, response_example: dict[str, Any]
+) -> None:
     respx_mock.post(RECORD_URL).mock(return_value=httpx.Response(201, json=response_example))
 
     recorded = client.messages.record(**_arguments())  # type: ignore[arg-type]
@@ -113,7 +118,9 @@ def test_a_201_reads_the_record_and_is_not_a_replay(
     assert recorded.created_at == datetime(2026, 10, 19, 15, 2, 45, tzinfo=timezone.utc)
 
 
-def test_a_200_is_a_replay_of_the_first_record(client: Ringivo, respx_mock: respx.MockRouter, response_example: dict[str, Any]) -> None:
+def test_a_200_is_a_replay_of_the_first_record(
+    client: Ringivo, respx_mock: respx.MockRouter, response_example: dict[str, Any]
+) -> None:
     respx_mock.post(RECORD_URL).mock(return_value=httpx.Response(200, json=response_example))
 
     recorded = client.messages.record(**_arguments())  # type: ignore[arg-type]
@@ -123,7 +130,8 @@ def test_a_200_is_a_replay_of_the_first_record(client: Ringivo, respx_mock: resp
 
 
 def test_pictures_mark_read_and_every_part_are_sent(
-    client: Ringivo, respx_mock: respx.MockRouter, response_example: dict[str, Any]) -> None:
+    client: Ringivo, respx_mock: respx.MockRouter, response_example: dict[str, Any]
+) -> None:
     route = respx_mock.post(RECORD_URL).mock(
         return_value=httpx.Response(201, json=response_example)
     )
@@ -203,7 +211,9 @@ def test_a_429_or_503_carries_retry_after(
     assert caught.value.retry_after == 17
 
 
-def test_the_record_waits_at_least_the_floor(respx_mock: respx.MockRouter, response_example: dict[str, Any]) -> None:
+def test_the_record_waits_at_least_the_floor(
+    respx_mock: respx.MockRouter, response_example: dict[str, Any]
+) -> None:
     short = Ringivo(
         base_url=BASE_URL,
         client_id="cid",
@@ -222,7 +232,9 @@ def test_the_record_waits_at_least_the_floor(respx_mock: respx.MockRouter, respo
     assert timeout["read"] == RECORD_MIN_TIMEOUT_SECONDS
 
 
-def test_a_longer_client_timeout_is_kept(respx_mock: respx.MockRouter, response_example: dict[str, Any]) -> None:
+def test_a_longer_client_timeout_is_kept(
+    respx_mock: respx.MockRouter, response_example: dict[str, Any]
+) -> None:
     long = Ringivo(
         base_url=BASE_URL,
         client_id="cid",
@@ -240,7 +252,9 @@ def test_a_longer_client_timeout_is_kept(respx_mock: respx.MockRouter, response_
     assert route.calls.last.request.extensions["timeout"]["read"] == 60.0
 
 
-def test_an_httpx_timeout_has_its_read_raised_to_the_floor(respx_mock: respx.MockRouter, response_example: dict[str, Any]) -> None:
+def test_an_httpx_timeout_has_its_read_raised_to_the_floor(
+    respx_mock: respx.MockRouter, response_example: dict[str, Any]
+) -> None:
     """A client built with an `httpx.Timeout` must record, not raise a
     `TypeError` from comparing a `Timeout` with a float. The record waits
     for the answer, so the READ timeout is the one raised to the floor; the
@@ -331,7 +345,8 @@ def test_what_no_retry_can_fix_is_refused_before_any_request(
 
 
 def test_a_label_the_api_trims_is_accepted_and_sent_as_given(
-    client: Ringivo, respx_mock: respx.MockRouter, response_example: dict[str, Any]) -> None:
+    client: Ringivo, respx_mock: respx.MockRouter, response_example: dict[str, Any]
+) -> None:
     route = respx_mock.post(RECORD_URL).mock(
         return_value=httpx.Response(201, json=response_example)
     )
@@ -340,7 +355,9 @@ def test_a_label_the_api_trims_is_accepted_and_sent_as_given(
 
     client.messages.record(**_arguments(sender_label=label))  # type: ignore[arg-type]
 
-    assert json.loads(route.calls.last.request.content)["data"]["attributes"]["senderLabel"] == label
+    assert (
+        json.loads(route.calls.last.request.content)["data"]["attributes"]["senderLabel"] == label
+    )
 
 
 # -- sender_label(): making a label from any text -----------------------------
@@ -371,7 +388,8 @@ def test_sender_label_refuses_when_nothing_visible_is_left(text: str) -> None:
 
 
 def test_a_made_label_is_always_accepted_by_record(
-    client: Ringivo, respx_mock: respx.MockRouter, response_example: dict[str, Any]) -> None:
+    client: Ringivo, respx_mock: respx.MockRouter, response_example: dict[str, Any]
+) -> None:
     respx_mock.post(RECORD_URL).mock(return_value=httpx.Response(201, json=response_example))
     for text in ("  Dana \n Smith ", "y" * 90, "Dr. Lee\x00"):
         client.messages.record(**_arguments(sender_label=sender_label(text)))  # type: ignore[arg-type]

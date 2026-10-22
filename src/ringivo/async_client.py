@@ -149,7 +149,7 @@ class AsyncRingivo:
         if isinstance(scopes, str):
             raise ValueError(
                 "scopes must be a list of scope names, not one string: a str is read "
-                "one character at a time, so scopes=\"fax:read\" asks for eight scopes "
+                'one character at a time, so scopes="fax:read" asks for eight scopes '
                 "that do not exist and the mint refuses every one of them. Pass "
                 'scopes=["fax:read"].'
             )
@@ -159,7 +159,7 @@ class AsyncRingivo:
             raise ValueError(
                 "scopes are required: a request that asks for none authorises nothing, "
                 "so the mint refuses it rather than issuing a token. Pass the scopes "
-                'your integration was granted — the calls this client makes need '
+                "your integration was granted — the calls this client makes need "
                 'scopes=["fax:read", "fax:write"].'
             )
 

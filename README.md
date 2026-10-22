@@ -111,7 +111,7 @@ with Ringivo(
         client_reference="chart-4471",
     )
 
-    print(fax.id, fax.status)   # 0198c4a1-… queued
+    print(fax.id, fax.status)  # 0198c4a1-… queued
 ```
 
 `send()` returns as soon as the fax is **accepted**. The render and the call
@@ -149,19 +149,19 @@ did:
 ## Read, list, cancel, download
 
 ```python
-    fax = client.faxes.get(fax_id)
+fax = client.faxes.get(fax_id)
 
-    page = client.faxes.list(direction="inbound", read=False, tags={"clinic": "north"})
-    for fax in page:
-        print(fax.id, fax.from_, fax.pages_total)
+page = client.faxes.list(direction="inbound", read=False, tags={"clinic": "north"})
+for fax in page:
+    print(fax.id, fax.from_, fax.pages_total)
 
-    if page.next_cursor:                       # newest first; follow the cursor
-        page = client.faxes.list(after=page.next_cursor)
+if page.next_cursor:  # newest first; follow the cursor
+    page = client.faxes.list(after=page.next_cursor)
 
-    client.faxes.cancel(fax_id)                # before the far end answers
+client.faxes.cancel(fax_id)  # before the far end answers
 
-    pdf = client.faxes.media(fax_id)           # the document's bytes
-    Path("received.pdf").write_bytes(pdf)
+pdf = client.faxes.media(fax_id)  # the document's bytes
+Path("received.pdf").write_bytes(pdf)
 ```
 
 `media()` mints a short-lived download link and follows it for you. Use
@@ -178,14 +178,14 @@ To backfill every fax matching a filter, follow `next_cursor` — the
 server's own cursor — until it comes back `None`:
 
 ```python
-    faxes = []
-    after = None
-    while True:
-        page = client.faxes.list(direction="inbound", after=after)
-        faxes.extend(page)
-        if page.next_cursor is None:            # the last page
-            break
-        after = page.next_cursor
+faxes = []
+after = None
+while True:
+    page = client.faxes.list(direction="inbound", after=after)
+    faxes.extend(page)
+    if page.next_cursor is None:  # the last page
+        break
+    after = page.next_cursor
 ```
 
 `after=` walks forward; `before=` walks backward from a cursor instead —
@@ -198,22 +198,22 @@ sent and received on it, and the settings that govern both. Opening,
 changing and deleting one is `client.fax_accounts`.
 
 ```python
-    account = client.fax_accounts.create(
-        customer="0198c4a1-4d5e-7f60-a172-3c4d5e6f7081",
-        name="Front desk",
-        header_text="ACME VETERINARY",
-        retention_days=365,
-    )
+account = client.fax_accounts.create(
+    customer="0198c4a1-4d5e-7f60-a172-3c4d5e6f7081",
+    name="Front desk",
+    header_text="ACME VETERINARY",
+    retention_days=365,
+)
 
-    page = client.fax_accounts.list(customer="0198c4a1-4d5e-7f60-a172-3c4d5e6f7081")
-    for account in page:
-        print(account.id, account.name, account.status)
+page = client.fax_accounts.list(customer="0198c4a1-4d5e-7f60-a172-3c4d5e6f7081")
+for account in page:
+    print(account.id, account.name, account.status)
 
-    for number in client.fax_accounts.numbers(account.id):
-        print(number.e164, number.status)
+for number in client.fax_accounts.numbers(account.id):
+    print(number.e164, number.status)
 
-    client.fax_accounts.update(account.id, status="suspended")   # receive only
-    client.fax_accounts.delete(account.id)
+client.fax_accounts.update(account.id, status="suspended")  # receive only
+client.fax_accounts.delete(account.id)
 ```
 
 **An account belongs to one customer for its whole life.** Every fax it
@@ -259,8 +259,8 @@ the time of writing — because this client sends nothing for an argument you
 did not name.
 
 ```python
-    client.fax_accounts.update(account.id, retention_days=90, retention_pages=5000)
-    client.fax_accounts.update(account.id, retention_days=None)     # keep for ever
+client.fax_accounts.update(account.id, retention_days=90, retention_pages=5000)
+client.fax_accounts.update(account.id, retention_days=None)  # keep for ever
 ```
 
 Deleting a FAX is never blocked by retention: `DELETE /v1/faxes/{id}`
@@ -273,8 +273,8 @@ suspending an account leaves its retention rules exactly as they were.
 `None` is a value rather than an omission — it clears a nullable field.
 
 ```python
-    client.fax_accounts.update(account.id, default_from_e164=None)   # clears it
-    client.fax_accounts.update(account.id)                           # ValueError
+client.fax_accounts.update(account.id, default_from_e164=None)  # clears it
+client.fax_accounts.update(account.id)  # ValueError
 ```
 
 ### Deleting an account
@@ -307,15 +307,15 @@ who should see this customer's faxes and no others. That is
 `client.fax_account_users`.
 
 ```python
-    grant = client.fax_account_users.create(
-        fax_account=account.id,
-        user="0198c4a1-7081-72a3-d4a5-6f7081920314",
-    )
+grant = client.fax_account_users.create(
+    fax_account=account.id,
+    user="0198c4a1-7081-72a3-d4a5-6f7081920314",
+)
 
-    for row in client.fax_account_users.list(fax_account=account.id):
-        print(row.user_email, row.user_id)
+for row in client.fax_account_users.list(fax_account=account.id):
+    print(row.user_email, row.user_id)
 
-    client.fax_account_users.delete(grant.id)     # withdraw it
+client.fax_account_users.delete(grant.id)  # withdraw it
 ```
 
 A grant is a pair and a fact — this user, this account — and it holds no
@@ -396,8 +396,8 @@ sent as `null` here — passing it alone is the same as naming nothing.
 Switching an endpoint off keeps it and its events, and stops the fan-out:
 
 ```python
-    client.webhook_endpoints.update(endpoint.id, active=False)   # deaf, not gone
-    client.webhook_endpoints.delete(endpoint.id)                 # gone
+client.webhook_endpoints.update(endpoint.id, active=False)  # deaf, not gone
+client.webhook_endpoints.delete(endpoint.id)  # gone
 ```
 
 `delete()` stops the fan-out at once and **keeps the delivery record** — "why
@@ -408,10 +408,10 @@ on a fax-account-scoped endpoint.
 ### Rotating the secret
 
 ```python
-    rotated = client.webhook_endpoints.rotate_secret(endpoint.id)
+rotated = client.webhook_endpoints.rotate_secret(endpoint.id)
 
-    print(rotated.secret)                        # the new one, once
-    print(rotated.secret_previous_expires_at)    # when the old one stops
+print(rotated.secret)  # the new one, once
+print(rotated.secret_previous_expires_at)  # when the old one stops
 ```
 
 A rotation does not replace the secret at once. It mints a new one and starts
@@ -594,7 +594,7 @@ on a direct read** — the same asymmetry its own portal has. Ask for them
 with `include_hidden=True`, or read one by id:
 
 ```python
-    call = client.pbx.call_records.get(call_id)      # served even if hidden
+call = client.pbx.call_records.get(call_id)  # served even if hidden
 ```
 
 `call.direction` is `inbound`, `outbound` or `internal`, and
@@ -661,11 +661,13 @@ as an outside caller on an inbound call.
 ### Recordings and transcripts
 
 ```python
-    for recording in client.pbx.call_records.recordings(call.id):
-        print(recording.id, recording.duration, recording.content_type, recording.content_url)
+for recording in client.pbx.call_records.recordings(call.id):
+    print(recording.id, recording.duration, recording.content_type, recording.content_url)
 
-    for transcript in client.pbx.call_records.transcripts(call.id):
-        print(transcript.id, transcript.transcript_status)   # "available", "requested", "processing", ...
+for transcript in client.pbx.call_records.transcripts(call.id):
+    print(
+        transcript.id, transcript.transcript_status
+    )  # "available", "requested", "processing", ...
 ```
 
 Both answer every **capture** of one call — a call can have more than one,
@@ -733,17 +735,17 @@ spoke.
 #### Asking for a transcript, and reading its turns
 
 ```python
-    try:
-        asked = client.pbx.call_records.request_transcript(call.id, recording.id)
-    except (TranscriptionCappedError, TranscriptRequestLimitedError) as error:
-        print("try again in", error.retry_after, "seconds")
+try:
+    asked = client.pbx.call_records.request_transcript(call.id, recording.id)
+except (TranscriptionCappedError, TranscriptRequestLimitedError) as error:
+    print("try again in", error.retry_after, "seconds")
 
-    # later, or when the pbx.transcript.created webhook arrives:
-    transcript = client.pbx.call_records.transcript(call.id, recording.id)
-    for turn in transcript.segments or ():
-        print(turn.speaker, turn.channel, turn.start, turn.text)
-    for side in transcript.channels or ():
-        print(side.channel, side.party, side.role)   # 0 1001 caller
+# later, or when the pbx.transcript.created webhook arrives:
+transcript = client.pbx.call_records.transcript(call.id, recording.id)
+for turn in transcript.segments or ():
+    print(turn.speaker, turn.channel, turn.start, turn.text)
+for side in transcript.channels or ():
+    print(side.channel, side.party, side.role)  # 0 1001 caller
 ```
 
 Both exception classes are importable from `ringivo`. `request_transcript()`
@@ -771,13 +773,13 @@ later still. There are two ways to learn that it is ready.
 but carries no link to it. Read its `callRecordId` and ask for the media:
 
 ```python
-    event = json.loads(request.body)          # after webhooks.verify()
-    if event["type"] == "pbx.recording.created":
-        call_record_id = event["data"]["callRecordId"]
-        if call_record_id is not None:
-            recordings = client.pbx.call_records.recordings(call_record_id)
-        else:  # the call record was not written yet: find it by call id
-            page = client.pbx.call_records.list(call_id=event["data"]["callId"])
+event = json.loads(request.body)  # after webhooks.verify()
+if event["type"] == "pbx.recording.created":
+    call_record_id = event["data"]["callRecordId"]
+    if call_record_id is not None:
+        recordings = client.pbx.call_records.recordings(call_record_id)
+    else:  # the call record was not written yet: find it by call id
+        page = client.pbx.call_records.list(call_id=event["data"]["callId"])
 ```
 
 `callRecordId` and `contentType` are new in these payloads, so they are
@@ -824,9 +826,9 @@ yourself; the API derives that one for you.
 ### Click-to-dial
 
 ```python
-    placed = client.pbx.subscribers.call(subscriber.id, destination="+13025556789")
+placed = client.pbx.subscribers.call(subscriber.id, destination="+13025556789")
 
-    print(placed.id, placed.status)        # 0198c7f2-… requested
+print(placed.id, placed.status)  # 0198c7f2-… requested
 ```
 
 The phone system rings that subscriber's phone and connects it to
@@ -908,10 +910,12 @@ recorded = client.messages.record(
     to="+13215550187",
     body="Reminder: Rex is due for his rabies booster on Oct 24.",
     sender_label="Appointment reminder",
-    provider_message_id="01JC8ZA1F5T3R8C2P6M0L4JSWQ",       # your provider's id
-    provider_part_ids=["01JC8ZA1F5T3R8C2P6M0L4JSWQ"],       # every part; a one-part text names its own id
+    provider_message_id="01JC8ZA1F5T3R8C2P6M0L4JSWQ",  # your provider's id
+    provider_part_ids=[
+        "01JC8ZA1F5T3R8C2P6M0L4JSWQ"
+    ],  # every part; a one-part text names its own id
     sent_at=datetime(2026, 10, 19, 15, 2, 44, tzinfo=timezone.utc),
-    media_urls=[],                                          # up to 10 https links to attachments
+    media_urls=[],  # up to 10 https links to attachments
     mark_conversation_read=False,
 )
 recorded.id, recorded.status, recorded.replayed
@@ -961,7 +965,7 @@ or `numbers:messaging`.
 
 ```python
 page = client.inbound_messages.list(
-    number="+13215550101",                      # your number: the one it was sent TO
+    number="+13215550101",  # your number: the one it was sent TO
     received_after="2026-09-01T00:00:00Z",
 )
 for message in page:
@@ -970,7 +974,7 @@ for message in page:
 if page.next_cursor:
     page = client.inbound_messages.list(number="+13215550101", after=page.next_cursor)
 
-if page:                                        # a page can be empty
+if page:  # a page can be empty
     message = client.inbound_messages.get(page[0].id)
 ```
 
@@ -1018,12 +1022,13 @@ async def main():
         )
 
         terminal = {"delivered", "partial", "cancelled", "failed"}
-        while fax.status not in terminal:          # a rendered PDF needs one of these
+        while fax.status not in terminal:  # a rendered PDF needs one of these
             await asyncio.sleep(5)
             fax = await client.faxes.get(fax.id)
 
         if fax.status == "delivered":
             pdf = await client.faxes.media(fax.id)
+
 
 asyncio.run(main())
 ```
@@ -1044,11 +1049,12 @@ trust the body — this needs no client and no network:
 ```python
 from ringivo import SignatureVerificationError, webhooks
 
+
 @app.post("/hooks/fax")
 def receive(request):
     try:
         webhooks.verify(
-            request.body,                                  # the RAW bytes
+            request.body,  # the RAW bytes
             request.headers[webhooks.SIGNATURE_HEADER],
             secret="whsec_...",
         )
@@ -1086,30 +1092,33 @@ import json
 
 from ringivo import SignatureVerificationError, webhooks
 
+
 @app.post("/hooks/messages")
 def receive(request):
     try:
-        webhooks.verify(request.body, request.headers[webhooks.SIGNATURE_HEADER], secret="whsec_...")
+        webhooks.verify(
+            request.body, request.headers[webhooks.SIGNATURE_HEADER], secret="whsec_..."
+        )
     except SignatureVerificationError:
         return Response(status=400)
 
     payload = json.loads(request.body)
     event_type = payload.get("type") if isinstance(payload, dict) else None
 
-    if event_type in webhooks.INBOUND_MESSAGE_EVENT_TYPES:     # somebody texted one of your numbers
+    if event_type in webhooks.INBOUND_MESSAGE_EVENT_TYPES:  # somebody texted one of your numbers
         message = webhooks.parse_message_event(payload).message
         print(message.from_, "wrote to", message.to, ":", message.body)
         return Response(status=204)
 
-    if event_type in webhooks.OUTBOUND_MESSAGE_EVENT_TYPES:    # a text sent from one of your numbers
+    if event_type in webhooks.OUTBOUND_MESSAGE_EVENT_TYPES:  # a text sent from one of your numbers
         message = webhooks.parse_message_event(payload).message
         if message.source == "phone_system" and message.sent_by is not None:
             print(message.sent_by.name, "replied:", message.body)
         if event_type == "message.failed":
-            print("failed:", message.failure_cause)       # treat a cause you do not know as a failure
+            print("failed:", message.failure_cause)  # treat a cause you do not know as a failure
         return Response(status=204)
 
-    return Response(status=204)                           # not a message event: accept and ignore
+    return Response(status=204)  # not a message event: accept and ignore
 ```
 
 - **Route on `INBOUND_MESSAGE_EVENT_TYPES` and
@@ -1177,10 +1186,10 @@ from ringivo import ApiError, AuthenticationError
 try:
     client.faxes.send(fax_account=account_id, to="not-e164", file=pdf)
 except ApiError as error:
-    error.status_code        # 422
-    error.code               # "validation_failed" — the vocabulary to branch on
-    error.errors[0].detail   # "The to field format is invalid."
-    error.errors[0].source   # {"parameter": "to"}
+    error.status_code  # 422
+    error.code  # "validation_failed" — the vocabulary to branch on
+    error.errors[0].detail  # "The to field format is invalid."
+    error.errors[0].source  # {"parameter": "to"}
 ```
 
 `AuthenticationError` (a subclass) means the credential itself was refused —
@@ -1214,17 +1223,17 @@ from ringivo import ApiError, is_retryable
 try:
     client.messages.record(...)
 except ValueError:
-    queue.give_up()                             # refused before sending: fix the call
+    queue.give_up()  # refused before sending: fix the call
 except (ApiError, httpx.TransportError) as error:
     if is_retryable(error):
-        wait = getattr(error, "retry_after", None)   # seconds the server asked for, or None
+        wait = getattr(error, "retry_after", None)  # seconds the server asked for, or None
         queue.retry_later(seconds=wait or your_backoff(attempt))
     elif isinstance(error, ApiError) and error.status_code in (401, 403, 404):
         # An account setting, such as a missing scope, or recording texts not
         # turned on yet (404): retry slowly, and alert someone to fix it.
         queue.retry_later(seconds=your_slow_backoff(attempt))
     else:
-        queue.give_up()                         # 400, 409, 422: never retry unchanged
+        queue.give_up()  # 400, 409, 422: never retry unchanged
 ```
 
 `retry_after` is set from a `Retry-After` header in either of its forms;

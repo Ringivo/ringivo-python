@@ -70,7 +70,9 @@ def _client(timeout: float | httpx.Timeout = 30.0) -> AsyncRingivo:
 
 
 @pytest.mark.anyio
-async def test_record_posts_the_spec_example(respx_mock: respx.MockRouter, request_example: dict[str, Any], response_example: dict[str, Any]) -> None:
+async def test_record_posts_the_spec_example(
+    respx_mock: respx.MockRouter, request_example: dict[str, Any], response_example: dict[str, Any]
+) -> None:
     route = respx_mock.post(RECORD_URL).mock(
         return_value=httpx.Response(201, json=response_example)
     )
@@ -87,7 +89,9 @@ async def test_record_posts_the_spec_example(respx_mock: respx.MockRouter, reque
 
 
 @pytest.mark.anyio
-async def test_a_200_is_a_replay(respx_mock: respx.MockRouter, response_example: dict[str, Any]) -> None:
+async def test_a_200_is_a_replay(
+    respx_mock: respx.MockRouter, response_example: dict[str, Any]
+) -> None:
     respx_mock.post(RECORD_URL).mock(return_value=httpx.Response(200, json=response_example))
 
     async with _client() as client:
@@ -111,7 +115,9 @@ async def test_a_429_carries_retry_after(respx_mock: respx.MockRouter) -> None:
 
 
 @pytest.mark.anyio
-async def test_the_record_waits_at_least_the_floor(respx_mock: respx.MockRouter, response_example: dict[str, Any]) -> None:
+async def test_the_record_waits_at_least_the_floor(
+    respx_mock: respx.MockRouter, response_example: dict[str, Any]
+) -> None:
     route = respx_mock.post(RECORD_URL).mock(
         return_value=httpx.Response(201, json=response_example)
     )
@@ -123,7 +129,9 @@ async def test_the_record_waits_at_least_the_floor(respx_mock: respx.MockRouter,
 
 
 @pytest.mark.anyio
-async def test_an_httpx_timeout_has_its_read_raised_to_the_floor(respx_mock: respx.MockRouter, response_example: dict[str, Any]) -> None:
+async def test_an_httpx_timeout_has_its_read_raised_to_the_floor(
+    respx_mock: respx.MockRouter, response_example: dict[str, Any]
+) -> None:
     route = respx_mock.post(RECORD_URL).mock(
         return_value=httpx.Response(201, json=response_example)
     )

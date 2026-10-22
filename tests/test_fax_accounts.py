@@ -219,7 +219,9 @@ def test_a_relationship_without_linkage_is_no_customer_rather_than_a_crash(
     # A JSON:API server may answer a relationship with `links` alone. That is
     # legal, it says nothing about the account, and it must not raise.
     resource = _account_resource()
-    resource["relationships"] = {"customer": {"links": {"self": f"{ACCOUNT_URL}/relationships/customer"}}}
+    resource["relationships"] = {
+        "customer": {"links": {"self": f"{ACCOUNT_URL}/relationships/customer"}}
+    }
     respx_mock.get(ACCOUNT_URL).mock(return_value=httpx.Response(200, json={"data": resource}))
 
     with client:
@@ -448,9 +450,7 @@ def test_a_customer_that_is_not_yours_answers_on_the_relationship_pointer(
 # -- update ----------------------------------------------------------------
 
 
-def test_update_sends_only_what_was_named(
-    respx_mock: respx.MockRouter, client: Ringivo
-) -> None:
+def test_update_sends_only_what_was_named(respx_mock: respx.MockRouter, client: Ringivo) -> None:
     route = respx_mock.patch(ACCOUNT_URL).mock(
         return_value=httpx.Response(200, json={"data": _account_resource(status="suspended")})
     )

@@ -83,9 +83,7 @@ __all__ = [
 #: The events about a message sent FROM one of your numbers. All three carry
 #: the same members, and `message.failed` adds `failure.cause`. Route on this
 #: set for sent messages.
-OUTBOUND_MESSAGE_EVENT_TYPES = frozenset(
-    {"message.sent", "message.delivered", "message.failed"}
-)
+OUTBOUND_MESSAGE_EVENT_TYPES = frozenset({"message.sent", "message.delivered", "message.failed"})
 
 #: The events about a message somebody sent TO one of your numbers. Route on
 #: this set for received messages.

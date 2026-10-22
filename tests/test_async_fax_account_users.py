@@ -130,8 +130,7 @@ async def test_a_grant_id_stays_inside_its_own_path_segment(
         await client.fax_account_users.get(evil)
 
     assert (
-        route.calls.last.request.url.raw_path
-        == b"/v1/fax-account-users/..%2Ffax-accounts%2Fsecret"
+        route.calls.last.request.url.raw_path == b"/v1/fax-account-users/..%2Ffax-accounts%2Fsecret"
     )
 
 
