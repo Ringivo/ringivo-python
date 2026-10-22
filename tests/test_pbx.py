@@ -27,11 +27,15 @@ from __future__ import annotations
 import dataclasses
 import warnings
 from datetime import datetime, timedelta, timezone
-from typing import Any, Literal, cast, get_args, get_origin, get_type_hints
+from typing import Any, Literal, cast, get_args, get_origin
 
 import httpx
 import pytest
 import respx
+
+# typing_extensions', not typing's: on Python 3.10 `typing.get_type_hints`
+# hands a typing_extensions `NotRequired[...]` back unstripped.
+from typing_extensions import get_type_hints
 
 from ringivo import (
     ApiError,

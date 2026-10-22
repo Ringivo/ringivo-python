@@ -240,6 +240,63 @@ def test_a_longer_client_timeout_is_kept(respx_mock: respx.MockRouter, response_
     assert route.calls.last.request.extensions["timeout"]["read"] == 60.0
 
 
+def test_an_httpx_timeout_has_its_read_raised_to_the_floor(respx_mock: respx.MockRouter, response_example: dict[str, Any]) -> None:
+    """A client built with an `httpx.Timeout` must record, not raise a
+    `TypeError` from comparing a `Timeout` with a float. The record waits
+    for the answer, so the READ timeout is the one raised to the floor; the
+    connect, write and pool timeouts are the caller's and are kept."""
+    client = Ringivo(
+        base_url=BASE_URL,
+        client_id="cid",
+        client_secret="csecret",
+        tenant=TENANT,
+        scopes=["messages:record"],
+        timeout=httpx.Timeout(5.0, connect=2.0, write=3.0, pool=4.0),
+    )
+    route = respx_mock.post(RECORD_URL).mock(
+        return_value=httpx.Response(201, json=response_example)
+    )
+
+    client.messages.record(**_arguments())  # type: ignore[arg-type]
+
+    assert route.calls.last.request.extensions["timeout"] == {
+        "connect": 2.0,
+        "read": RECORD_MIN_TIMEOUT_SECONDS,
+        "write": 3.0,
+        "pool": 4.0,
+    }
+
+
+@pytest.mark.parametrize(
+    ("timeout", "read"),
+    [
+        (httpx.Timeout(60.0), 60.0),  # a longer read is kept
+        (httpx.Timeout(5.0, read=None), None),  # no read timeout stays none
+    ],
+)
+def test_an_httpx_timeout_keeps_a_longer_or_absent_read(
+    respx_mock: respx.MockRouter,
+    response_example: dict[str, Any],
+    timeout: httpx.Timeout,
+    read: float | None,
+) -> None:
+    client = Ringivo(
+        base_url=BASE_URL,
+        client_id="cid",
+        client_secret="csecret",
+        tenant=TENANT,
+        scopes=["messages:record"],
+        timeout=timeout,
+    )
+    route = respx_mock.post(RECORD_URL).mock(
+        return_value=httpx.Response(201, json=response_example)
+    )
+
+    client.messages.record(**_arguments())  # type: ignore[arg-type]
+
+    assert route.calls.last.request.extensions["timeout"]["read"] == read
+
+
 @pytest.mark.parametrize(
     ("overrides", "message"),
     [
@@ -251,7 +308,7 @@ def test_a_longer_client_timeout_is_kept(respx_mock: respx.MockRouter, response_
         ({"media_urls": [f"https://m.example.com/{n}.jpg" for n in range(11)]}, "at most 10"),
         ({"media_urls": ["http://m.example.com/a.jpg"]}, "https"),
         ({"media_urls": "https://m.example.com/a.jpg"}, "not one string"),
-        ({"body": None}, "body or at least one picture"),
+        ({"body": None}, "body or at least one attachment"),
         ({"sender_label": "  "}, "empty"),
         ({"sender_label": "Dana\nSmith"}, "one line"),
         ({"sender_label": "Dana Smith"}, "one line"),
@@ -334,8 +391,24 @@ def test_the_label_limit_is_the_specs(openapi_spec: dict[str, Any]) -> None:
     assert label["minLength"] == 1
 
 
-def test_the_picture_limit_is_the_specs(openapi_spec: dict[str, Any]) -> None:
+def test_the_attachment_limit_is_the_specs(openapi_spec: dict[str, Any]) -> None:
     assert _record_attributes(openapi_spec)["media"]["maxItems"] == MAX_MEDIA
+
+
+def test_the_documented_attachment_sizes_are_the_specs(openapi_spec: dict[str, Any]) -> None:
+    """The size limits are not checked here (only the API can see a link's
+    size), but they are DOCUMENTED here, so a spec that changes them must
+    fail this test instead of leaving the docstring behind."""
+    import ringivo.messages
+
+    description = openapi_spec["paths"]["/v1/outbound-messages"]["post"]["description"]
+    flat = " ".join(description.split())
+    assert "must be an attachment of at most 10 MB" in flat
+    assert "at most 20 MB of attachments together" in flat
+    assert "`text/plain` is refused" in flat
+
+    documented = " ".join((ringivo.messages.__doc__ or "").split())
+    assert "at most 10 attachments, at most 10 MB each and at most 20 MB together" in documented
 
 
 def test_the_provider_id_limits_are_the_specs(openapi_spec: dict[str, Any]) -> None:

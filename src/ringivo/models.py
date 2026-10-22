@@ -39,6 +39,8 @@ __all__ = [
     "FaxAccountUserPage",
     "FaxDocument",
     "FaxPage",
+    "InboundMessage",
+    "InboundMessagePage",
     "MediaLink",
     "MessageEvent",
     "MessageEventData",
@@ -1665,11 +1667,13 @@ class CustomerPage:
 
 @dataclass(frozen=True)
 class MessageMediaPart:
-    """One picture part of a message, DESCRIBED: there is no image and no URL.
+    """One attachment part of a message, DESCRIBED: there is no file and no URL.
 
+    An attachment is any type — a picture, a contact card, audio, a PDF.
     `byte_size` is read from the wire member `bytes` (the part's size).
     `filename` and `encoding` are null for a part the platform sent; they
-    are kept because the member exists on the wire.
+    are kept because the member exists on the wire. A received message's
+    parts carry all four.
     """
 
     content_type: str | None = None
@@ -1753,6 +1757,78 @@ class OutboundMessage:
 
 
 @dataclass(frozen=True)
+class InboundMessage:
+    """A text or picture message somebody sent to one of your numbers.
+
+    `from_` is the sender and `to` is your number. `kind` is `sms` or
+    `mms`, and is not derivable from `media`: an MMS with only a caption
+    and an SMS both arrive with a body and no attachment. `body` is None
+    for an MMS with no caption.
+
+    `media` DESCRIBES each attachment — type, filename, encoding and size —
+    and carries no file and no URL: the platform does not keep the bytes.
+    Ask your messaging provider for the file.
+
+    `received_at` is when the message was SENT, and is what the date
+    filters match; `created_at` is when the platform stored it. They differ
+    by however long a redelivery took.
+    """
+
+    id: str
+    kind: str | None = None
+    from_: str | None = None
+    to: str | None = None
+    body: str | None = None
+    media: tuple[MessageMediaPart, ...] = ()
+    received_at: datetime | None = None
+    created_at: datetime | None = None
+    updated_at: datetime | None = None
+    raw: Mapping[str, Any] = field(default_factory=dict, repr=False)
+
+    @classmethod
+    def _from_resource(cls, resource: Mapping[str, Any]) -> InboundMessage:
+        """Build from an `inbound-messages` JSON:API resource object."""
+        attributes = _mapping(resource, "attributes") or {}
+
+        return cls(
+            id=_text(resource, "id") or "",
+            kind=_text(attributes, "kind"),
+            from_=_text(attributes, "from"),
+            to=_text(attributes, "to"),
+            body=_text(attributes, "body"),
+            media=_media_parts(attributes),
+            received_at=_parse_datetime(attributes.get("receivedAt")),
+            created_at=_parse_datetime(attributes.get("createdAt")),
+            updated_at=_parse_datetime(attributes.get("updatedAt")),
+            raw=resource,
+        )
+
+
+@dataclass(frozen=True)
+class InboundMessagePage:
+    """One page of `inbound_messages.list()`, newest first.
+
+    The same shape and the same cursor rules as `FaxPage`: iterate it, and
+    pass `next_cursor` back as `after=` for the next page. None means this
+    was the last one.
+    """
+
+    messages: tuple[InboundMessage, ...] = ()
+    next_url: str | None = None
+    next_cursor: str | None = None
+    raw: Mapping[str, Any] = field(default_factory=dict, repr=False)
+
+    def __iter__(self) -> Iterator[InboundMessage]:
+        return iter(self.messages)
+
+    def __len__(self) -> int:
+        return len(self.messages)
+
+    def __getitem__(self, index: int) -> InboundMessage:
+        return self.messages[index]
+
+
+@dataclass(frozen=True)
 class MessageSender:
     """Who typed a staff reply: a kind and a display name, nothing more.
 
@@ -1771,19 +1847,27 @@ class MessageSender:
 
 @dataclass(frozen=True)
 class MessageEventData:
-    """The message a `message.sent`, `message.delivered` or `message.failed`
-    event carries — the same members on all three.
+    """The message a `message.*` event carries.
 
-    `source` and `failure_cause` are plain strings, not enums: the contract
-    says more values can be added, and a value this release does not know
-    must still reach you. Treat a `failure_cause` you do not know as a
-    failure.
+    `message.sent`, `message.delivered` and `message.failed` describe a
+    message SENT from one of your numbers, with the same members on all
+    three. `source` and `failure_cause` are plain strings, not enums: the
+    contract says more values can be added, and a value this release does
+    not know must still reach you. Treat a `failure_cause` you do not know
+    as a failure.
 
     `sent_at` and `provider_message_id` are None for a message the provider
     never accepted, and `provider_part_ids` is `()` for it. Both provider
     members are None for a message on a provider account that is not
     yours. `sent_by` is None unless `source`
     is `phone_system`.
+
+    `message.received` describes a message somebody sent TO one of your
+    numbers: `from_` is the sender, `to` is your number, `id` is its id in
+    `inbound_messages`, and `received_at` is when it was sent. The members
+    only an outbound message has — `source`, `status`, `sent_by`, `sent_at`,
+    the provider ids and `failure_cause` — are None on it, and
+    `received_at` is None on the other three.
     """
 
     id: str | None = None
@@ -1801,6 +1885,7 @@ class MessageEventData:
     provider_message_id: str | None = None
     provider_part_ids: tuple[str, ...] | None = None
     failure_cause: str | None = None
+    received_at: datetime | None = None
     raw: Mapping[str, Any] = field(default_factory=dict, repr=False)
 
     @classmethod
@@ -1824,13 +1909,15 @@ class MessageEventData:
             provider_message_id=_text(source, "providerMessageId"),
             provider_part_ids=_strings(source, "providerPartIds"),
             failure_cause=_text(failure, "cause"),
+            received_at=_parse_datetime(source.get("receivedAt")),
             raw=source,
         )
 
 
 @dataclass(frozen=True)
 class MessageEvent:
-    """One `message.sent`, `message.delivered` or `message.failed` delivery.
+    """One `message.received`, `message.sent`, `message.delivered` or
+    `message.failed` delivery.
 
     Read defensively, like every model here: a member that is missing or
     has the wrong type reads None, and the whole body stays in `raw`. A

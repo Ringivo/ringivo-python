@@ -6,17 +6,46 @@ on:
 permissions:
   contents: read
 jobs:
-  test:
+  # EVERY INTERPRETER THE PACKAGE DECLARES. pyproject.toml says
+  # `requires-python = ">=3.10"`, and a claim no job runs is a guess: before
+  # this matrix the suite ran on .python-version (3.12) alone, and on 3.10
+  # it did not even collect — `typing.get_type_hints` there leaves a
+  # typing_extensions `NotRequired[...]` unstripped. UV_PYTHON overrides
+  # .python-version for every `uv` step below. fail-fast is off so one
+  # interpreter's failure does not hide the others'.
+  test-python:
+    name: test (${{ matrix.python-version }})
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.10", "3.11", "3.12", "3.13"]
+    env:
+      UV_PYTHON: ${{ matrix.python-version }}
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v5
       - run: uv sync --locked
+      - run: uv run python -c "import sys; assert sys.version.startswith('${{ matrix.python-version }}.'), sys.version"
       - run: uv run ruff check .
       - run: uv run pyright
       - run: uv run pytest
 
-  # THE FLOORS THIS PACKAGE DECLARES, ACTUALLY INSTALLED. The job above pins
+  # THE CHECK THE `main` RULESET REQUIRES IS NAMED `test`. A matrix job
+  # reports one check per interpreter — `test (3.10)` and so on — and no
+  # check named `test` at all, so without this job every pull request would
+  # wait forever on a required check nothing reports. It passes only when
+  # every interpreter passed; `if: always()` makes it run (and fail) when
+  # one did not, rather than be skipped, since a skipped required check
+  # counts as passing.
+  test:
+    needs: test-python
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - run: test "${{ needs.test-python.result }}" = success
+
+  # THE FLOORS THIS PACKAGE DECLARES, ACTUALLY INSTALLED. `test-python` pins
   # everything to uv.lock, which records the NEWEST release that satisfied
   # each range, so a lower bound that is too low is invisible to it and to
   # every test in it. That shipped here: `typing-extensions>=4.0` while

@@ -179,7 +179,7 @@ class ClientCredentialsAuth(httpx.Auth):
         tenant: str,
         customer: str | None = None,
         scopes: Sequence[str] | None = None,
-        timeout: float = 30.0,
+        timeout: float | httpx.Timeout = 30.0,
     ) -> None:
         self._token_url = f"{base_url.rstrip('/')}{TOKEN_PATH}"
         self._client_id = client_id

@@ -281,8 +281,80 @@ MESSAGE_FAILED: dict[str, Any] = {
 }
 
 
-def test_message_event_types_are_the_three_message_events() -> None:
-    assert webhooks.MESSAGE_EVENT_TYPES == {"message.sent", "message.delivered", "message.failed"}
+def test_message_event_types_are_the_four_message_events() -> None:
+    assert webhooks.MESSAGE_EVENT_TYPES == {
+        "message.received",
+        "message.sent",
+        "message.delivered",
+        "message.failed",
+    }
+
+
+def test_every_message_event_type_is_a_webhook_the_spec_publishes(
+    openapi_spec: dict[str, Any],
+) -> None:
+    published = {name for name in openapi_spec["webhooks"] if name.startswith("message.")}
+    assert webhooks.MESSAGE_EVENT_TYPES == published
+
+
+def _received_example(spec: dict[str, Any]) -> dict[str, Any]:
+    return spec["webhooks"]["message.received"]["post"]["requestBody"]["content"][
+        "application/json"
+    ]["example"]
+
+
+def test_the_specs_message_received_example_parses(openapi_spec: dict[str, Any]) -> None:
+    payload = _received_example(openapi_spec)
+    raw = json.dumps(payload).encode()
+    webhooks.verify(raw, _header(raw, [SECRET], NOW), SECRET, now=NOW)
+
+    event = webhooks.parse_message_event(json.loads(raw))
+
+    assert event.type == "message.received"
+    assert event.event_id == payload["eventId"]
+    assert event.occurred_at == datetime(2026, 8, 16, 11, 14, 7, tzinfo=timezone.utc)
+    message = event.message
+    assert message.id == payload["data"]["id"]
+    assert message.tenant_id == payload["data"]["tenantId"]
+    assert message.customer_id == payload["data"]["customerId"]
+    assert message.kind == "mms"
+    assert message.from_ == "+13025556789"
+    assert message.to == "+14075550100"
+    assert message.body == "Here is the referral form."
+    assert message.received_at == datetime(2026, 8, 16, 11, 14, 7, tzinfo=timezone.utc)
+    (part,) = message.media
+    assert part.content_type == "image/jpeg"
+    assert part.filename == "photo.jpg"
+    assert part.encoding == "base64"
+    assert part.byte_size == 40213
+    # The members only a message SENT from your number has are absent here.
+    assert message.source is None
+    assert message.status is None
+    assert message.sent_by is None
+    assert message.sent_at is None
+    assert message.provider_message_id is None
+    assert message.provider_part_ids is None
+    assert message.failure_cause is None
+
+
+def test_an_outbound_event_has_no_received_at() -> None:
+    assert webhooks.parse_message_event(MESSAGE_SENT).message.received_at is None
+
+
+@pytest.mark.parametrize(
+    "data",
+    [
+        "not an object",
+        {"receivedAt": "not a date", "media": "x", "customerId": 7},
+        {"receivedAt": 1755331200, "media": [None, "x", {"bytes": "big"}]},
+    ],
+)
+def test_a_malformed_message_received_body_never_raises(data: Any) -> None:
+    event = webhooks.parse_message_event({"type": "message.received", "data": data})
+    assert event.type == "message.received"
+    assert event.message.received_at is None
+    assert event.message.customer_id is None
+    assert all(part.byte_size is None for part in event.message.media)
 
 
 def test_a_verified_message_sent_body_parses() -> None:

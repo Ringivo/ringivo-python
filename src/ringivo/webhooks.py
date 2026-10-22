@@ -76,9 +76,14 @@ __all__ = [
     "verify",
 ]
 
-#: The event types `parse_message_event()` reads. All three carry the same
-#: message members; `message.failed` adds `failure.cause`.
-MESSAGE_EVENT_TYPES = frozenset({"message.sent", "message.delivered", "message.failed"})
+#: The event types `parse_message_event()` reads. `message.received` is a
+#: message somebody sent TO one of your numbers; the other three are a
+#: message sent FROM one, carry the same members, and `message.failed` adds
+#: `failure.cause`. Route on `event.type`: the two directions mean different
+#: things.
+MESSAGE_EVENT_TYPES = frozenset(
+    {"message.received", "message.sent", "message.delivered", "message.failed"}
+)
 
 #: The header a delivery carries its signature in.
 SIGNATURE_HEADER = "Ringivo-Signature"
@@ -173,7 +178,8 @@ def _parse(header: str) -> tuple[int | None, tuple[str, ...]]:
 
 
 def parse_message_event(payload: Any) -> MessageEvent:
-    """Read a `message.sent`, `message.delivered` or `message.failed` body.
+    """Read a `message.received`, `message.sent`, `message.delivered` or
+    `message.failed` body.
 
     Args:
         payload: The decoded JSON body — call `verify()` on the raw bytes
@@ -183,6 +189,8 @@ def parse_message_event(payload: Any) -> MessageEvent:
     Returns:
         The event. Members that are missing or of the wrong type are None,
         and the whole body is on `raw`. Check `type` against
-        `MESSAGE_EVENT_TYPES` yourself if you route on it.
+        `MESSAGE_EVENT_TYPES` yourself if you route on it, and branch on
+        it: a `message.received` is a message somebody sent you, with
+        `message.received_at` set and the outbound members None.
     """
     return MessageEvent._from_json(payload if isinstance(payload, Mapping) else {})

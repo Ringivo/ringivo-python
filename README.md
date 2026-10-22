@@ -4,7 +4,9 @@ The Python client for the Ringivo API: send a fax, read one, list them,
 cancel one, fetch its pages, read your customers, manage their fax accounts,
 register the webhooks that tell you what happened, and verify what arrives.
 It also reads your customers' phone systems — the subscribers, their
-registrations and the call log — and places a call from one.
+registrations and the call log — and places a call from one. For text
+messaging it records a text your own system already sent, reads the texts
+sent to your numbers, and parses the `message.*` webhook events.
 
 ```
 pip install ringivo
@@ -909,7 +911,7 @@ recorded = client.messages.record(
     provider_message_id="01JC8ZA1F5T3R8C2P6M0L4JSWQ",       # your provider's id
     provider_part_ids=["01JC8ZA1F5T3R8C2P6M0L4JSWQ"],       # every part; a one-part text names its own id
     sent_at=datetime(2026, 10, 19, 15, 2, 44, tzinfo=timezone.utc),
-    media_urls=[],                                          # up to 10 https links
+    media_urls=[],                                          # up to 10 https links to attachments
     mark_conversation_read=False,
 )
 recorded.id, recorded.status, recorded.replayed
@@ -924,16 +926,23 @@ recorded.id, recorded.status, recorded.replayed
   left.
 - **The provider message id is the dedupe key.** No `Idempotency-Key` is
   sent. A repeat with the same id and the same `from`, `to`, `body` and
-  picture count answers 200 with the first record (`replayed` is True); the
-  same id with different content is a 409.
-- **Pictures are fetched during the call and never again**, so make new
+  attachment count answers 200 with the first record (`replayed` is True);
+  the same id with different content is a 409.
+- **`media_urls` links to attachments of any type**: a picture, a contact
+  card (vCard), audio, video, a PDF or any other file, copied into the staff
+  threads as you sent it. The limits are **at most 10 attachments, at most
+  10 MB each and at most 20 MB together**. The API refuses `text/plain` (put
+  the text in `body`), a SMIL layout, HTML, XML, SVG and script, by the
+  declared type and by the file's first bytes, with a 422.
+- **Attachments are fetched during the call and never again**, so make new
   presigned links for each attempt. The call can take up to 20 seconds to
   fetch them, so `record()` waits at least 25 seconds whatever the client's
-  own timeout is.
+  own timeout is. With an `httpx.Timeout`, the read timeout is raised and the
+  others are kept.
 - **Refused before any request** (`ValueError`): an empty provider id or
-  part-id list, a `sent_at` with no time zone, neither a body nor a picture,
-  more than ten links, a link that is not `https`, a label that breaks the
-  rule. None of these is worth retrying.
+  part-id list, a `sent_at` with no time zone, neither a body nor an
+  attachment, more than ten links, a link that is not `https`, a label that
+  breaks the rule. None of these is worth retrying.
 - **`mark_conversation_read=True`** marks the staff threads read — for a
   reply a person typed in your own inbox. The default leaves them as they
   were.
@@ -943,6 +952,42 @@ points; a longer text is a 422. Only a text from one of your numbers on your
 own provider account can be recorded. No `message.sent` event is raised for
 a recorded text, but its delivery reports raise `message.delivered` and
 `message.failed` with `source: recorded`.
+
+## Read the texts sent to your numbers
+
+`client.inbound_messages` reads every text and picture message somebody sent
+to one of your text-enabled numbers, newest first. It needs `numbers:read`
+or `numbers:messaging`.
+
+```python
+page = client.inbound_messages.list(
+    number="+13215550101",                      # your number: the one it was sent TO
+    received_after="2026-09-01T00:00:00Z",
+)
+for message in page:
+    print(message.from_, message.kind, message.body, message.received_at)
+
+if page.next_cursor:
+    page = client.inbound_messages.list(number="+13215550101", after=page.next_cursor)
+
+message = client.inbound_messages.get(message.id)
+```
+
+- **This is the polling half of a pair.** The other half is the
+  `message.received` webhook (see "Message events" below). Read this
+  collection to catch up on what you missed while your endpoint was down,
+  or instead of a webhook when you have no public callback URL. The event's
+  `message.id` is the id `get()` takes.
+- **Filters:** `number`, `from_`, `kind` (`sms` or `mms`),
+  `received_after`, `received_before` (both ends inclusive; a value that is
+  not a date matches nothing) and `ids` (a list). Pages walk with `after` /
+  `before` and `page_size`, as on every list here.
+- **`received_at` is when the message was sent**, and the date filters match
+  it. `created_at` is when the platform stored it.
+- **Attachments are described, never carried**: `media` holds
+  `MessageMediaPart(content_type, filename, encoding, byte_size)` and no
+  file or URL. The platform does not keep the bytes, so ask your messaging
+  provider for the file. `body` is `None` for an MMS with no caption.
 
 ## The async client
 
@@ -1030,9 +1075,10 @@ verifies, so a rotation costs you no deliveries.
 
 ## Message events
 
+`message.received` describes a text somebody sent TO one of your numbers.
 `message.sent`, `message.delivered` and `message.failed` describe a text
-sent from one of your numbers. Verify the raw body, decode it yourself, then
-parse it:
+sent FROM one of your numbers. Verify the raw body, decode it yourself, then
+parse it and branch on `event.type`:
 
 ```python
 import json
@@ -1052,6 +1098,9 @@ def receive(request):
 
     event = webhooks.parse_message_event(payload)
     message = event.message
+    if event.type == "message.received":                  # somebody texted one of your numbers
+        print(message.from_, "wrote to", message.to, ":", message.body)
+        return Response(status=204)
     if message.source == "phone_system" and message.sent_by is not None:
         print(message.sent_by.name, "replied:", message.body)
     if event.type == "message.failed":
@@ -1070,10 +1119,17 @@ def receive(request):
   **`sent_at` and `provider_message_id` are `None` and `provider_part_ids`
   is `()`**. The provider ids are set only on your own provider account; on
   any other account both are `None`.
-- **Picture parts are described, never linked**: `media` holds
+- **Since 0.21.0, `MESSAGE_EVENT_TYPES` includes `message.received`.** A
+  receiver written for 0.20.0 that reads every type in it as a sent message
+  must now branch on `event.type`, as the example above does.
+- **On `message.received`**, `message.id` is the id
+  `client.inbound_messages.get()` takes, `received_at` is when it was sent,
+  and the members only a sent message has (`source`, `status`, `sent_by`,
+  `sent_at`, the provider ids, `failure_cause`) are `None`.
+- **Attachment parts are described, never linked**: `media` holds
   `MessageMediaPart(content_type, filename, encoding, byte_size)`.
-- Deliveries are at least once, and the three events can arrive in any
-  order. Dedupe on `event.event_id`, or on the pair
+- Deliveries are at least once, and the three outbound events can arrive
+  in any order. Dedupe on `event.event_id`, or on the pair
   (`message.id`, `event.type`). Never on the message id alone: that would
   drop the `message.delivered` or `message.failed` that follows the
   `message.sent` of the same message.
@@ -1167,7 +1223,7 @@ when it is `None`, use your own backoff.
 
 | | Scope | |
 |---|---|---|
-| `Ringivo(base_url, client_id, client_secret, *, tenant, customer=None, scopes=None, timeout=30.0)` | — | The client. A context manager, or call `close()`. `tenant` is required. `scopes` is spelled as a keyword but required too — an empty one raises. |
+| `Ringivo(base_url, client_id, client_secret, *, tenant, customer=None, scopes=None, timeout=30.0)` | — | The client. A context manager, or call `close()`. `tenant` is required. `scopes` is spelled as a keyword but required too — an empty one raises. `timeout` is seconds or an `httpx.Timeout`. |
 | `AsyncRingivo(…same arguments…)` | — | The asyncio twin. An async context manager, or await `aclose()`. Every method below is awaited. |
 | `client.faxes.send(*, fax_account, to, file=…\|urls=…, …)` | `fax:write` | Send one fax. Returns the accepted `Fax`. |
 | `client.faxes.get(fax_id, *, include=None)` | `fax:read` | One fax, complete. |
@@ -1208,14 +1264,17 @@ when it is `None`, use your own backoff.
 | `client.pbx.call_records.transcript(call_record_id, recording_id)` | `pbx-call-records:read` + `pbx-transcripts:read` | One `Transcript`, with its `segments` and `channels`. A 404 `code` says whether it was not requested, is pending, or failed. |
 | `client.pbx.call_records.request_transcript(call_record_id, recording_id)` | `pbx-call-records:read` + `pbx-transcripts:write` | Ask for one capture's transcript. Returns the `requested` (202) or `available` (200) `Transcript`. Safe to repeat. |
 | `client.messages.record(*, from_, to, sender_label, provider_message_id, provider_part_ids, sent_at, body=None, media_urls=(), mark_conversation_read=False)` | `messages:record` | Record a text your own system already sent. Returns an `OutboundMessage`; `replayed` is True on a 200 repeat. |
+| `client.inbound_messages.list(*, number=None, from_=None, kind=None, received_after=None, received_before=None, ids=None, after=None, before=None, page_size=None)` | `numbers:read` or `numbers:messaging` | An `InboundMessagePage` of texts sent to your numbers, newest first: iterable, with `next_cursor`. |
+| `client.inbound_messages.get(inbound_message_id)` | `numbers:read` or `numbers:messaging` | One `InboundMessage`. A message to a number you do not carry text messaging for is a 404. |
 | `webhooks.verify(payload, header, secret, *, tolerance=300)` | — | Raises unless the body is genuine and fresh. |
-| `webhooks.parse_message_event(payload)` | — | A `MessageEvent` from a decoded `message.*` body. Never raises on content. |
+| `webhooks.parse_message_event(payload)` | — | A `MessageEvent` from a decoded `message.received`, `message.sent`, `message.delivered` or `message.failed` body. Never raises on content. |
 | `sender_label(text)` | — | A valid record label made from any text. |
 | `is_retryable(error)` | — | Whether the API's contract allows the same call again. |
 
 `CallRecord`, `CallRecordPage`, `Customer`, `CustomerPage`, `Fax`,
 `FaxAccount`, `FaxAccountNumber`, `FaxAccountPage`, `FaxAccountUser`,
-`FaxAccountUserPage`, `FaxDocument`, `FaxPage`, `MediaLink`, `MessageEvent`,
+`FaxAccountUserPage`, `FaxDocument`, `FaxPage`, `InboundMessage`,
+`InboundMessagePage`, `MediaLink`, `MessageEvent`,
 `MessageEventData`, `MessageMediaPart`, `MessageSender`, `OutboundMessage`, `PbxCall`,
 `PbxDevice`, `PbxDevicePage`, `PbxSubscriber`, `PbxSubscriberPage`, `Recording`,
 `Transcript`, `TranscriptChannel`, `TranscriptSegment`, `WebhookDelivery`, `WebhookDeliveryPage`, `WebhookEndpoint`
@@ -1230,7 +1289,8 @@ field" on `fax_accounts`, rather than "I said nothing".
 
 ### Reaching an endpoint this client does not wrap
 
-The table above is the fax, customer, webhook, phone-system and message-record surfaces.
+The table above is the fax, customer, webhook, phone-system, message-record
+and received-message surfaces.
 For anything else the API offers, use `client.request()` — the same escape
 hatch in both clients, awaited on the async one:
 

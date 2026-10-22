@@ -16,19 +16,30 @@ call files it in the conversation with your label in front of it.
 
 -- NO IDEMPOTENCY-KEY ------------------------------------------------------------
 The provider message id IS the key, by contract. A repeat with the same id
-and the same `from`, `to`, `body` and picture count answers 200 with the
+and the same `from`, `to`, `body` and attachment count answers 200 with the
 first record and stores nothing new; `OutboundMessage.replayed` is then
 True. A repeat with different content is a 409. So a retry is the same call
-with the same arguments — and NEW presigned picture links, because the
-platform fetches the pictures during the call and never fetches a link
+with the same arguments — and NEW presigned attachment links, because the
+platform fetches the attachments during the call and never fetches a link
 again.
+
+-- ATTACHMENTS ------------------------------------------------------------------
+`media_urls` links to ATTACHMENTS of any type: a picture, a contact card
+(vCard), audio, video, a PDF or any other file. Each is copied into the
+staff threads as you sent it. The API's limits: at most 10 attachments, at
+most 10 MB each and at most 20 MB together, all fetched within 20 seconds.
+It refuses `text/plain` (put the text in `body`), a SMIL layout, HTML, XML,
+SVG and script, by the declared type and by the file's own first bytes.
+Only the count and the `https` scheme are checked here — the type and the
+size are known only once the API fetches the link, so those refusals are a
+422 from the API.
 
 -- REFUSED BEFORE ANY REQUEST -----------------------------------------------------
 What the API would answer with a 422 that no retry can fix is a
 `ValueError` here instead, before a request goes out — the same rule as the
 empty-page refusal in faxes.py: an empty provider message id or part-id
-list, a `sent_at` without a time zone, a text with neither a body nor a
-picture, more than ten picture links, a link that is not `https`, and a
+list, a `sent_at` without a time zone, a text with neither a body nor an
+attachment, more than ten attachment links, a link that is not `https`, and a
 label that breaks the label rule. A `ValueError` is never worth retrying,
 and your queue should not see it as an API failure.
 
@@ -46,11 +57,13 @@ The API also limits the label, a colon, a space and the body together to
 after its own trim; a text over it is a 422.
 
 -- THE TIMEOUT -----------------------------------------------------------------
-The call fetches your pictures before it answers, for up to 20 seconds
+The call fetches your attachments before it answers, for up to 20 seconds
 together. A client built with a shorter timeout would give up on a call
-that was going to succeed, and the retry would fetch the pictures again.
+that was going to succeed, and the retry would fetch the attachments again.
 So this one call waits at least `RECORD_MIN_TIMEOUT_SECONDS`, whatever the
-client's own timeout is; a longer client timeout is kept.
+client's own timeout is; a longer client timeout is kept. A client built
+with an `httpx.Timeout` has its read timeout raised and its connect, write
+and pool timeouts kept (`_record_timeout`).
 """
 
 from __future__ import annotations
@@ -61,6 +74,8 @@ from dataclasses import replace
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Any
 from urllib.parse import urlsplit
+
+import httpx
 
 from ._generated_types import OutboundMessageRecordRequest
 from .models import OutboundMessage
@@ -81,13 +96,13 @@ __all__ = [
 #: `senderLabel.maxLength` (tests/test_messages.py reads it from the spec).
 MAX_SENDER_LABEL_CODE_POINTS = 40
 
-#: The most picture links one record may carry — the spec's `media.maxItems`.
+#: The most attachment links one record may carry — the spec's `media.maxItems`.
 MAX_MEDIA = 10
 
 #: The longest provider message id or part id — the spec's `maxLength`.
 MAX_PROVIDER_ID_LENGTH = 128
 
-#: The shortest timeout `record()` uses: the API fetches pictures for up to
+#: The shortest timeout `record()` uses: the API fetches attachments for up to
 #: 20 seconds before it answers, plus room for the record itself.
 RECORD_MIN_TIMEOUT_SECONDS = 25.0
 
@@ -240,12 +255,12 @@ def _record_body(
         raise ValueError("media_urls must be a list of links, not one string")
     links = list(media_urls)
     if len(links) > MAX_MEDIA:
-        raise ValueError(f"a record carries at most {MAX_MEDIA} pictures; got {len(links)}")
+        raise ValueError(f"a record carries at most {MAX_MEDIA} attachments; got {len(links)}")
     for index, link in enumerate(links):
         if urlsplit(link).scheme != "https" or not urlsplit(link).netloc:
             raise ValueError(f"media_urls[{index}] must be an https link")
     if not body and not links:
-        raise ValueError("a recorded text needs a body or at least one picture")
+        raise ValueError("a recorded text needs a body or at least one attachment")
     refusal = _label_refusal(sender_label)
     if refusal is not None:
         raise ValueError(refusal)
@@ -279,10 +294,28 @@ def _instant(value: datetime) -> str:
     return f"{text[:-6]}Z" if text.endswith("+00:00") else text
 
 
-def _record_timeout(client_timeout: float | None) -> float | None:
-    """The client's own timeout, raised to the floor; None (no timeout) is kept."""
+def _record_timeout(
+    client_timeout: float | httpx.Timeout | None,
+) -> float | httpx.Timeout | None:
+    """The client's own timeout, raised to the floor; None (no timeout) is kept.
+
+    A client may be built with a number or with an `httpx.Timeout`. A
+    number is one timeout for every phase and is raised as a whole. A
+    `Timeout` is raised in its READ phase only — the wait for the answer,
+    which is where the API spends its attachment fetches — and its
+    connect, write and pool timeouts stay the caller's. A read phase of
+    None (no read timeout) is kept, as a None client timeout is.
+    """
     if client_timeout is None:
         return None
+    if isinstance(client_timeout, httpx.Timeout):
+        read = client_timeout.read
+        return httpx.Timeout(
+            connect=client_timeout.connect,
+            read=None if read is None else max(read, RECORD_MIN_TIMEOUT_SECONDS),
+            write=client_timeout.write,
+            pool=client_timeout.pool,
+        )
     return max(client_timeout, RECORD_MIN_TIMEOUT_SECONDS)
 
 
@@ -327,10 +360,12 @@ class Messages:
             sent_at: When your provider accepted the text. Must carry a
                 time zone.
             body: The text as you sent it. Required unless `media_urls`
-                names a picture.
-            media_urls: Up to ten `https` links to the pictures you sent,
-                in order. Make NEW presigned links for each attempt: they
-                are fetched during this call and never again.
+                names an attachment.
+            media_urls: Up to ten `https` links to the attachments you
+                sent, in order — any type but plain text, at most 10 MB
+                each and 20 MB together (module docstring). Make NEW
+                presigned links for each attempt: they are fetched during
+                this call and never again.
             mark_conversation_read: True marks the staff threads read — for
                 a reply a person typed in your own inbox. False (the
                 default) leaves the read marks as they were.

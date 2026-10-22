@@ -31,7 +31,7 @@ test_grey_label.py::test_no_packaged_file_names_a_platform_brand_or_a_provider_h
 from __future__ import annotations
 
 import dataclasses
-import typing
+import typing_extensions
 
 from ringivo import _generated_types as generated
 from ringivo import models
@@ -125,8 +125,15 @@ def _fax_account_user_relationships() -> type:
     reference to the class itself, which makes this exact rather than
     heuristic: it is the block THIS resource declares, whatever the
     generator numbered it.
+
+    It is `typing_extensions.get_type_hints`, not `typing`'s: the generated
+    module imports `NotRequired` from typing_extensions, and on Python 3.10
+    `typing.get_type_hints` does not know that wrapper and hands it back
+    unstripped. The typing_extensions one strips it on every supported
+    interpreter (measured on 3.10: `typing`'s returned
+    `NotRequired[Relationships2]`, not the class).
     """
-    hints = typing.get_type_hints(generated.FaxAccountUserResource)
+    hints = typing_extensions.get_type_hints(generated.FaxAccountUserResource)
     block = hints.get("relationships")
     assert isinstance(block, type), (
         f"FaxAccountUserResource declares no resolvable `relationships` member "
@@ -146,7 +153,7 @@ def _fax_media_document_attributes() -> type:
     spec, so the generator numbered it (`Attributes1` at the time of
     writing), and that number moves.
     """
-    block = typing.get_type_hints(generated.FaxMediaDocumentResource).get("attributes")
+    block = typing_extensions.get_type_hints(generated.FaxMediaDocumentResource).get("attributes")
     assert isinstance(block, type), (
         f"FaxMediaDocumentResource declares no resolvable `attributes` member "
         f"(got {block!r}) — the lookup is broken, not the spec"
@@ -1363,6 +1370,25 @@ _READS: tuple[_Read, ...] = (
     _Read(models.MessageEvent, "type", generated.WebhookEventEnvelope, "type", "MessageEvent._from_json"),
     _Read(models.MessageEvent, "occurred_at", generated.WebhookEventEnvelope, "occurredAt", "MessageEvent._from_json"),
     _Read(models.MessageEvent, "message", generated.MessageSentEvent, "data", "MessageEvent._from_json"),
+    _Read(models.MessageMediaPart, "content_type", generated.InboundMessageMediaPart, "contentType", "MessageMediaPart._from_json"),
+    _Read(models.MessageMediaPart, "filename", generated.InboundMessageMediaPart, "filename", "MessageMediaPart._from_json"),
+    _Read(models.MessageMediaPart, "encoding", generated.InboundMessageMediaPart, "encoding", "MessageMediaPart._from_json"),
+    _Read(models.MessageMediaPart, "byte_size", generated.InboundMessageMediaPart, "bytes", "MessageMediaPart._from_json"),
+    _Read(models.MessageMediaPart, "content_type", generated.MessageReceivedMediaPart, "contentType", "MessageMediaPart._from_json"),
+    _Read(models.MessageMediaPart, "filename", generated.MessageReceivedMediaPart, "filename", "MessageMediaPart._from_json"),
+    _Read(models.MessageMediaPart, "encoding", generated.MessageReceivedMediaPart, "encoding", "MessageMediaPart._from_json"),
+    _Read(models.MessageMediaPart, "byte_size", generated.MessageReceivedMediaPart, "bytes", "MessageMediaPart._from_json"),
+    _Read(models.InboundMessage, "id", generated.InboundMessageResource, "id", "InboundMessage._from_resource"),
+    _Read(models.InboundMessage, "kind", generated.InboundMessageAttributes, "kind", "InboundMessage._from_resource"),
+    _Read(models.InboundMessage, "from_", generated.InboundMessageAttributes, "from", "InboundMessage._from_resource"),
+    _Read(models.InboundMessage, "to", generated.InboundMessageAttributes, "to", "InboundMessage._from_resource"),
+    _Read(models.InboundMessage, "body", generated.InboundMessageAttributes, "body", "InboundMessage._from_resource"),
+    _Read(models.InboundMessage, "media", generated.InboundMessageAttributes, "media", "InboundMessage._from_resource"),
+    _Read(models.InboundMessage, "received_at", generated.InboundMessageAttributes, "receivedAt", "InboundMessage._from_resource"),
+    _Read(models.InboundMessage, "created_at", generated.InboundMessageAttributes, "createdAt", "InboundMessage._from_resource"),
+    _Read(models.InboundMessage, "updated_at", generated.InboundMessageAttributes, "updatedAt", "InboundMessage._from_resource"),
+    _Read(models.MessageEventData, "received_at", generated.MessageReceivedEventData, "receivedAt", "MessageEventData._from_json"),
+    _Read(models.MessageEvent, "message", generated.MessageReceivedEvent, "data", "MessageEvent._from_json"),
 )
 
 # Fields a model carries that no `_from_*` classmethod reads off a generated
@@ -1395,6 +1421,7 @@ _EXCLUDED: dict[tuple[type, str], str] = {
     (models.MessageSender, "raw"): "holds the whole source mapping this object was built from",
     (models.MessageEventData, "raw"): "holds the whole source mapping this object was built from",
     (models.MessageEvent, "raw"): "holds the whole source mapping this object was built from",
+    (models.InboundMessage, "raw"): "holds the whole source mapping this object was built from",
     (models.OutboundMessage, "replayed"): (
         "read off the response STATUS in messages.py (200 is a replay, 201 is not), never off the body"
     ),
@@ -1450,6 +1477,7 @@ _MODELS: tuple[type, ...] = (
     models.MessageSender,
     models.MessageEventData,
     models.MessageEvent,
+    models.InboundMessage,
 )
 
 
@@ -1475,7 +1503,7 @@ def test_every_field_a_model_reads_is_covered_by_the_read_table() -> None:
     them, in both directions, or this whole test proves nothing about that
     model.
     """
-    assert len(_MODELS) == 22, f"only {[m.__name__ for m in _MODELS]} was searched — the sweep is broken"
+    assert len(_MODELS) == 23, f"only {[m.__name__ for m in _MODELS]} was searched — the sweep is broken"
 
     mismatches: dict[str, str] = {}
     for model in _MODELS:
@@ -1495,7 +1523,7 @@ def test_every_field_a_model_reads_is_covered_by_the_read_table() -> None:
 
 
 def test_every_field_a_model_reads_exists_in_the_generated_types() -> None:
-    assert len(_READS) == 256, f"{len(_READS)} reads were checked, not 256 — the sweep is broken"
+    assert len(_READS) == 275, f"{len(_READS)} reads were checked, not 275 — the sweep is broken"
 
     failures: list[str] = []
     for read in _READS:

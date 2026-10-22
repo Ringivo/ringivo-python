@@ -58,7 +58,7 @@ def _token(respx_mock: respx.MockRouter) -> None:
     )
 
 
-def _client(timeout: float = 30.0) -> AsyncRingivo:
+def _client(timeout: float | httpx.Timeout = 30.0) -> AsyncRingivo:
     return AsyncRingivo(
         base_url=BASE_URL,
         client_id="cid",
@@ -120,6 +120,23 @@ async def test_the_record_waits_at_least_the_floor(respx_mock: respx.MockRouter,
         await client.messages.record(**_arguments())  # type: ignore[arg-type]
 
     assert route.calls.last.request.extensions["timeout"]["read"] == RECORD_MIN_TIMEOUT_SECONDS
+
+
+@pytest.mark.anyio
+async def test_an_httpx_timeout_has_its_read_raised_to_the_floor(respx_mock: respx.MockRouter, response_example: dict[str, Any]) -> None:
+    route = respx_mock.post(RECORD_URL).mock(
+        return_value=httpx.Response(201, json=response_example)
+    )
+
+    async with _client(timeout=httpx.Timeout(5.0, connect=2.0)) as client:
+        await client.messages.record(**_arguments())  # type: ignore[arg-type]
+
+    assert route.calls.last.request.extensions["timeout"] == {
+        "connect": 2.0,
+        "read": RECORD_MIN_TIMEOUT_SECONDS,
+        "write": 5.0,
+        "pool": 5.0,
+    }
 
 
 @pytest.mark.anyio
