@@ -970,7 +970,8 @@ for message in page:
 if page.next_cursor:
     page = client.inbound_messages.list(number="+13215550101", after=page.next_cursor)
 
-message = client.inbound_messages.get(message.id)
+if page:                                        # a page can be empty
+    message = client.inbound_messages.get(page[0].id)
 ```
 
 - **This is the polling half of a pair.** The other half is the
@@ -1093,20 +1094,29 @@ def receive(request):
         return Response(status=400)
 
     payload = json.loads(request.body)
-    if not isinstance(payload, dict) or payload.get("type") not in webhooks.MESSAGE_EVENT_TYPES:
-        return Response(status=204)                       # not a message event: accept and ignore
+    event_type = payload.get("type") if isinstance(payload, dict) else None
 
-    event = webhooks.parse_message_event(payload)
-    message = event.message
-    if event.type == "message.received":                  # somebody texted one of your numbers
+    if event_type in webhooks.INBOUND_MESSAGE_EVENT_TYPES:     # somebody texted one of your numbers
+        message = webhooks.parse_message_event(payload).message
         print(message.from_, "wrote to", message.to, ":", message.body)
         return Response(status=204)
-    if message.source == "phone_system" and message.sent_by is not None:
-        print(message.sent_by.name, "replied:", message.body)
-    if event.type == "message.failed":
-        print("failed:", message.failure_cause)           # treat a cause you do not know as a failure
-    return Response(status=204)
+
+    if event_type in webhooks.OUTBOUND_MESSAGE_EVENT_TYPES:    # a text sent from one of your numbers
+        message = webhooks.parse_message_event(payload).message
+        if message.source == "phone_system" and message.sent_by is not None:
+            print(message.sent_by.name, "replied:", message.body)
+        if event_type == "message.failed":
+            print("failed:", message.failure_cause)       # treat a cause you do not know as a failure
+        return Response(status=204)
+
+    return Response(status=204)                           # not a message event: accept and ignore
 ```
+
+- **Route on `INBOUND_MESSAGE_EVENT_TYPES` and
+  `OUTBOUND_MESSAGE_EVENT_TYPES`.** The first holds `message.received`; the
+  second holds `message.sent`, `message.delivered` and `message.failed`.
+  `MESSAGE_EVENT_TYPES` is their union: it says what
+  `parse_message_event()` reads, and it is not a routing set.
 
 - **The parse never raises on content.** A member that is missing or of the
   wrong type reads `None`, and the whole body stays on `event.raw` — the
@@ -1121,7 +1131,8 @@ def receive(request):
   any other account both are `None`.
 - **Since 0.21.0, `MESSAGE_EVENT_TYPES` includes `message.received`.** A
   receiver written for 0.20.0 that reads every type in it as a sent message
-  must now branch on `event.type`, as the example above does.
+  files received texts as sent. Change it to route on
+  `OUTBOUND_MESSAGE_EVENT_TYPES` (since 0.22.0), as the example above does.
 - **On `message.received`**, `message.id` is the id
   `client.inbound_messages.get()` takes, `received_at` is when it was sent,
   and the members only a sent message has (`source`, `status`, `sent_by`,

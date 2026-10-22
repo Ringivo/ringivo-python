@@ -69,7 +69,8 @@ Webhook receivers want `ringivo.webhooks.verify()`, which needs no client
 and no network — it is pure computation, so both clients share the one.
 `ringivo.webhooks.parse_message_event()` reads a verified
 `message.received`, `message.sent`, `message.delivered` or `message.failed`
-body.
+body. Route on `webhooks.INBOUND_MESSAGE_EVENT_TYPES` (texts sent to you)
+and `webhooks.OUTBOUND_MESSAGE_EVENT_TYPES` (texts sent from you).
 
 `ringivo.is_retryable(error)` says whether the API's contract allows the
 same call again (no answer, 408, 429, 5xx); `ApiError.retry_after` says how

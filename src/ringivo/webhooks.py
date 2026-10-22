@@ -47,8 +47,10 @@ JSON, or not an object, deserves — and then hands the object to a parser:
 
     webhooks.verify(raw, request.headers[webhooks.SIGNATURE_HEADER], secret=WHSEC)
     payload = json.loads(raw)
-    if payload.get("type") in webhooks.MESSAGE_EVENT_TYPES:
-        event = webhooks.parse_message_event(payload)
+    if payload.get("type") in webhooks.INBOUND_MESSAGE_EVENT_TYPES:
+        received = webhooks.parse_message_event(payload)  # a text sent TO you
+    elif payload.get("type") in webhooks.OUTBOUND_MESSAGE_EVENT_TYPES:
+        sent = webhooks.parse_message_event(payload)      # a text sent FROM you
 
 `parse_message_event()` reads defensively, like every model in this package:
 a member that is missing or of the wrong type reads None and the whole
@@ -70,20 +72,31 @@ from .models import MessageEvent
 
 __all__ = [
     "DEFAULT_TOLERANCE_SECONDS",
+    "INBOUND_MESSAGE_EVENT_TYPES",
     "MESSAGE_EVENT_TYPES",
+    "OUTBOUND_MESSAGE_EVENT_TYPES",
     "SIGNATURE_HEADER",
     "parse_message_event",
     "verify",
 ]
 
-#: The event types `parse_message_event()` reads. `message.received` is a
-#: message somebody sent TO one of your numbers; the other three are a
-#: message sent FROM one, carry the same members, and `message.failed` adds
-#: `failure.cause`. Route on `event.type`: the two directions mean different
-#: things.
-MESSAGE_EVENT_TYPES = frozenset(
-    {"message.received", "message.sent", "message.delivered", "message.failed"}
+#: The events about a message sent FROM one of your numbers. All three carry
+#: the same members, and `message.failed` adds `failure.cause`. Route on this
+#: set for sent messages.
+OUTBOUND_MESSAGE_EVENT_TYPES = frozenset(
+    {"message.sent", "message.delivered", "message.failed"}
 )
+
+#: The events about a message somebody sent TO one of your numbers. Route on
+#: this set for received messages.
+INBOUND_MESSAGE_EVENT_TYPES = frozenset({"message.received"})
+
+#: What `parse_message_event()` reads, NOT a routing set: the union of
+#: `OUTBOUND_MESSAGE_EVENT_TYPES` and `INBOUND_MESSAGE_EVENT_TYPES`, so it
+#: holds both directions. Since 0.21.0 it includes `message.received`; a
+#: receiver that reads every type in it as a sent message files received
+#: texts as sent. Route on the two sets above, or branch on `event.type`.
+MESSAGE_EVENT_TYPES = OUTBOUND_MESSAGE_EVENT_TYPES | INBOUND_MESSAGE_EVENT_TYPES
 
 #: The header a delivery carries its signature in.
 SIGNATURE_HEADER = "Ringivo-Signature"
@@ -188,9 +201,10 @@ def parse_message_event(payload: Any) -> MessageEvent:
 
     Returns:
         The event. Members that are missing or of the wrong type are None,
-        and the whole body is on `raw`. Check `type` against
-        `MESSAGE_EVENT_TYPES` yourself if you route on it, and branch on
-        it: a `message.received` is a message somebody sent you, with
-        `message.received_at` set and the outbound members None.
+        and the whole body is on `raw`. To route, check `type` against
+        `INBOUND_MESSAGE_EVENT_TYPES` or `OUTBOUND_MESSAGE_EVENT_TYPES`,
+        never against `MESSAGE_EVENT_TYPES` alone: a `message.received` is a
+        message somebody sent you, with `message.received_at` set and the
+        outbound members None.
     """
     return MessageEvent._from_json(payload if isinstance(payload, Mapping) else {})

@@ -290,6 +290,67 @@ def test_message_event_types_are_the_four_message_events() -> None:
     }
 
 
+def test_outbound_message_event_types_are_the_three_sent_message_events() -> None:
+    assert webhooks.OUTBOUND_MESSAGE_EVENT_TYPES == {
+        "message.sent",
+        "message.delivered",
+        "message.failed",
+    }
+
+
+def test_inbound_message_event_types_are_the_received_message_event() -> None:
+    assert webhooks.INBOUND_MESSAGE_EVENT_TYPES == {"message.received"}
+
+
+def test_message_event_types_is_the_union_of_the_two_directions() -> None:
+    assert webhooks.INBOUND_MESSAGE_EVENT_TYPES.isdisjoint(webhooks.OUTBOUND_MESSAGE_EVENT_TYPES)
+    assert webhooks.MESSAGE_EVENT_TYPES == (
+        webhooks.INBOUND_MESSAGE_EVENT_TYPES | webhooks.OUTBOUND_MESSAGE_EVENT_TYPES
+    )
+
+
+def test_the_event_type_sets_cannot_be_changed_at_runtime() -> None:
+    for types in (
+        webhooks.MESSAGE_EVENT_TYPES,
+        webhooks.INBOUND_MESSAGE_EVENT_TYPES,
+        webhooks.OUTBOUND_MESSAGE_EVENT_TYPES,
+    ):
+        assert isinstance(types, frozenset)
+
+
+def test_the_event_type_sets_are_exported() -> None:
+    assert {
+        "MESSAGE_EVENT_TYPES",
+        "INBOUND_MESSAGE_EVENT_TYPES",
+        "OUTBOUND_MESSAGE_EVENT_TYPES",
+    } <= set(webhooks.__all__)
+
+
+@pytest.mark.parametrize("payload", [MESSAGE_SENT, MESSAGE_DELIVERED, MESSAGE_FAILED])
+def test_a_sent_message_event_routes_outbound_only(payload: dict[str, Any]) -> None:
+    event = webhooks.parse_message_event(payload)
+
+    assert event.type in webhooks.OUTBOUND_MESSAGE_EVENT_TYPES
+    assert event.type not in webhooks.INBOUND_MESSAGE_EVENT_TYPES
+
+
+def test_the_specs_message_received_example_routes_inbound_only(
+    openapi_spec: dict[str, Any],
+) -> None:
+    event = webhooks.parse_message_event(_received_example(openapi_spec))
+
+    assert event.type in webhooks.INBOUND_MESSAGE_EVENT_TYPES
+    assert event.type not in webhooks.OUTBOUND_MESSAGE_EVENT_TYPES
+
+
+def test_every_outbound_and_inbound_type_is_a_webhook_the_spec_publishes(
+    openapi_spec: dict[str, Any],
+) -> None:
+    published = set(openapi_spec["webhooks"])
+    assert webhooks.OUTBOUND_MESSAGE_EVENT_TYPES <= published
+    assert webhooks.INBOUND_MESSAGE_EVENT_TYPES <= published
+
+
 def test_every_message_event_type_is_a_webhook_the_spec_publishes(
     openapi_spec: dict[str, Any],
 ) -> None:

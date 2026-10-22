@@ -1387,6 +1387,14 @@ _READS: tuple[_Read, ...] = (
     _Read(models.InboundMessage, "received_at", generated.InboundMessageAttributes, "receivedAt", "InboundMessage._from_resource"),
     _Read(models.InboundMessage, "created_at", generated.InboundMessageAttributes, "createdAt", "InboundMessage._from_resource"),
     _Read(models.InboundMessage, "updated_at", generated.InboundMessageAttributes, "updatedAt", "InboundMessage._from_resource"),
+    _Read(models.MessageEventData, "id", generated.MessageReceivedEventData, "id", "MessageEventData._from_json"),
+    _Read(models.MessageEventData, "tenant_id", generated.MessageReceivedEventData, "tenantId", "MessageEventData._from_json"),
+    _Read(models.MessageEventData, "customer_id", generated.MessageReceivedEventData, "customerId", "MessageEventData._from_json"),
+    _Read(models.MessageEventData, "kind", generated.MessageReceivedEventData, "kind", "MessageEventData._from_json"),
+    _Read(models.MessageEventData, "from_", generated.MessageReceivedEventData, "from", "MessageEventData._from_json"),
+    _Read(models.MessageEventData, "to", generated.MessageReceivedEventData, "to", "MessageEventData._from_json"),
+    _Read(models.MessageEventData, "body", generated.MessageReceivedEventData, "body", "MessageEventData._from_json"),
+    _Read(models.MessageEventData, "media", generated.MessageReceivedEventData, "media", "MessageEventData._from_json"),
     _Read(models.MessageEventData, "received_at", generated.MessageReceivedEventData, "receivedAt", "MessageEventData._from_json"),
     _Read(models.MessageEvent, "message", generated.MessageReceivedEvent, "data", "MessageEvent._from_json"),
 )
@@ -1523,7 +1531,7 @@ def test_every_field_a_model_reads_is_covered_by_the_read_table() -> None:
 
 
 def test_every_field_a_model_reads_exists_in_the_generated_types() -> None:
-    assert len(_READS) == 275, f"{len(_READS)} reads were checked, not 275 — the sweep is broken"
+    assert len(_READS) == 283, f"{len(_READS)} reads were checked, not 283 — the sweep is broken"
 
     failures: list[str] = []
     for read in _READS:
@@ -1554,3 +1562,23 @@ def test_every_deliberately_unread_key_still_exists_to_be_unread() -> None:
     ]
 
     assert stale == [], "\n".join(stale)
+
+
+def test_every_member_of_the_message_received_event_is_read() -> None:
+    """The other direction, for the one event a `MessageEventData` shares
+    between two shapes: every member the spec gives `message.received` is
+    in the read table. The outbound shape is checked field by field above;
+    without this, a received-event member could be read off the outbound
+    shape only, and its loss from the received shape would pass.
+    """
+    declared = _generated_keys(generated.MessageReceivedEventData)
+    read = {
+        r.key
+        for r in _READS
+        if r.model is models.MessageEventData and r.typed_dict is generated.MessageReceivedEventData
+    }
+
+    assert len(declared) == 9, f"{sorted(declared)} — the received event's shape changed"
+    assert read == declared, (
+        f"declared but not read: {sorted(declared - read)}; read but not declared: {sorted(read - declared)}"
+    )
