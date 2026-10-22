@@ -27,7 +27,82 @@ no longer carries code for the API's v1 naming cleanup.
   `client.request(...)`.
 - **`webhooks.MESSAGE_EVENT_TYPES` removed.** Migration: use
   `webhooks.INBOUND_MESSAGE_EVENT_TYPES | webhooks.OUTBOUND_MESSAGE_EVENT_TYPES`
-  for all four types, or route on the two sets directly.
+  if you need all four type names. To route a delivery, parse it first and
+  check the class (see the next item): a check against a set does not narrow
+  the type.
+- **Message events split into one class per event type; `MessageEventData`
+  removed; `MessageEvent` is now a union.** `webhooks.parse_message_event()`
+  now returns a `MessageEvent`: one class per event type, named after it, or
+  `UnknownMessageEvent`. Each class has only its own members. The names and
+  the shapes are the same as in the TypeScript client.
+  - `MessageReceivedEvent` for `message.received`. Its `message` is a
+    `MessageReceivedEventData`, with no `source`, `status`, `sent_by`,
+    `sent_at`, `provider_message_id`, `provider_part_ids` or
+    `failure_cause`.
+  - `MessageSentEvent` for `message.sent` and `MessageDeliveredEvent` for
+    `message.delivered`. Their `message` is an `OutboundMessageEventData`,
+    with no `received_at` and no `failure_cause`.
+  - `MessageFailedEvent` for `message.failed`. Its `message` is a
+    `MessageFailedEventData`: a subclass of `OutboundMessageEventData` that
+    adds `failure_cause`.
+  - `UnknownMessageEvent` for any other body: another event type, a type
+    this release does not know, or no JSON object. Its `type` is `None` and
+    it has no `message`. The type that arrived is on `raw`, or `raw` is `{}`
+    when the body was not a JSON object. Before, such a body parsed as a
+    `MessageEvent` with every message member `None`.
+
+  `type` is a `Literal` on each class, so `event.type == "message.sent"` (and
+  each other type), `event.type is None`, `isinstance()` and `match` narrow
+  to one class in pyright. `failure_cause` is typed
+  `FailureCause | str | None`: the new `FailureCause` `Literal` and the new
+  `webhooks.FAILURE_CAUSES` `frozenset` hold the eight causes the API
+  documents today. A cause this release does not know still parses, as a
+  `str`. Treat it as a failure.
+
+  Migration:
+  - **Code that reads `event.message` without narrowing first now raises
+    `AttributeError` at run time.** An `UnknownMessageEvent` has no
+    `message`, so `{}`, `{"data": "x"}` or any type this release does not
+    know raises on `event.message`. A received message has no outbound
+    members, so `event.message.source` raises on a `message.received` body.
+    Before, both read `None`. Code with no type checker does not see this
+    until a delivery arrives. In a webhook handler it is then a 500, and the
+    platform delivers the event again. Narrow on `type` first:
+
+    ```python
+    event = webhooks.parse_message_event(payload)
+    if not isinstance(event, (MessageSentEvent, MessageDeliveredEvent, MessageFailedEvent)):
+        return  # a received text, or not a message event: accept it and ignore it
+    ```
+
+  - **`MessageEvent` is the same name with a new meaning.** It was one
+    class; it is now the type alias `MessageReceivedEvent | MessageSentEvent
+    | MessageDeliveredEvent | MessageFailedEvent | UnknownMessageEvent`. A
+    `MessageEvent` annotation still type-checks, but `event.message` on it
+    is now an error until you narrow. `isinstance(x, MessageEvent)` is now
+    true for any of the five classes. `MessageEvent(...)` no longer works:
+    build one class instead.
+  - Narrow before you read `event.message`. Replace a routing check such as
+    `if payload.get("type") in webhooks.OUTBOUND_MESSAGE_EVENT_TYPES:`
+    followed by `parse_message_event(payload).message` with a parse first,
+    then `isinstance()` or `match` on the classes.
+  - Read `failure_cause` only on a `MessageFailedEvent`. It is no longer a
+    member of a sent or delivered message.
+  - Remove every read of an outbound member on a received message, and of
+    `received_at` on a sent one: those members were always `None` there.
+  - Replace `MessageEventData` with the data class of the event you handle:
+    `OutboundMessageEventData` for a sent, delivered or failed handler (it
+    also accepts a `MessageFailedEventData`, which is a subclass), and
+    `MessageReceivedEventData` for a received one.
+
+## Unreleased — Fixed
+
+- **An id of `.` or `..` is refused before any request.** Every method that
+  puts an id in a URL path now raises `ValueError` for `""`, `.` and `..`,
+  on both clients. Before, `.` and `..` went out unchanged, and the URL rules
+  removed them: `inbound_messages.get(".")` read the list endpoint, and
+  `get("..")` read `/v1/`. The TypeScript client refuses the same three
+  values.
 
 ## Earlier upgrade notes
 

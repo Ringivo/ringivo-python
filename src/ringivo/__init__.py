@@ -69,8 +69,10 @@ Webhook receivers want `ringivo.webhooks.verify()`, which needs no client
 and no network — it is pure computation, so both clients share the one.
 `ringivo.webhooks.parse_message_event()` reads a verified
 `message.received`, `message.sent`, `message.delivered` or `message.failed`
-body. Route on `webhooks.INBOUND_MESSAGE_EVENT_TYPES` (texts sent to you)
-and `webhooks.OUTBOUND_MESSAGE_EVENT_TYPES` (texts sent from you).
+body as a `MessageEvent`: one class per event type (`MessageReceivedEvent`,
+`MessageSentEvent`, `MessageDeliveredEvent`, `MessageFailedEvent`), or
+`UnknownMessageEvent` for anything else. Branch on `event.type`,
+`isinstance()` or `match`.
 
 `ringivo.is_retryable(error)` says whether the API's contract allows the
 same call again (no answer, 408, 429, 5xx); `ApiError.retry_after` says how
@@ -117,6 +119,7 @@ from .models import (
     CallRecordPage,
     Customer,
     CustomerPage,
+    FailureCause,
     Fax,
     FaxAccount,
     FaxAccountNumber,
@@ -128,11 +131,17 @@ from .models import (
     InboundMessage,
     InboundMessagePage,
     MediaLink,
+    MessageDeliveredEvent,
     MessageEvent,
-    MessageEventData,
+    MessageFailedEvent,
+    MessageFailedEventData,
     MessageMediaPart,
+    MessageReceivedEvent,
+    MessageReceivedEventData,
     MessageSender,
+    MessageSentEvent,
     OutboundMessage,
+    OutboundMessageEventData,
     PbxCall,
     PbxDevice,
     PbxDevicePage,
@@ -142,6 +151,7 @@ from .models import (
     Transcript,
     TranscriptChannel,
     TranscriptSegment,
+    UnknownMessageEvent,
     WebhookDelivery,
     WebhookDeliveryPage,
     WebhookEndpoint,
@@ -173,6 +183,7 @@ __all__ = [
     "Customer",
     "CustomerPage",
     "Customers",
+    "FailureCause",
     "Fax",
     "FaxAccount",
     "FaxAccountNumber",
@@ -188,14 +199,20 @@ __all__ = [
     "InboundMessagePage",
     "InboundMessages",
     "MediaLink",
+    "MessageDeliveredEvent",
     "MessageEvent",
-    "MessageEventData",
+    "MessageFailedEvent",
+    "MessageFailedEventData",
     "MessageMediaPart",
+    "MessageReceivedEvent",
+    "MessageReceivedEventData",
     "MessageSender",
+    "MessageSentEvent",
     "Messages",
     "NOT_GIVEN",
     "NotGiven",
     "OutboundMessage",
+    "OutboundMessageEventData",
     "Pbx",
     "PbxCall",
     "PbxCallRecords",
@@ -215,6 +232,7 @@ __all__ = [
     "TranscriptChannel",
     "TranscriptSegment",
     "TranscriptionCappedError",
+    "UnknownMessageEvent",
     "WebhookDeliveries",
     "WebhookDelivery",
     "WebhookDeliveryPage",
