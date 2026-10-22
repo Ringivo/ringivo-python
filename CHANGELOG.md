@@ -74,6 +74,15 @@ no longer carries code for the API's v1 naming cleanup.
     `received_at` on a sent one: those members were always `None` there.
   - Replace `MessageEventData` with the data class of the event you handle.
 
+## Unreleased — Fixed
+
+- **An id of `.` or `..` is refused before any request.** Every method that
+  puts an id in a URL path now raises `ValueError` for `""`, `.` and `..`,
+  on both clients. Before, `.` and `..` went out unchanged, and the URL rules
+  removed them: `inbound_messages.get(".")` read the list endpoint, and
+  `get("..")` read `/v1/`. The TypeScript client refuses the same three
+  values.
+
 ## Earlier upgrade notes
 
 Moved here from the README unchanged; each applies to the version named.

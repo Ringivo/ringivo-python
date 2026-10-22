@@ -409,9 +409,18 @@ def _path_segment(value: str, *, noun: str = "fax") -> str:
     reaches, and a second copy of a security control is a second thing to
     get wrong — but "a fax id is required" is the wrong sentence to hand
     somebody who passed an empty fax-account id.
+
+    `.` and `..` are refused, because escaping cannot help with them: a dot
+    is an unreserved character, so `quote()` leaves it as it is, and the
+    URL rules then remove a `.` segment and remove a `..` segment with the
+    segment before it. `/v1/inbound-messages/.` reaches the list endpoint,
+    and `/v1/inbound-messages/..` reaches `/v1/`. No id is either one, so
+    the refusal happens here, before any request.
     """
     if not value:
         raise ValueError(f"a {noun} id is required")
+    if value in (".", ".."):
+        raise ValueError(f"{value!r} is not a {noun} id: it is a dot segment, not an id")
     return quote(value, safe="")
 
 
