@@ -103,10 +103,7 @@ class FaxAccountUsers:
 
         Needs `fax:read`.
         """
-        # `filter[faxAccount]`, camelCase like the relationship it filters
-        # on, since the API's v1 naming cleanup. An API from before that
-        # rename refuses it with a 400, and `_request_filtered` then asks
-        # once more as `filter[fax_account]` — the 0.15 bridge.
+        # `filter[faxAccount]`, camelCase like the relationship it filters on.
         params: dict[str, Any] = {
             "page[after]": after,
             "page[before]": before,
@@ -114,7 +111,7 @@ class FaxAccountUsers:
             "filter[faxAccount]": fax_account,
             "filter[user]": user,
         }
-        document = self._client._request_filtered("/v1/fax-account-users", params).json()
+        document = self._client.request("GET", "/v1/fax-account-users", params=params).json()
         return _page(document)
 
     def get(self, fax_account_user_id: str) -> FaxAccountUser:

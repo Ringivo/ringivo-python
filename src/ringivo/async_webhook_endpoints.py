@@ -66,7 +66,7 @@ class AsyncWebhookEndpoints:
             "filter[scopeId]": scope_id,
             "filter[active]": active,
         }
-        response = await self._client._request_filtered("/v1/webhook-endpoints", params)
+        response = await self._client.request("GET", "/v1/webhook-endpoints", params=params)
         return _page(response.json())
 
     async def get(self, webhook_endpoint_id: str) -> WebhookEndpoint:

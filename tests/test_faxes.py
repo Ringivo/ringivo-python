@@ -276,7 +276,7 @@ def test_send_with_urls_posts_flat_json_and_never_a_jsonapi_document(
             resolution="fine",
             client_reference="chart-4471",
             tags={"clinic": "north"},
-            cover_page={"to_name": "Dr Ruiz", "subject": "Records"},
+            cover_page={"toName": "Dr Ruiz", "subject": "Records"},
         )
 
     request = route.calls.last.request
@@ -313,14 +313,14 @@ def test_send_sends_tags_and_cover_page_as_json_typed_parts(
             to="+1302",
             file=b"a",
             tags={"clinic": "north"},
-            cover_page={"to_name": "Dr Ruiz"},
+            cover_page={"toName": "Dr Ruiz"},
         )
 
     body = route.calls.last.request.content.decode("utf-8", "replace")
 
     assert 'name="tags"\r\nContent-Type: application/json\r\n\r\n{"clinic": "north"}' in body
     assert 'name="coverPage"\r\nContent-Type: application/json' in body
-    # The documented snake_case cover-page keys go out camelCase.
+    # The cover-page keys go out exactly as given (camelCase).
     assert '{"toName": "Dr Ruiz"}' in body
     # A form field, not an upload: no filename, or a server reads it as a page.
     assert 'name="tags"; filename' not in body
@@ -511,6 +511,31 @@ def test_a_refused_send_carries_the_jsonapi_error_source(
 
 
 # -- list ------------------------------------------------------------------
+
+
+def test_list_sends_the_camelcase_filter_names(
+    respx_mock: respx.MockRouter, client: Ringivo
+) -> None:
+    # The API refuses a snake_case filter key with a 400, so each of these
+    # four names is pinned on the wire.
+    route = respx_mock.get(FAXES_URL).mock(return_value=httpx.Response(200, json={"data": []}))
+
+    with client:
+        client.faxes.list(
+            fax_account=ACCOUNT_ID,
+            client_reference="chart-4471",
+            created_after="2026-09-01T00:00:00Z",
+            created_before="2026-09-30T23:59:59Z",
+        )
+
+    params = route.calls.last.request.url.params
+
+    assert params["filter[faxAccount]"] == ACCOUNT_ID
+    assert params["filter[clientReference]"] == "chart-4471"
+    assert params["filter[createdAfter]"] == "2026-09-01T00:00:00Z"
+    assert params["filter[createdBefore]"] == "2026-09-30T23:59:59Z"
+    for old in ("fax_account", "client_reference", "created_after", "created_before"):
+        assert f"filter[{old}]" not in params
 
 
 def test_list_builds_the_filter_query_including_the_deep_object_tag(

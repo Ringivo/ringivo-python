@@ -29,7 +29,6 @@ from .faxes import (
     _JSON,
     _JSONAPI,
     _MAX_DOCUMENTS,
-    _cover_page_wire,
     _data_object,
     _documents,
     _fax_from_answer,
@@ -82,8 +81,7 @@ class AsyncFaxes:
             resolution: `fine` or `standard`.
             client_reference: Your own reference, echoed back on the fax.
             tags: Your own flat labels. Replaced wholesale on a write.
-            cover_page: `to_name`, `from_name`, `subject`, `message` (the
-                camelCase `toName`/`fromName` are accepted too).
+            cover_page: `toName`, `fromName`, `subject`, `message`.
             idempotency_key: Your key for this send. **A fresh UUID is
                 generated when you do not pass one**, which makes a single
                 call safe; pass your own — and reuse it — if you intend to
@@ -126,7 +124,7 @@ class AsyncFaxes:
             if tags is not None:
                 fields["tags"] = dict(tags)
             if cover_page is not None:
-                fields["coverPage"] = _cover_page_wire(cover_page)
+                fields["coverPage"] = dict(cover_page)
             fields["documents"] = list(urls)
             response = await self._client.request(
                 "POST",
@@ -143,9 +141,7 @@ class AsyncFaxes:
             if tags is not None:
                 parts.append(("tags", (None, jsonlib.dumps(dict(tags)), _JSON)))
             if cover_page is not None:
-                parts.append(
-                    ("coverPage", (None, jsonlib.dumps(_cover_page_wire(cover_page)), _JSON))
-                )
+                parts.append(("coverPage", (None, jsonlib.dumps(dict(cover_page)), _JSON)))
             for index, document in enumerate(documents):
                 parts.append(("documents[]", _upload(document, index)))
 
@@ -234,7 +230,7 @@ class AsyncFaxes:
         for name, value in (tags or {}).items():
             params[f"filter[tag][{name}]"] = value
 
-        response = await self._client._request_filtered("/v1/faxes", params)
+        response = await self._client.request("GET", "/v1/faxes", params=params)
         document = response.json()
         if not isinstance(document, Mapping):
             document = {}

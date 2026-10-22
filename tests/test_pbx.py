@@ -121,9 +121,7 @@ def _user_resource(
 
     The overrides come in as a DICT rather than as `**kwargs`, unlike the
     fax suites' builders: a `**dict[str, object]` splat would read to a type
-    checker as something that could also fill `relationships`. The kebab-case
-    attribute names that once forced the dict are gone as of 0.11.0 — every
-    member on this surface is camelCase now — but the typing reason stands.
+    checker as something that could also fill `relationships`.
     """
     merged: dict[str, object] = {
         "user": "101",
@@ -281,17 +279,14 @@ def _call_resource(*, attributes: dict[str, object] | None = None) -> dict[str, 
 def _recording_resource(
     *, resource_id: str = RECORDING_ID, attributes: dict[str, object] | None = None
 ) -> dict[str, object]:
-    """One `recordings` resource object, KEBAB-CASE attributes and all —
-    this endpoint's own spelling, unlike the camelCase call-records block.
-    """
+    """One `recordings` resource object, camelCase attributes and all."""
     merged: dict[str, object] = {
         "duration": 64,
-        "byte-size": 512000,
+        "byteSize": 512000,
         "sha256": "a" * 64,
         "superseded": False,
-        "content-url": f"{BASE_URL}/v1/pbx/recordings-content/signed-token",
-        "expires-at": "2026-09-12T15:00:00Z",
-        # Members added after the kebab-case rename: camelCase only.
+        "contentUrl": f"{BASE_URL}/v1/pbx/recordings-content/signed-token",
+        "expiresAt": "2026-09-12T15:00:00Z",
         "contentType": "audio/webm",
         "recordingStatus": "available",
         "callRecordId": CALL_RECORD_ID,
@@ -807,9 +802,7 @@ def test_call_records_list_builds_every_filter_and_the_page_query(
 
     assert request.url.path == "/v1/pbx/call-records"
     assert params["filter[customer]"] == CUSTOMER_ID
-    # EVERY filter on this resource is camelCase since 0.11.0 — the date
-    # range moved with the 0.10.0 rebuild and the rest followed it, so there
-    # is no kebab-case spelling left here to keep straight.
+    # EVERY filter on this resource is camelCase.
     assert params["filter[startedAfter]"] == "2026-09-01T00:00:00Z"
     assert params["filter[startedBefore]"] == "2026-09-30T23:59:59Z"
     assert params["filter[direction]"] == "inbound"

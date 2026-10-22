@@ -12,6 +12,8 @@ sent to your numbers, and parses the `message.*` webhook events.
 pip install ringivo
 ```
 
+Upgrade notes and breaking changes: [CHANGELOG.md](https://github.com/Ringivo/ringivo-python/blob/main/CHANGELOG.md).
+
 Python 3.10 or newer. Two runtime dependencies: `httpx`, and
 `typing-extensions` (4.10 or newer) on every supported interpreter — the
 generated types use `TypedDict(closed=True)`, which no version of the
@@ -236,14 +238,8 @@ full one.
     )
 ```
 
-Send these camelCase names. `client.request()` does not go through the
-filter-name bridge, and the API refuses the old `target_type`/`fax_account`
-body with a 422 rather than routing the number to the PBX. **The body is not
-portable across the API's v1 naming cleanup** (see "Upgrading to 0.15.x"
-below): an API that has not taken the rename reads only
-`target_type`/`fax_account`, ignores `targetType`, and routes the number to
-the customer's PBX with a 204. Check where the number routes after the
-call if you cannot be sure which API you are talking to.
+Send these camelCase names. The API refuses the old `target_type`/`fax_account`
+body with a 422 rather than routing the number to the PBX.
 
 ### Retention: two rules, either of them off
 
@@ -522,21 +518,6 @@ list of words; a word the API does not know is a 400 that names the
 accepted words. `has_devices=False` asks for the subscribers with no
 registered device. A subscriber's own devices are `subscriber.device_ids`.
 
-**Upgrading from 0.13.x:** `pbx.users` is now `pbx.subscribers`, and the
-API path `/v1/pbx/users` is gone — there is no alias. `PbxUser` is
-`PbxSubscriber`, `PbxUserPage` is `PbxSubscriberPage` and its rows are
-`page.subscribers`, and `PbxUsers`/`AsyncPbxUsers` are
-`PbxSubscribers`/`AsyncPbxSubscribers`. `get()` and `call()` take
-`subscriber_id` where they took `pbx_user_id`. Click-to-dial is
-`pbx.subscribers.call(...)`, with the same arguments. The list now returns
-machines too, so a people-only list needs `kind="user"`. The links back to a
-subscriber moved too: `PbxDevice.pbx_user_id` is `PbxDevice.subscriber_id`,
-`CallRecord.from_pbx_user_id`/`to_pbx_user_id` are
-`from_subscriber_id`/`to_subscriber_id`, and `user=` on `devices.list()`
-and `call_records.list()` is `subscriber=`. `user=` on
-`subscribers.list()` is unchanged: it is the extension. The scope is still
-`pbx-users:read`.
-
 **Every `/v1/pbx/` read is narrowed to your customers' phone systems**, and
 there is no unscoped form. A credential that reaches no customer with a
 phone system is refused with a 400 rather than handed an empty page, so
@@ -548,28 +529,6 @@ phone system is refused with a 400 rather than handed an empty page, so
 back at its subscriber as `device.subscriber_id`.
 
 ### The call log, one date range at a time
-
-**0.10.0 rebuilt this resource with no backward compatibility, 0.11.0
-renamed one member of it, and 0.12.0 renamed one value.** The console owns both decisions (one clean shape
-mattered more than a migration path), so `0.9.x`'s `vendor_type`,
-`from_user`, `from_uri`, `to_user`, `to_uri`, `dialed`, `by_user`,
-`term_user` and `tag` are all gone rather than deprecated. There is no
-argument or attribute standing in for them: reach for the extended tier
-below for the raw material they used to carry.
-
-**Upgrading from 0.11.x:** the `direction` value `onNet` is now `internal`,
-and `call_records.list(direction="onNet")` is now
-`call_records.list(direction="internal")`. The API refuses `onNet` with a
-400. The value names a call that stayed inside one domain — extension to
-extension, a call to voicemail, or a call into a conference. A call between
-two domains was never `onNet`: it arrives as two records, `outbound` on the
-caller's side and `inbound` on the called side. Nothing else moved.
-
-**Upgrading from 0.10.x:** `CallRecord.type` is now `CallRecord.direction`,
-and `call_records.list(type=...)` is now `call_records.list(direction=...)`.
-JSON:API reserves `type` for the resource object itself and forbids an
-attribute of that name, which is the defect this rename fixes. Take the
-0.11.x step above too.
 
 ```python
     page = client.pbx.call_records.list(
@@ -613,11 +572,7 @@ held; it is not itself the audio. Fetch the call's captures with
 `call.transcript_status` does the same for the transcript, and is `None`
 unless your credential holds `pbx-transcripts:read`.
 
-`call.has_recording` is **deprecated** in 0.18.0, and reading it raises a
-`DeprecationWarning`. It is `True` exactly when `recording_status` is
-`available`, so it cannot tell "on its way" from "never recorded" from
-"lost". Read `recording_status` instead. The API still serves the old
-member until a later, announced release.
+`call.has_recording` is deprecated and reading it raises a `DeprecationWarning`. Read `recording_status` instead.
 
 **A `*_number` field is E.164 or nothing.** `call.from_number`,
 `call.to_number` and `call.dialed_number` carry `+14075550101` or `None` —
@@ -696,32 +651,14 @@ it. The deprecated `transcript.status` differs from it in one case: after a
 request that ended without words, `status` is `not_requested` (you may ask
 again) and `transcript_status` is `failed`.
 
-**0.19.0 removed `transcript.provider` and `transcript.model`.** The API
-stopped sending them on 2026-10-01: which speech-to-text service made a
-transcript is not part of it. Remove every read of them. Nothing replaces
-them. The same release changed more, with the API:
-
-- **Added:** `transcript.channels`, a tuple of `TranscriptChannel` (`channel`,
-  `party`, `role`), and `segment.channel` (0 or 1). `party` is an extension
-  or an E.164 number; `role` is `caller` or `callee`, and `None` when the API
-  does not know. Which side is on which channel is NOT fixed, so read
-  `channels` and never assume channel 0 is the caller. `channels` is `None`
-  where it is not served (`transcripts()` and `request_transcript()`), `()` for
-  a one-channel (mono) recording, and only `transcript()` serves it.
-- **Removed from `Transcript`:** `ccc_id`, `byte_size`, `sha256`,
-  `content_url` and `expires_at`. The transcript download is gone: read the
-  words from `segments`. **Removed from `Recording`:** `ccc_id`.
-- **Deprecated:** `transcript.status` still works but raises a
-  `DeprecationWarning` on read. Read `transcript_status` instead. Code that
-  BUILDS a `Transcript` itself (a constructor call or `dataclasses.replace()`)
-  must pass `_status=`, not `status=`.
-- **Code that reads a removed field now fails:** `transcript.ccc_id`,
-  `transcript.content_url`, `transcript.expires_at` and `recording.ccc_id`
-  raise `AttributeError`. Remove those reads before you upgrade.
-- **Faxes:** `send()`, `cancel()`, `media_link()` and `thumbnail_link()` now
-  ask for JSON:API. `send()` and `cancel()` return a complete `Fax`, and
-  `MediaLink` gains `id`, `kind` and `content_type` (`None` when an older
-  server answers). `MediaLink.url` keeps its name.
+`transcript.channels` is a tuple of `TranscriptChannel` (`channel`, `party`,
+`role`), and `segment.channel` is 0 or 1. `party` is an extension or an E.164
+number; `role` is `caller` or `callee`, and `None` when the API does not know.
+Which side is on which channel is NOT fixed, so read `channels` and never
+assume channel 0 is the caller. `channels` is `None` where it is not served
+(`transcripts()` and `request_transcript()`), `()` for a one-channel (mono)
+recording, and only `transcript()` serves it. `transcript.status` is
+deprecated and raises a `DeprecationWarning` on read; read `transcript_status`.
 
 `transcripts()` answers one item per **recording**, not one per transcript
 that exists: a capture with no words yet still appears, as a `Transcript`
@@ -1124,8 +1061,7 @@ def receive(request):
 - **Route on `INBOUND_MESSAGE_EVENT_TYPES` and
   `OUTBOUND_MESSAGE_EVENT_TYPES`.** The first holds `message.received`; the
   second holds `message.sent`, `message.delivered` and `message.failed`.
-  `MESSAGE_EVENT_TYPES` is their union: it says what
-  `parse_message_event()` reads, and it is not a routing set.
+  `parse_message_event()` reads all four.
 
 - **The parse never raises on content.** A member that is missing or of the
   wrong type reads `None`, and the whole body stays on `event.raw` — the
@@ -1138,10 +1074,6 @@ def receive(request):
   **`sent_at` and `provider_message_id` are `None` and `provider_part_ids`
   is `()`**. The provider ids are set only on your own provider account; on
   any other account both are `None`.
-- **Since 0.21.0, `MESSAGE_EVENT_TYPES` includes `message.received`.** A
-  receiver written for 0.20.0 that reads every type in it as a sent message
-  files received texts as sent. Change it to route on
-  `OUTBOUND_MESSAGE_EVENT_TYPES` (since 0.22.0), as the example above does.
 - **On `message.received`**, `message.id` is the id
   `client.inbound_messages.get()` takes, `received_at` is when it was sent,
   and the members only a sent message has (`source`, `status`, `sent_by`,
@@ -1153,30 +1085,6 @@ def receive(request):
   (`message.id`, `event.type`). Never on the message id alone: that would
   drop the `message.delivered` or `message.failed` that follows the
   `message.sent` of the same message.
-
-## Upgrading to 0.15.x: the API's v1 naming cleanup
-
-The API renamed its last snake_case names on the resource surface to
-camelCase, with no alias. The ones this client touches are four `faxes`
-filters, the `fax-account-users` filter, two `webhook-endpoints` filters, the
-`webhook-deliveries` filter, the send acknowledgement's `clientReference` and
-`createdAt`, and the media link's `expiresAt` and `byteSize`. **Your code does
-not change:** the arguments and attributes keep their Python names
-(`fax_account=`, `created_after=`, `Fax.client_reference`,
-`MediaLink.expires_at`).
-
-**0.15.x works against the API on both sides of that deploy, so upgrade
-before it.** It asks with the new filter names; an API that has not taken
-the rename refuses them with a 400, and this client then asks once more with
-the old names and remembers which spelling worked (and switches back the same
-way when the API changes under a running process). It reads the send
-acknowledgement and the media link in either spelling. An older client stops
-filtering on the day the API is renamed: every renamed filter it sends is
-refused with a 400.
-
-**The next minor release removes the fallback** and sends the new names
-only. The raw bodies in `.raw` and anything you read through
-`client.request()` carry whatever the API sent — camelCase once it is renamed.
 
 ## When something is refused
 

@@ -73,7 +73,6 @@ from .models import MessageEvent
 __all__ = [
     "DEFAULT_TOLERANCE_SECONDS",
     "INBOUND_MESSAGE_EVENT_TYPES",
-    "MESSAGE_EVENT_TYPES",
     "OUTBOUND_MESSAGE_EVENT_TYPES",
     "SIGNATURE_HEADER",
     "parse_message_event",
@@ -88,13 +87,6 @@ OUTBOUND_MESSAGE_EVENT_TYPES = frozenset({"message.sent", "message.delivered", "
 #: The events about a message somebody sent TO one of your numbers. Route on
 #: this set for received messages.
 INBOUND_MESSAGE_EVENT_TYPES = frozenset({"message.received"})
-
-#: What `parse_message_event()` reads, NOT a routing set: the union of
-#: `OUTBOUND_MESSAGE_EVENT_TYPES` and `INBOUND_MESSAGE_EVENT_TYPES`, so it
-#: holds both directions. Since 0.21.0 it includes `message.received`; a
-#: receiver that reads every type in it as a sent message files received
-#: texts as sent. Route on the two sets above, or branch on `event.type`.
-MESSAGE_EVENT_TYPES = OUTBOUND_MESSAGE_EVENT_TYPES | INBOUND_MESSAGE_EVENT_TYPES
 
 #: The header a delivery carries its signature in.
 SIGNATURE_HEADER = "Ringivo-Signature"
@@ -200,8 +192,8 @@ def parse_message_event(payload: Any) -> MessageEvent:
     Returns:
         The event. Members that are missing or of the wrong type are None,
         and the whole body is on `raw`. To route, check `type` against
-        `INBOUND_MESSAGE_EVENT_TYPES` or `OUTBOUND_MESSAGE_EVENT_TYPES`,
-        never against `MESSAGE_EVENT_TYPES` alone: a `message.received` is a
+        `INBOUND_MESSAGE_EVENT_TYPES` or `OUTBOUND_MESSAGE_EVENT_TYPES`:
+        a `message.received` is a
         message somebody sent you, with `message.received_at` set and the
         outbound members None.
     """

@@ -1,0 +1,112 @@
+# Release notes
+
+## Unreleased — Breaking
+
+These removals are part of one clean breaking release (0.23.0). The package
+no longer carries code for the API's v1 naming cleanup.
+
+- **Filter-name bridge removed.** The client no longer retries a refused
+  filter with the old snake_case name. List calls send the camelCase names
+  only (`filter[faxAccount]`, `filter[createdAfter]`, and so on). Migration:
+  none for calls through `client.faxes`, `client.webhook_endpoints` and the
+  other wrappers; against an API from before the rename, stay on 0.22.x.
+- **`ringivo._bridge`, `Ringivo._request_filtered()` and
+  `AsyncRingivo._request_filtered()` removed.** These were private. Migration:
+  call `client.request("GET", path, params=...)` with camelCase names.
+- **Snake_case response members no longer read.** `Fax` from `send()` and
+  `cancel()` reads `clientReference` and `createdAt` only; `MediaLink` reads
+  `expiresAt` and `byteSize` only; `Recording` reads
+  `byteSize`, `contentUrl` and `expiresAt` only (not the kebab-case
+  `byte-size`, `content-url`, `expires-at`). Migration: none, unless you
+  parse raw bodies yourself; read the camelCase keys.
+- **`faxes.send(cover_page=...)` takes camelCase keys only.** `to_name` and
+  `from_name` are no longer renamed, and the API answers them with a 400
+  `unknown_member` naming `coverPage.to_name`. Applies to `faxes.send` on both
+  clients. Migration: pass `toName` and `fromName`.
+- **`Ringivo._request` and `AsyncRingivo._request` removed.** Migration: call
+  `client.request(...)`.
+- **`webhooks.MESSAGE_EVENT_TYPES` removed.** Migration: use
+  `webhooks.INBOUND_MESSAGE_EVENT_TYPES | webhooks.OUTBOUND_MESSAGE_EVENT_TYPES`
+  for all four types, or route on the two sets directly.
+
+## Earlier upgrade notes
+
+Moved here from the README unchanged; each applies to the version named.
+
+### 0.19.0
+
+**0.19.0 removed `transcript.provider` and `transcript.model`.** The API
+stopped sending them on 2026-10-01: which speech-to-text service made a
+transcript is not part of it. Remove every read of them. Nothing replaces
+them. The same release changed more, with the API:
+
+- **Added:** `transcript.channels`, a tuple of `TranscriptChannel` (`channel`,
+  `party`, `role`), and `segment.channel` (0 or 1). `party` is an extension
+  or an E.164 number; `role` is `caller` or `callee`, and `None` when the API
+  does not know. Which side is on which channel is NOT fixed, so read
+  `channels` and never assume channel 0 is the caller. `channels` is `None`
+  where it is not served (`transcripts()` and `request_transcript()`), `()` for
+  a one-channel (mono) recording, and only `transcript()` serves it.
+- **Removed from `Transcript`:** `ccc_id`, `byte_size`, `sha256`,
+  `content_url` and `expires_at`. The transcript download is gone: read the
+  words from `segments`. **Removed from `Recording`:** `ccc_id`.
+- **Deprecated:** `transcript.status` still works but raises a
+  `DeprecationWarning` on read. Read `transcript_status` instead. Code that
+  BUILDS a `Transcript` itself (a constructor call or `dataclasses.replace()`)
+  must pass `_status=`, not `status=`.
+- **Code that reads a removed field now fails:** `transcript.ccc_id`,
+  `transcript.content_url`, `transcript.expires_at` and `recording.ccc_id`
+  raise `AttributeError`. Remove those reads before you upgrade.
+- **Faxes:** `send()`, `cancel()`, `media_link()` and `thumbnail_link()` now
+  ask for JSON:API. `send()` and `cancel()` return a complete `Fax`, and
+  `MediaLink` gains `id`, `kind` and `content_type` (`None` when an older
+  server answers). `MediaLink.url` keeps its name.
+
+### 0.18.0
+
+`call.has_recording` is **deprecated** in 0.18.0, and reading it raises a
+`DeprecationWarning`. It is `True` exactly when `recording_status` is
+`available`, so it cannot tell "on its way" from "never recorded" from
+"lost". Read `recording_status` instead. The API still serves the old
+member until a later, announced release.
+
+### Upgrading from 0.13.x
+
+`pbx.users` is now `pbx.subscribers`, and the
+API path `/v1/pbx/users` is gone — there is no alias. `PbxUser` is
+`PbxSubscriber`, `PbxUserPage` is `PbxSubscriberPage` and its rows are
+`page.subscribers`, and `PbxUsers`/`AsyncPbxUsers` are
+`PbxSubscribers`/`AsyncPbxSubscribers`. `get()` and `call()` take
+`subscriber_id` where they took `pbx_user_id`. Click-to-dial is
+`pbx.subscribers.call(...)`, with the same arguments. The list now returns
+machines too, so a people-only list needs `kind="user"`. The links back to a
+subscriber moved too: `PbxDevice.pbx_user_id` is `PbxDevice.subscriber_id`,
+`CallRecord.from_pbx_user_id`/`to_pbx_user_id` are
+`from_subscriber_id`/`to_subscriber_id`, and `user=` on `devices.list()`
+and `call_records.list()` is `subscriber=`. `user=` on
+`subscribers.list()` is unchanged: it is the extension. The scope is still
+`pbx-users:read`.
+
+### 0.10.0, 0.11.0 and 0.12.0
+
+**0.10.0 rebuilt the call log (`pbx.call_records`) with no backward compatibility, 0.11.0
+renamed one member of it, and 0.12.0 renamed one value.** The console owns both decisions (one clean shape
+mattered more than a migration path), so `0.9.x`'s `vendor_type`,
+`from_user`, `from_uri`, `to_user`, `to_uri`, `dialed`, `by_user`,
+`term_user` and `tag` are all gone rather than deprecated. There is no
+argument or attribute standing in for them: reach for the extended tier
+(see "The call log" in the README) for the raw material they used to carry.
+
+**Upgrading from 0.11.x:** the `direction` value `onNet` is now `internal`,
+and `call_records.list(direction="onNet")` is now
+`call_records.list(direction="internal")`. The API refuses `onNet` with a
+400. The value names a call that stayed inside one domain — extension to
+extension, a call to voicemail, or a call into a conference. A call between
+two domains was never `onNet`: it arrives as two records, `outbound` on the
+caller's side and `inbound` on the called side. Nothing else moved.
+
+**Upgrading from 0.10.x:** `CallRecord.type` is now `CallRecord.direction`,
+and `call_records.list(type=...)` is now `call_records.list(direction=...)`.
+JSON:API reserves `type` for the resource object itself and forbids an
+attribute of that name, which is the defect this rename fixes. Take the
+0.11.x step above too.
