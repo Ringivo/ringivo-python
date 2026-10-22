@@ -27,6 +27,9 @@ from ringivo import (
     FailureCause,
     InboundMessageEvent,
     InboundMessageEventData,
+    MessageEvent,
+    MessageFailedEvent,
+    MessageFailedEventData,
     MessageSender,
     OutboundMessageEvent,
     OutboundMessageEventData,
@@ -34,7 +37,7 @@ from ringivo import (
     webhooks,
 )
 
-_Event = InboundMessageEvent | OutboundMessageEvent | UnknownMessageEvent
+_Event = InboundMessageEvent | OutboundMessageEvent | MessageFailedEvent | UnknownMessageEvent
 
 _RECEIVED: dict[str, Any] = {"type": "message.received", "data": {"id": "a"}}
 _SENT: dict[str, Any] = {"type": "message.sent", "data": {"id": "b"}}
@@ -45,7 +48,8 @@ _FAILED: dict[str, Any] = {
 _OTHER: dict[str, Any] = {"type": "fax.delivered", "data": {"id": "d"}}
 
 
-def test_the_parser_returns_the_three_variant_union() -> None:
+def test_the_parser_returns_the_message_event_union() -> None:
+    assert_type(webhooks.parse_message_event(_SENT), MessageEvent)
     assert_type(webhooks.parse_message_event(_SENT), _Event)
 
 
@@ -58,11 +62,16 @@ def _route_on_type(event: _Event) -> str:
     if event.type is None:
         assert_type(event, UnknownMessageEvent)
         return "unknown"
+    if event.type == "message.failed":
+        assert_type(event, MessageFailedEvent)
+        assert_type(event.message, MessageFailedEventData)
+        assert_type(event.message.sent_by, MessageSender | None)
+        assert_type(event.message.failure_cause, FailureCause | str | None)
+        return "failed"
     assert_type(event, OutboundMessageEvent)
-    assert_type(event.type, Literal["message.sent", "message.delivered", "message.failed"])
+    assert_type(event.type, Literal["message.sent", "message.delivered"])
     assert_type(event.message, OutboundMessageEventData)
     assert_type(event.message.sent_by, MessageSender | None)
-    assert_type(event.message.failure_cause, FailureCause | str | None)
     return "outbound"
 
 
@@ -73,6 +82,9 @@ def _route_on_isinstance(event: _Event) -> str:
     if isinstance(event, OutboundMessageEvent):
         assert_type(event.message, OutboundMessageEventData)
         return "outbound"
+    if isinstance(event, MessageFailedEvent):
+        assert_type(event.type, Literal["message.failed"])
+        return "failed"
     assert_type(event, UnknownMessageEvent)
     assert_type(event.type, None)
     return "unknown"
@@ -83,10 +95,11 @@ def _route_on_match(event: _Event) -> str:
         case InboundMessageEvent(message=message):
             assert_type(message, InboundMessageEventData)
             return "inbound"
-        case OutboundMessageEvent(type="message.failed", message=message):
+        case MessageFailedEvent(message=message):
             assert_type(message.failure_cause, FailureCause | str | None)
             return "failed"
-        case OutboundMessageEvent():
+        case OutboundMessageEvent(message=message):
+            assert_type(message, OutboundMessageEventData)
             return "outbound"
         case UnknownMessageEvent():
             return "unknown"
@@ -99,7 +112,7 @@ def _route_on_match(event: _Event) -> str:
     [
         (_RECEIVED, "inbound", "inbound", "inbound"),
         (_SENT, "outbound", "outbound", "outbound"),
-        (_FAILED, "outbound", "outbound", "failed"),
+        (_FAILED, "failed", "failed", "failed"),
         (_OTHER, "unknown", "unknown", "unknown"),
         (None, "unknown", "unknown", "unknown"),
     ],
@@ -118,7 +131,7 @@ def test_a_known_failure_cause_is_a_failure_cause_literal() -> None:
     cause: FailureCause = "opted_out"
     event = webhooks.parse_message_event(_FAILED)
 
-    assert isinstance(event, OutboundMessageEvent)
+    assert isinstance(event, MessageFailedEvent)
     assert event.message.failure_cause == cause
 
 
@@ -134,6 +147,9 @@ def _reads_pyright_must_refuse(event: _Event) -> None:
         _ = event.message.provider_message_id  # pyright: ignore[reportAttributeAccessIssue]
         _ = event.message.failure_cause  # pyright: ignore[reportAttributeAccessIssue]
     elif isinstance(event, OutboundMessageEvent):
+        _ = event.message.received_at  # pyright: ignore[reportAttributeAccessIssue]
+        _ = event.message.failure_cause  # pyright: ignore[reportAttributeAccessIssue]
+    elif isinstance(event, MessageFailedEvent):
         _ = event.message.received_at  # pyright: ignore[reportAttributeAccessIssue]
     else:
         _ = event.message  # pyright: ignore[reportAttributeAccessIssue]

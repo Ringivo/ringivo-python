@@ -69,9 +69,11 @@ Webhook receivers want `ringivo.webhooks.verify()`, which needs no client
 and no network — it is pure computation, so both clients share the one.
 `ringivo.webhooks.parse_message_event()` reads a verified
 `message.received`, `message.sent`, `message.delivered` or `message.failed`
-body as one of three variants: `InboundMessageEvent` (a text sent to you),
-`OutboundMessageEvent` (a text sent from you) or `UnknownMessageEvent`
-(anything else). Branch on `event.type` or `isinstance()`.
+body as a `MessageEvent`, one of four variants: `InboundMessageEvent` (a
+text sent to you), `OutboundMessageEvent` (a text from you was sent or
+delivered), `MessageFailedEvent` (a text from you did not arrive) or
+`UnknownMessageEvent` (anything else). Branch on `event.type`, `isinstance()`
+or `match`.
 
 `ringivo.is_retryable(error)` says whether the API's contract allows the
 same call again (no answer, 408, 429, 5xx); `ApiError.retry_after` says how
@@ -132,6 +134,9 @@ from .models import (
     InboundMessageEventData,
     InboundMessagePage,
     MediaLink,
+    MessageEvent,
+    MessageFailedEvent,
+    MessageFailedEventData,
     MessageMediaPart,
     MessageSender,
     OutboundMessage,
@@ -196,6 +201,9 @@ __all__ = [
     "InboundMessagePage",
     "InboundMessages",
     "MediaLink",
+    "MessageEvent",
+    "MessageFailedEvent",
+    "MessageFailedEventData",
     "MessageMediaPart",
     "MessageSender",
     "Messages",

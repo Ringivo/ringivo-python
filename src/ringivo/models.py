@@ -22,7 +22,7 @@ from __future__ import annotations
 from collections.abc import Iterator, Mapping
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Any, Literal, get_args
+from typing import Any, Literal, TypeAlias, get_args
 
 from typing_extensions import deprecated
 
@@ -45,6 +45,9 @@ __all__ = [
     "InboundMessageEventData",
     "InboundMessagePage",
     "MediaLink",
+    "MessageEvent",
+    "MessageFailedEvent",
+    "MessageFailedEventData",
     "MessageMediaPart",
     "MessageSender",
     "OutboundMessage",
@@ -1816,7 +1819,7 @@ class MessageSender:
 
 #: Why a sent message did not reach its recipient: the `failure.cause` of a
 #: `message.failed` event. These are the causes the API documents today.
-#: More can be added, so `OutboundMessageEventData.failure_cause` is typed
+#: More can be added, so `MessageFailedEventData.failure_cause` is typed
 #: `FailureCause | str`: a cause this release does not know still arrives,
 #: as a plain string. Treat a cause you do not know as a failure.
 FailureCause = Literal[
@@ -1830,13 +1833,11 @@ FailureCause = Literal[
     "undelivered",
 ]
 
-# The three event types a message sent FROM one of your numbers raises.
-# `webhooks.OUTBOUND_MESSAGE_EVENT_TYPES` is the public set; this tuple
-# exists so the parser can hand pyright a `Literal`, not a `str`.
-_OutboundMessageEventType = Literal["message.sent", "message.delivered", "message.failed"]
-_OUTBOUND_MESSAGE_EVENT_TYPES: tuple[_OutboundMessageEventType, ...] = get_args(
-    _OutboundMessageEventType
-)
+# The two event types that parse to `OutboundMessageEvent`. `message.failed`
+# is its own variant, `MessageFailedEvent`. This tuple exists so the parser
+# can hand pyright a `Literal`, not a `str`.
+_SentOrDeliveredType = Literal["message.sent", "message.delivered"]
+_SENT_OR_DELIVERED_TYPES: tuple[_SentOrDeliveredType, ...] = get_args(_SentOrDeliveredType)
 
 
 @dataclass(frozen=True)
@@ -1850,7 +1851,7 @@ class InboundMessageEventData:
 
     It has no members that only a sent message has (`source`, `status`,
     `sent_by`, `sent_at`, the provider ids, `failure_cause`). Code that
-    reads one of them here fails in the type checker, not at run time.
+    reads one of them here fails in the type checker before it runs.
     """
 
     id: str | None = None
@@ -1880,11 +1881,36 @@ class InboundMessageEventData:
         )
 
 
+def _outbound_message_members(source: Mapping[str, Any]) -> dict[str, Any]:
+    """The members every outbound message event carries, read once for
+    `OutboundMessageEventData` and `MessageFailedEventData`."""
+    sent_by = _mapping(source, "sentBy")
+
+    return {
+        "id": _text(source, "id"),
+        "tenant_id": _text(source, "tenantId"),
+        "customer_id": _text(source, "customerId"),
+        "source": _text(source, "source"),
+        "kind": _text(source, "kind"),
+        "from_": _text(source, "from"),
+        "to": _text(source, "to"),
+        "body": _text(source, "body"),
+        "media": _media_parts(source),
+        "status": _text(source, "status"),
+        "sent_by": MessageSender._from_json(sent_by) if sent_by is not None else None,
+        "sent_at": _parse_datetime(source.get("sentAt")),
+        "provider_message_id": _text(source, "providerMessageId"),
+        "provider_part_ids": _strings(source, "providerPartIds"),
+        "raw": source,
+    }
+
+
 @dataclass(frozen=True)
 class OutboundMessageEventData:
     """The message `message.sent`, `message.delivered` and `message.failed`
     carry: one SENT from one of your numbers, with the same members on all
-    three.
+    three. `message.failed` carries a `MessageFailedEventData`, which is
+    this plus `failure_cause`.
 
     `source` is a plain string, not an enum: the contract says more values
     can be added, and a value this release does not know must still reach
@@ -1894,11 +1920,6 @@ class OutboundMessageEventData:
     never accepted, and `provider_part_ids` is `()` for it. Both provider
     members are None for a message on a provider account that is not
     yours. `sent_by` is None unless `source` is `phone_system`.
-
-    `failure_cause` is read from `failure.cause`, and only on
-    `message.failed`; it is None on the other two. It is one of
-    `FAILURE_CAUSES`, or a string this release does not know yet: treat a
-    cause you do not know as a failure.
 
     It has no `received_at`: that is a member of a received message only.
     """
@@ -1917,32 +1938,29 @@ class OutboundMessageEventData:
     sent_at: datetime | None = None
     provider_message_id: str | None = None
     provider_part_ids: tuple[str, ...] | None = None
-    failure_cause: FailureCause | str | None = None
     raw: Mapping[str, Any] = field(default_factory=dict, repr=False)
 
     @classmethod
-    def _from_json(cls, source: Mapping[str, Any], *, failed: bool) -> OutboundMessageEventData:
-        sent_by = _mapping(source, "sentBy")
-        failure = _mapping(source, "failure") if failed else None
+    def _from_json(cls, source: Mapping[str, Any]) -> OutboundMessageEventData:
+        return cls(**_outbound_message_members(source))
 
-        return cls(
-            id=_text(source, "id"),
-            tenant_id=_text(source, "tenantId"),
-            customer_id=_text(source, "customerId"),
-            source=_text(source, "source"),
-            kind=_text(source, "kind"),
-            from_=_text(source, "from"),
-            to=_text(source, "to"),
-            body=_text(source, "body"),
-            media=_media_parts(source),
-            status=_text(source, "status"),
-            sent_by=MessageSender._from_json(sent_by) if sent_by is not None else None,
-            sent_at=_parse_datetime(source.get("sentAt")),
-            provider_message_id=_text(source, "providerMessageId"),
-            provider_part_ids=_strings(source, "providerPartIds"),
-            failure_cause=_text(failure, "cause") if failure is not None else None,
-            raw=source,
-        )
+
+@dataclass(frozen=True)
+class MessageFailedEventData(OutboundMessageEventData):
+    """The message `message.failed` carries: the sent message's members,
+    plus why it did not reach its recipient.
+
+    `failure_cause` is read from `failure.cause`. It is one of
+    `FAILURE_CAUSES`, or a string this release does not know yet: more
+    causes can be added, so treat a cause you do not know as a failure.
+    """
+
+    failure_cause: FailureCause | str | None = None
+
+    @classmethod
+    def _from_json(cls, source: Mapping[str, Any]) -> MessageFailedEventData:
+        failure = _mapping(source, "failure") or {}
+        return cls(**_outbound_message_members(source), failure_cause=_text(failure, "cause"))
 
 
 @dataclass(frozen=True)
@@ -1964,19 +1982,36 @@ class InboundMessageEvent:
 
 @dataclass(frozen=True)
 class OutboundMessageEvent:
-    """A `message.sent`, `message.delivered` or `message.failed` delivery:
-    news about a message sent from one of your numbers.
+    """A `message.sent` or `message.delivered` delivery: news about a
+    message sent from one of your numbers. `message.failed` is its own
+    variant, `MessageFailedEvent`.
 
-    `type` says which of the three it is. `message.failure_cause` is set on
-    `message.failed` only. `event_id` is the delivery's own id; dedupe on
-    it, because delivery is at least once. `raw` is the whole decoded body,
-    as it was handed to the parser.
+    `type` says which of the two it is. `event_id` is the delivery's own
+    id; dedupe on it, because delivery is at least once. `raw` is the whole
+    decoded body, as it was handed to the parser.
     """
 
-    type: _OutboundMessageEventType
+    type: _SentOrDeliveredType
     event_id: str | None = None
     occurred_at: datetime | None = None
     message: OutboundMessageEventData = field(default_factory=OutboundMessageEventData)
+    raw: Mapping[str, Any] = field(default_factory=dict, repr=False)
+
+
+@dataclass(frozen=True)
+class MessageFailedEvent:
+    """A `message.failed` delivery: a message sent from one of your numbers
+    did not reach its recipient. `message.failure_cause` says why.
+
+    `event_id` is the delivery's own id; dedupe on it, because delivery is
+    at least once. `raw` is the whole decoded body, as it was handed to the
+    parser.
+    """
+
+    type: Literal["message.failed"] = "message.failed"
+    event_id: str | None = None
+    occurred_at: datetime | None = None
+    message: MessageFailedEventData = field(default_factory=MessageFailedEventData)
     raw: Mapping[str, Any] = field(default_factory=dict, repr=False)
 
 
@@ -1985,10 +2020,10 @@ class UnknownMessageEvent:
     """A body that is not one of the four message events: another event
     type, a type this release does not know yet, or no JSON object at all.
 
-    `type` is None, so a check on `event.type` narrows the two known
-    variants cleanly. The type that arrived, if any, is `raw.get("type")`.
-    It carries no `message`, because this release does not know what such
-    a body holds. Accept the delivery and ignore it.
+    `type` is None, so a check on `event.type` narrows the known variants
+    cleanly. The type that arrived, if any, is `raw.get("type")`. It
+    carries no `message`, because this release does not know what such a
+    body holds. Accept the delivery and ignore it.
     """
 
     type: None = None
@@ -1997,9 +2032,18 @@ class UnknownMessageEvent:
     raw: Mapping[str, Any] = field(default_factory=dict, repr=False)
 
 
-def _message_event_from_json(
-    payload: Any,
-) -> InboundMessageEvent | OutboundMessageEvent | UnknownMessageEvent:
+#: What `webhooks.parse_message_event()` returns: one variant per direction,
+#: a variant of its own for `message.failed`, and `UnknownMessageEvent` for
+#: anything else. Told apart by `type`, `isinstance()` or `match`.
+#:
+#: Before 0.23.0 this name was a single class that covered all four event
+#: types. It is now this union.
+MessageEvent: TypeAlias = (
+    InboundMessageEvent | OutboundMessageEvent | MessageFailedEvent | UnknownMessageEvent
+)
+
+
+def _message_event_from_json(payload: Any) -> MessageEvent:
     """Read a decoded `message.*` webhook body as its own variant. See
     `webhooks.parse_message_event()`, which is the public door.
 
@@ -2015,22 +2059,27 @@ def _message_event_from_json(
 
     if event_type == "message.received":
         return InboundMessageEvent(
-            type="message.received",
             event_id=event_id,
             occurred_at=occurred_at,
             message=InboundMessageEventData._from_json(data),
             raw=source,
         )
 
-    for outbound_type in _OUTBOUND_MESSAGE_EVENT_TYPES:
-        if event_type == outbound_type:
+    if event_type == "message.failed":
+        return MessageFailedEvent(
+            event_id=event_id,
+            occurred_at=occurred_at,
+            message=MessageFailedEventData._from_json(data),
+            raw=source,
+        )
+
+    for sent_or_delivered in _SENT_OR_DELIVERED_TYPES:
+        if event_type == sent_or_delivered:
             return OutboundMessageEvent(
-                type=outbound_type,
+                type=sent_or_delivered,
                 event_id=event_id,
                 occurred_at=occurred_at,
-                message=OutboundMessageEventData._from_json(
-                    data, failed=outbound_type == "message.failed"
-                ),
+                message=OutboundMessageEventData._from_json(data),
                 raw=source,
             )
 

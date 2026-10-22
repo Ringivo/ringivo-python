@@ -1022,12 +1022,14 @@ verifies, so a rotation costs you no deliveries.
 `message.received` describes a text somebody sent TO one of your numbers.
 `message.sent`, `message.delivered` and `message.failed` describe a text
 sent FROM one of your numbers. Verify the raw body, decode it yourself, then
-parse it. `parse_message_event()` returns one of three variants:
+parse it. `parse_message_event()` returns a `MessageEvent`, which is one of
+four variants:
 
 | Variant | `type` | `message` |
 |---|---|---|
 | `InboundMessageEvent` | `"message.received"` | `InboundMessageEventData` |
-| `OutboundMessageEvent` | `"message.sent"`, `"message.delivered"` or `"message.failed"` | `OutboundMessageEventData` |
+| `OutboundMessageEvent` | `"message.sent"` or `"message.delivered"` | `OutboundMessageEventData` |
+| `MessageFailedEvent` | `"message.failed"` | `MessageFailedEventData`: the outbound members plus `failure_cause` |
 | `UnknownMessageEvent` | `None` | none: it has no `message` member |
 
 ```python
@@ -1035,6 +1037,7 @@ import json
 
 from ringivo import (
     InboundMessageEvent,
+    MessageFailedEvent,
     OutboundMessageEvent,
     SignatureVerificationError,
     UnknownMessageEvent,
@@ -1056,11 +1059,11 @@ def receive(request):
     match event:
         case InboundMessageEvent(message=message):  # somebody texted one of your numbers
             print(message.from_, "wrote to", message.to, ":", message.body)
-        case OutboundMessageEvent(message=message):  # a text sent from one of your numbers
+        case OutboundMessageEvent(message=message):  # a text from you was sent or delivered
             if message.source == "phone_system" and message.sent_by is not None:
                 print(message.sent_by.name, "replied:", message.body)
-            if event.type == "message.failed":
-                print("failed:", message.failure_cause)  # an unknown cause is still a failure
+        case MessageFailedEvent(message=message):  # a text from you did not arrive
+            print("failed:", message.failure_cause)  # an unknown cause is still a failure
         case UnknownMessageEvent():
             pass  # not a message event: accept it and ignore it
 
@@ -1069,12 +1072,16 @@ def receive(request):
 
 - **Each variant has only its own members.** `InboundMessageEventData` has
   no `source`, `status`, `sent_by`, `sent_at`, provider ids or
-  `failure_cause`; `OutboundMessageEventData` has no `received_at`. Code
-  that reads `sent_by` off a received text fails in the type checker, so it
-  cannot take a customer's text for a staff reply.
+  `failure_cause`. `OutboundMessageEventData` has no `received_at` and no
+  `failure_cause`. `MessageFailedEventData` is a subclass of
+  `OutboundMessageEventData` that adds `failure_cause`. Code that reads
+  `sent_by` off a received text fails in the type checker, so it cannot
+  take a customer's text for a staff reply.
 - **Narrow on `type`, `isinstance()` or `match`.** `type` is a `Literal`, so
   `if event.type == "message.received":` narrows to `InboundMessageEvent`,
-  and `if event.type is None:` narrows to `UnknownMessageEvent`.
+  `if event.type == "message.failed":` narrows to `MessageFailedEvent`, and
+  `if event.type is None:` narrows to `UnknownMessageEvent`. Annotate a
+  handler that takes any of them with `MessageEvent`.
   `INBOUND_MESSAGE_EVENT_TYPES` and `OUTBOUND_MESSAGE_EVENT_TYPES` still
   hold the type names, but a check against a set does not narrow.
 - **An unknown `type` is not an error.** Another event, a message event this
@@ -1085,7 +1092,7 @@ def receive(request):
   wrong type reads `None`, and the whole body stays on `event.raw` — the
   same rule as every model here. Decide for yourself which `None` you
   cannot work without (for example, no `message.provider_message_id`).
-- **`failure_cause` is set on `message.failed` only**, from
+- **`failure_cause` is a member of `message.failed` only**, read from
   `failure.cause`. It is typed `FailureCause | str | None`: `FailureCause`
   is a `Literal` of the causes the API documents today, and
   `webhooks.FAILURE_CAUSES` is the same values as a `frozenset`. The API
@@ -1218,7 +1225,7 @@ when it is `None`, use your own backoff.
 | `client.inbound_messages.list(*, number=None, from_=None, kind=None, received_after=None, received_before=None, ids=None, after=None, before=None, page_size=None)` | `numbers:read` or `numbers:messaging` | An `InboundMessagePage` of texts sent to your numbers, newest first: iterable, with `next_cursor`. |
 | `client.inbound_messages.get(inbound_message_id)` | `numbers:read` or `numbers:messaging` | One `InboundMessage`. A message to a number you do not carry text messaging for is a 404. |
 | `webhooks.verify(payload, header, secret, *, tolerance=300)` | — | Raises unless the body is genuine and fresh. |
-| `webhooks.parse_message_event(payload)` | — | An `InboundMessageEvent` (`message.received`), an `OutboundMessageEvent` (`message.sent`, `message.delivered`, `message.failed`) or an `UnknownMessageEvent` (anything else) from a decoded body. Never raises on content. |
+| `webhooks.parse_message_event(payload)` | — | A `MessageEvent` from a decoded body: an `InboundMessageEvent` (`message.received`), an `OutboundMessageEvent` (`message.sent`, `message.delivered`), a `MessageFailedEvent` (`message.failed`) or an `UnknownMessageEvent` (anything else). Never raises on content. |
 | `sender_label(text)` | — | A valid record label made from any text. |
 | `is_retryable(error)` | — | Whether the API's contract allows the same call again. |
 
@@ -1226,7 +1233,8 @@ when it is `None`, use your own backoff.
 `FaxAccount`, `FaxAccountNumber`, `FaxAccountPage`, `FaxAccountUser`,
 `FaxAccountUserPage`, `FaxDocument`, `FaxPage`, `InboundMessage`,
 `InboundMessageEvent`, `InboundMessageEventData`, `InboundMessagePage`,
-`MediaLink`, `MessageMediaPart`, `MessageSender`, `OutboundMessage`,
+`MediaLink`, `MessageFailedEvent`, `MessageFailedEventData`,
+`MessageMediaPart`, `MessageSender`, `OutboundMessage`,
 `OutboundMessageEvent`, `OutboundMessageEventData`, `PbxCall`,
 `PbxDevice`, `PbxDevicePage`, `PbxSubscriber`, `PbxSubscriberPage`, `Recording`,
 `Transcript`, `TranscriptChannel`, `TranscriptSegment`, `UnknownMessageEvent`,

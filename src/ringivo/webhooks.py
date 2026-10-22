@@ -49,7 +49,9 @@ JSON, or not an object, deserves — and then hands the object to a parser:
     event = webhooks.parse_message_event(json.loads(raw))
     if event.type == "message.received":   # a text sent TO you: InboundMessageEvent
         ...
-    elif event.type is not None:            # a text sent FROM you: OutboundMessageEvent
+    elif event.type == "message.failed":   # a text from you did not arrive: MessageFailedEvent
+        ...
+    elif event.type is not None:            # sent or delivered: OutboundMessageEvent
         ...
     # else: not a message event (UnknownMessageEvent). Accept it and ignore it.
 
@@ -76,9 +78,7 @@ from typing import Any, get_args
 from .errors import SignatureVerificationError
 from .models import (
     FailureCause,
-    InboundMessageEvent,
-    OutboundMessageEvent,
-    UnknownMessageEvent,
+    MessageEvent,
     _message_event_from_json,
 )
 
@@ -93,8 +93,9 @@ __all__ = [
 ]
 
 #: The events about a message sent FROM one of your numbers. All three carry
-#: the same members, and `message.failed` adds `failure.cause`. Each parses
-#: to an `OutboundMessageEvent`.
+#: the same members, and `message.failed` adds `failure.cause`. `message.sent`
+#: and `message.delivered` parse to an `OutboundMessageEvent`, and
+#: `message.failed` to a `MessageFailedEvent`.
 OUTBOUND_MESSAGE_EVENT_TYPES = frozenset({"message.sent", "message.delivered", "message.failed"})
 
 #: The events about a message somebody sent TO one of your numbers. Each
@@ -198,9 +199,7 @@ def _parse(header: str) -> tuple[int | None, tuple[str, ...]]:
     return timestamp, tuple(candidates)
 
 
-def parse_message_event(
-    payload: Any,
-) -> InboundMessageEvent | OutboundMessageEvent | UnknownMessageEvent:
+def parse_message_event(payload: Any) -> MessageEvent:
     """Read a decoded `message.received`, `message.sent`, `message.delivered`
     or `message.failed` body.
 
@@ -209,12 +208,15 @@ def parse_message_event(
             first.
 
     Returns:
-        One variant, told apart by `type`:
+        A `MessageEvent`: one variant, told apart by `type`:
 
         - `InboundMessageEvent` for `message.received`, a message somebody
           sent to one of your numbers;
-        - `OutboundMessageEvent` for `message.sent`, `message.delivered` and
-          `message.failed`, a message sent from one of your numbers;
+        - `OutboundMessageEvent` for `message.sent` and `message.delivered`,
+          news about a message sent from one of your numbers;
+        - `MessageFailedEvent` for `message.failed`, a message sent from one
+          of your numbers that did not reach its recipient, with
+          `message.failure_cause`;
         - `UnknownMessageEvent`, whose `type` is None, for anything else:
           another event, a type this release does not know yet, or no JSON
           object at all. The type that arrived is on `raw`.

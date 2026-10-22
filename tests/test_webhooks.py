@@ -34,6 +34,9 @@ from ringivo import (
     FailureCause,
     InboundMessageEvent,
     InboundMessageEventData,
+    MessageEvent,
+    MessageFailedEvent,
+    MessageFailedEventData,
     OutboundMessageEvent,
     OutboundMessageEventData,
     SignatureVerificationError,
@@ -337,16 +340,30 @@ def test_the_variants_are_exported_and_the_shared_shape_is_gone() -> None:
         "FailureCause",
         "InboundMessageEvent",
         "InboundMessageEventData",
+        "MessageEvent",
+        "MessageFailedEvent",
+        "MessageFailedEventData",
         "OutboundMessageEvent",
         "OutboundMessageEventData",
         "UnknownMessageEvent",
     }
     assert names <= set(ringivo.__all__)
     assert names <= set(models.__all__)
-    for gone in ("MessageEvent", "MessageEventData"):
-        assert gone not in ringivo.__all__
-        assert not hasattr(ringivo, gone)
-        assert not hasattr(models, gone)
+    assert "MessageEventData" not in ringivo.__all__
+    assert not hasattr(ringivo, "MessageEventData")
+    assert not hasattr(models, "MessageEventData")
+
+
+def test_message_event_is_now_the_union_of_the_variants() -> None:
+    """The name `MessageEvent` was one class before 0.23.0. It is now the
+    union `parse_message_event()` returns, the same as the TypeScript client.
+    """
+    assert set(get_args(MessageEvent)) == {
+        InboundMessageEvent,
+        OutboundMessageEvent,
+        MessageFailedEvent,
+        UnknownMessageEvent,
+    }
 
 
 def _field_names(model: type) -> set[str]:
@@ -361,28 +378,42 @@ def test_each_variant_carries_only_its_own_members() -> None:
     envelope = {"type", "event_id", "occurred_at", "raw"}
     assert _field_names(InboundMessageEvent) == envelope | {"message"}
     assert _field_names(OutboundMessageEvent) == envelope | {"message"}
+    assert _field_names(MessageFailedEvent) == envelope | {"message"}
     assert _field_names(UnknownMessageEvent) == envelope
 
     shared = {"id", "tenant_id", "customer_id", "kind", "from_", "to", "body", "media", "raw"}
     assert _field_names(InboundMessageEventData) == shared | {"received_at"}
-    assert _field_names(OutboundMessageEventData) == shared | {
+    outbound = shared | {
         "source",
         "status",
         "sent_by",
         "sent_at",
         "provider_message_id",
         "provider_part_ids",
-        "failure_cause",
     }
+    assert _field_names(OutboundMessageEventData) == outbound
+    assert _field_names(MessageFailedEventData) == outbound | {"failure_cause"}
+    assert issubclass(MessageFailedEventData, OutboundMessageEventData)
 
 
-@pytest.mark.parametrize("payload", [MESSAGE_SENT, MESSAGE_DELIVERED, MESSAGE_FAILED])
-def test_a_sent_message_event_parses_as_outbound(payload: dict[str, Any]) -> None:
+@pytest.mark.parametrize("payload", [MESSAGE_SENT, MESSAGE_DELIVERED])
+def test_a_sent_or_delivered_event_parses_as_outbound(payload: dict[str, Any]) -> None:
     event = webhooks.parse_message_event(payload)
 
     assert isinstance(event, OutboundMessageEvent)
     assert event.type == payload["type"]
     assert event.type in webhooks.OUTBOUND_MESSAGE_EVENT_TYPES
+    assert not hasattr(event.message, "received_at")
+    assert not hasattr(event.message, "failure_cause")
+
+
+def test_a_failed_event_parses_as_its_own_variant() -> None:
+    event = webhooks.parse_message_event(MESSAGE_FAILED)
+
+    assert isinstance(event, MessageFailedEvent)
+    assert event.type == "message.failed"
+    assert event.type in webhooks.OUTBOUND_MESSAGE_EVENT_TYPES
+    assert isinstance(event.message, MessageFailedEventData)
     assert not hasattr(event.message, "received_at")
 
 
@@ -505,7 +536,6 @@ def test_a_verified_message_sent_body_parses() -> None:
     assert message.sent_at == datetime(2026, 10, 19, 15, 6, 1, tzinfo=timezone.utc)
     assert message.provider_message_id == "01JC8ZB2H6V4S9D3Q7N1M5KTXR"
     assert message.provider_part_ids == ("01JC8ZB2H6V4S9D3Q7N1M5KTXR",)
-    assert message.failure_cause is None
     assert event.raw == MESSAGE_SENT
 
 
@@ -514,12 +544,11 @@ def test_message_delivered_parses() -> None:
     assert isinstance(event, OutboundMessageEvent)
     assert event.type == "message.delivered"
     assert event.message.status == "delivered"
-    assert event.message.failure_cause is None
 
 
 def test_message_failed_carries_its_cause() -> None:
     event = webhooks.parse_message_event(MESSAGE_FAILED)
-    assert isinstance(event, OutboundMessageEvent)
+    assert isinstance(event, MessageFailedEvent)
     assert event.type == "message.failed"
     assert event.message.status == "undelivered"
     assert event.message.failure_cause == "undelivered"
@@ -527,15 +556,15 @@ def test_message_failed_carries_its_cause() -> None:
 
 @pytest.mark.parametrize("payload", [MESSAGE_SENT, MESSAGE_DELIVERED])
 def test_only_message_failed_reads_a_failure_cause(payload: dict[str, Any]) -> None:
-    """The same rule as the TypeScript client, where only the failed
-    variant has the member: a `failure` on a sent or delivered body is not
-    a failure, and stays on `raw` only.
+    """The same rule as the TypeScript client: only the failed variant has
+    the member. A `failure` on a sent or delivered body is not a failure,
+    and stays on `raw` only.
     """
     data = {**_MESSAGE_DATA, "failure": {"cause": "provider_refused"}}
     event = webhooks.parse_message_event({**payload, "data": data})
 
     assert isinstance(event, OutboundMessageEvent)
-    assert event.message.failure_cause is None
+    assert not hasattr(event.message, "failure_cause")
     assert event.message.raw["failure"] == {"cause": "provider_refused"}
 
 
@@ -559,7 +588,7 @@ def test_every_known_cause_parses_as_itself(cause: str) -> None:
     data = {**_MESSAGE_DATA, "status": "failed", "failure": {"cause": cause}}
     event = webhooks.parse_message_event({**MESSAGE_FAILED, "data": data})
 
-    assert isinstance(event, OutboundMessageEvent)
+    assert isinstance(event, MessageFailedEvent)
     assert event.message.failure_cause == cause
 
 
@@ -575,7 +604,7 @@ def test_a_message_that_never_left_reads_none_for_the_provider_members() -> None
         "failure": {"cause": "provider_refused"},
     }
     event = webhooks.parse_message_event({**MESSAGE_FAILED, "data": data})
-    assert isinstance(event, OutboundMessageEvent)
+    assert isinstance(event, MessageFailedEvent)
     assert event.message.sent_by is None
     assert event.message.sent_at is None
     assert event.message.provider_message_id is None
@@ -594,7 +623,7 @@ def test_unknown_values_and_members_are_kept_not_refused() -> None:
         "failure": {"cause": "a_cause_added_later"},
     }
     event = webhooks.parse_message_event({**MESSAGE_FAILED, "data": data, "extra": True})
-    assert isinstance(event, OutboundMessageEvent)
+    assert isinstance(event, MessageFailedEvent)
     assert event.message.source == "a_source_added_later"
     assert event.message.failure_cause == "a_cause_added_later"
     assert event.message.failure_cause not in webhooks.FAILURE_CAUSES
@@ -658,7 +687,7 @@ class _NotADict(Mapping[str, Any]):
 def test_any_mapping_is_read_not_only_a_dict() -> None:
     event = webhooks.parse_message_event(_NotADict(MESSAGE_FAILED))
 
-    assert isinstance(event, OutboundMessageEvent)
+    assert isinstance(event, MessageFailedEvent)
     assert event.message.failure_cause == "undelivered"
 
 
@@ -708,11 +737,12 @@ def test_garbage_parses_as_unknown_and_never_raises(payload: Any) -> None:
 def test_a_malformed_outbound_body_reads_none_and_never_raises(payload: Any) -> None:
     event = webhooks.parse_message_event(payload)
 
-    assert isinstance(event, OutboundMessageEvent)
+    assert isinstance(event, (OutboundMessageEvent, MessageFailedEvent))
     assert event.type == payload["type"]
     assert event.event_id is None
     assert event.occurred_at is None
     assert event.message.provider_message_id is None
     assert event.message.provider_part_ids is None
     assert event.message.sent_by is None
-    assert event.message.failure_cause is None
+    if isinstance(event, MessageFailedEvent):
+        assert event.message.failure_cause is None
