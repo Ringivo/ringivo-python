@@ -319,6 +319,12 @@ def raise_for_response(response: httpx.Response) -> None:
 #: the rate limit, and every 5xx (checked by range below).
 _RETRYABLE_STATUSES = frozenset({408, 429})
 
+#: The one 409 the API says to send again unchanged: the first request with
+#: this `Idempotency-Key` still runs. Matched by code, because every other
+#: 409 (a suspended account, a fax that cannot be cancelled, missing audio)
+#: answers the same however often it is sent.
+_KEY_IN_USE = "idempotency_key_in_use"
+
 #: Transport errors raised before or while sending a request this client
 #: built wrongly: the server never said anything, and an unchanged retry
 #: fails the same way.
@@ -329,9 +335,13 @@ def is_retryable(error: BaseException) -> bool:
     """Whether the API's contract says to try this call again, unchanged.
 
     True for no answer — an `httpx.TransportError` such as a refused
-    connection, a TLS failure or a timeout — and for an `ApiError` whose
-    status is 408, 429 or any 5xx. False for every other `ApiError` (400,
-    401, 403, 404, 409, 422): the same request gets the same answer until
+    connection, a TLS failure or a timeout — for an `ApiError` whose
+    status is 408, 429 or any 5xx, and for a 409 whose code is
+    `idempotency_key_in_use`. That 409 says the first request with this
+    `Idempotency-Key` still runs: send the same request WITH THE SAME KEY
+    after `retry_after` to get its answer. A new key could do the act a
+    second time. False for every other `ApiError` (400, 401, 403, 404,
+    every other 409, 422): the same request gets the same answer until
     something changes first — the request itself, or the account. A 401,
     403 or 404 can be a setting that is fixed later; for example
     `messages.record()` answers 404 while recording texts is not turned on
@@ -343,13 +353,16 @@ def is_retryable(error: BaseException) -> bool:
 
     This decides WHETHER to retry, never WHEN. Wait at least
     `error.retry_after` seconds when it is set; otherwise use your own
-    backoff. The client never retries by itself: a retry belongs in your
-    durable queue, not inside a call that would block your worker.
+    backoff. The client never retries by itself, apart from one resend
+    with a fresh token after a 401: a retry belongs in your durable queue,
+    not inside a call that would block your worker.
     """
     if isinstance(error, _NEVER_RETRYABLE_TRANSPORT_ERRORS):
         return False
     if isinstance(error, httpx.TransportError):
         return True
     if isinstance(error, ApiError):
+        if error.status_code == 409:
+            return error.code == _KEY_IN_USE
         return error.status_code in _RETRYABLE_STATUSES or error.status_code >= 500
     return False

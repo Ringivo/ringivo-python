@@ -1160,6 +1160,61 @@ async def test_call_always_carries_an_idempotency_key_and_honours_the_one_given(
 
 
 @pytest.mark.anyio
+async def test_call_sends_an_empty_key_as_given_rather_than_replacing_it(
+    respx_mock: respx.MockRouter, client: AsyncRingivo
+) -> None:
+    # AN EMPTY KEY IS SENT AS GIVEN, not swapped for a fresh one. The API
+    # reads a blank key as a refusal (400 `idempotency_key_required`), never
+    # as "no key"; a retry key that came out blank — a column defaulting to
+    # "" — must fail loudly, not turn into a new key that does the act again.
+    route = respx_mock.post(CALLS_URL).mock(
+        return_value=httpx.Response(
+            400, json={"errors": [{"status": "400", "code": "idempotency_key_required"}]}
+        )
+    )
+
+    async with client:
+        with pytest.raises(ApiError) as caught:
+            await client.pbx.subscribers.call(
+                USER_ID, destination="+13025046250", idempotency_key=""
+            )
+
+    assert route.calls.last.request.headers.get("Idempotency-Key") == ""
+    assert caught.value.code == "idempotency_key_required"
+
+
+@pytest.mark.anyio
+async def test_a_key_reused_for_another_call_is_a_typed_422_naming_the_header(
+    respx_mock: respx.MockRouter, client: AsyncRingivo
+) -> None:
+    respx_mock.post(CALLS_URL).mock(
+        return_value=httpx.Response(
+            422,
+            json={
+                "errors": [
+                    {
+                        "status": "422",
+                        "code": "idempotency_key_reused",
+                        "title": "Idempotency-Key reused",
+                        "source": {"header": "Idempotency-Key"},
+                    }
+                ]
+            },
+        )
+    )
+
+    async with client:
+        with pytest.raises(ApiError) as caught:
+            await client.pbx.subscribers.call(
+                USER_ID, destination="+13025550000", idempotency_key="crm-task-8812-dial"
+            )
+
+    assert caught.value.status_code == 422
+    assert caught.value.code == "idempotency_key_reused"
+    assert caught.value.errors[0].source == {"header": "Idempotency-Key"}
+
+
+@pytest.mark.anyio
 async def test_call_sends_the_same_key_again_on_the_401_retry(
     respx_mock: respx.MockRouter, client: AsyncRingivo
 ) -> None:

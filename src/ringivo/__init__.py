@@ -75,8 +75,10 @@ body as a `MessageEvent`: one class per event type (`MessageReceivedEvent`,
 `isinstance()` or `match`.
 
 `ringivo.is_retryable(error)` says whether the API's contract allows the
-same call again (no answer, 408, 429, 5xx); `ApiError.retry_after` says how
-long the server asked you to wait. The client never retries by itself.
+same call again (no answer, 408, 429, 5xx, and a 409
+`idempotency_key_in_use`); `ApiError.retry_after` says how long the server
+asked you to wait. The client never retries by itself, apart from one
+resend with a fresh token after a 401.
 """
 
 from . import webhooks

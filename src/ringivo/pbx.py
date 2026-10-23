@@ -227,7 +227,11 @@ class PbxSubscribers:
         whose answer you never saw — a timeout, a dropped connection — pass
         your own `idempotency_key` and send the same request with it again:
         the API returns the first call's 202, with the same id, and nothing
-        is dialled. A 502 says so by itself: the phone system refused the
+        is dialled. A REFUSAL OF A RETRY DOES NOT PROVE NOTHING RANG: the
+        API checks the subscriber (404), your scope (403) and that the phone
+        can be called (422 `Not Callable`) BEFORE it looks at the key, so a
+        retry after the phone went offline gets that 422 even when the first
+        request placed the call. A 502 says so by itself: the phone system refused the
         request or could not be reached, NOTHING WAS DIALLED, and the
         status it answered with is in `errors[0].meta["vendor_status"]` —
         so a refusal and an outage can be told apart before you try again.
@@ -270,10 +274,17 @@ class PbxSubscribers:
                 subscriber) is refused with a 422 `idempotency_key_reused`;
                 the same key while the first request is still running is
                 refused with a 409 `idempotency_key_in_use`, whose
-                `retry_after` says when to send it again. A key that is not
-                1 to 255 printable ASCII characters is refused with a 400
-                `idempotency_key_invalid`. Nothing is dialled on any of
-                these refusals. The API keeps a key for at least 24 hours.
+                `retry_after` says when to send it again, with the same key
+                (`is_retryable()` is True for it). The API trims spaces
+                around the key. A key that is blank after that, `""`
+                included, is refused with a 400 `idempotency_key_required`:
+                an empty key is sent as given, never replaced. A key with a
+                character that is not printable ASCII is refused with a 400
+                `idempotency_key_invalid`, and so is one longer than 255
+                characters; a non-ASCII character never leaves this client,
+                because httpx raises `UnicodeEncodeError` before it sends.
+                Nothing is dialled on any of these refusals. The API keeps a
+                key for at least 24 hours.
 
         The answer echoes what was actually SENT to the phone system, which
         is not always what you typed: `caller_id` comes back as E.164
@@ -644,14 +655,19 @@ def _call_headers(idempotency_key: str | None) -> dict[str, str]:
 
     THE KEY IS MADE HERE, ONCE PER `call()`, before the request exists. So
     the one request this client repeats by itself — the 401 retry in
-    auth.py, which resends the same request — carries the same key, and the
-    API reads it as a retry of this call rather than a second call. A key
-    made per attempt would be the double dial the key exists to prevent.
+    auth.py (and async_auth.py for `AsyncRingivo`), which resends the same
+    request — carries the same key, and the API reads it as a retry of this
+    call rather than a second call. A key made per attempt would be the
+    double dial the key exists to prevent.
 
-    An empty string counts as no key and gets a fresh one, as in
-    `faxes.send()`: the API would refuse an empty key with a 400.
+    ONLY `None` GETS A FRESH KEY. An empty string is the caller's key and
+    is sent as given, as in `faxes.send()`: the API refuses a blank key with
+    a 400 `idempotency_key_required` and never reads it as "no key". A
+    retry key that came out blank (a column that defaults to `""`) must fail
+    loudly, not turn into a new key that dials again.
     """
-    return {"Content-Type": _JSONAPI, "Idempotency-Key": idempotency_key or str(uuid.uuid4())}
+    key = idempotency_key if idempotency_key is not None else str(uuid.uuid4())
+    return {"Content-Type": _JSONAPI, "Idempotency-Key": key}
 
 
 def _placed_call(response: httpx.Response) -> PbxCall:

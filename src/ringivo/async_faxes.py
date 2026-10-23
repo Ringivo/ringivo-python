@@ -86,7 +86,16 @@ class AsyncFaxes:
                 generated when you do not pass one**, which makes a single
                 call safe; pass your own — and reuse it — if you intend to
                 retry a send whose response you never saw. Reusing a key
-                replays the first fax instead of sending a second.
+                with the same request replays the first fax instead of
+                sending a second. Reusing it with a different request (other
+                pages, another number) is refused with a 422
+                `idempotency_key_reused`, and nothing is sent. Sending it
+                again while the first send still runs is refused with a 409
+                `idempotency_key_in_use`: send it again after `retry_after`
+                with the same key (`is_retryable()` is True for it). A key
+                is 1 to 255 printable ASCII characters; a blank one, `""`
+                included, is sent as given and refused with a 400
+                `idempotency_key_required`, never replaced with a fresh one.
 
         Returns:
             The accepted fax. `202` means accepted, not sent: the render
@@ -118,7 +127,10 @@ class AsyncFaxes:
         if client_reference is not None:
             fields["clientReference"] = client_reference
 
-        headers = {"Idempotency-Key": idempotency_key or str(uuid.uuid4())}
+        # Only None gets a fresh key: a blank key is the caller's, and the API
+        # refuses it rather than reading it as "no key" (see pbx._call_headers).
+        key = idempotency_key if idempotency_key is not None else str(uuid.uuid4())
+        headers = {"Idempotency-Key": key}
 
         if urls:
             if tags is not None:

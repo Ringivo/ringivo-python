@@ -146,7 +146,10 @@ class AsyncPbxSubscribers:
         same key with the same request replays the first call (with
         `idempotent_replay` True), with a different request is a 422
         `idempotency_key_reused`, and while the first still runs is a 409
-        `idempotency_key_in_use`. A 502 says nothing was dialled, and
+        `idempotency_key_in_use` (retry it with the same key). An empty key
+        is sent as given and refused with a 400. A refusal of a retry does
+        not prove nothing rang: the 404, 403 and `Not Callable` checks come
+        before the key. A 502 says nothing was dialled, and
         `errors[0].meta["vendor_status"]` is why.
 
         `caller_id` and `device` are left off the request when you do not

@@ -134,7 +134,13 @@ Every send carries an `Idempotency-Key`, and the client invents one when you
 do not pass it. If you intend to **retry** a send whose response you never
 saw — a timeout, a dropped connection — pass your own key and reuse it. The
 server replays the first fax instead of sending a second, and tells you it
-did:
+did. The same key with a different request (other pages, another number) is
+refused with a 422 `idempotency_key_reused`, and nothing is sent. The same
+key while the first send still runs is refused with a 409
+`idempotency_key_in_use`; send it again after `error.retry_after` seconds,
+with the same key. A key is 1 to 255 printable ASCII characters. An empty
+key is sent as given and refused with a 400 `idempotency_key_required`; only
+`None` gets a fresh key:
 
 ```python
     fax = client.faxes.send(
@@ -836,9 +842,22 @@ keeps it for at least 24 hours. The same key with a different request
 (another destination, another subscriber) is refused with a 422
 `idempotency_key_reused`. The same key while the first request still runs
 is refused with a 409 `idempotency_key_in_use`; send it again after
-`error.retry_after` seconds. Nothing is dialled on these refusals, and only
-a 202 is kept against a key, so after a refusal the same key may be sent
+`error.retry_after` seconds, with the same key — `is_retryable()` is True
+for it (see [Retrying from a queue](#retrying-from-a-queue)). An empty key
+is sent as given and refused with a 400 `idempotency_key_required`; only
+`None` gets a fresh key. A key with a non-ASCII character never leaves the
+client (httpx raises `UnicodeEncodeError`), and one with another character
+that is not printable ASCII, or longer than 255, is a 400
+`idempotency_key_invalid`. Nothing is dialled on these refusals, and only a
+202 is kept against a key, so after a refusal the same key may be sent
 again.
+
+**A refused retry does not prove that nothing rang.** The API checks the
+subscriber (404), your scope (403) and that the phone can be called (422
+`Not Callable`) before it looks at the key. So if the first request placed
+the call and the phone then went offline, the same-key retry gets the 422,
+not the replay. Look at the call records before you conclude that no call
+was made.
 
 A **502** is the one refusal you can act on without checking: the phone
 system said no or could not be reached, nothing was dialled, and the
@@ -1221,13 +1240,22 @@ The client never retries a call by itself (apart from re-minting a token
 once on a 401): a retry belongs in your own durable queue, not in a sleep
 that blocks your worker. `ringivo.is_retryable(error)` is the API's retry
 contract — True for no answer (an `httpx.TransportError`, except the
-`UnsupportedProtocol` and `LocalProtocolError` this client caused) and for
-408, 429 and every 5xx. False for every other refusal (400, 401, 403, 404,
-409, 422): the same request gets the same answer until something changes
-first. Fix the request for a 400, 409 or 422 — never retry those
-unchanged. A 401, 403 or 404 can be an account setting that is fixed
-later, such as a missing scope. A queue may retry those slowly, after the
-change.
+`UnsupportedProtocol` and `LocalProtocolError` this client caused), for
+408, 429 and every 5xx, and for a 409 whose `code` is
+`idempotency_key_in_use`. False for every other refusal (400, 401, 403,
+404, every other 409, 422): the same request gets the same answer until
+something changes first. Fix the request for a 400, another 409 or a 422 —
+never retry those unchanged. A 401, 403 or 404 can be an account setting
+that is fixed later, such as a missing scope. A queue may retry those
+slowly, after the change.
+
+**Retry with the same `Idempotency-Key`.** For `faxes.send()` and
+`pbx.subscribers.call()`, a retry is safe only when it sends the key the
+first attempt sent: pass your own `idempotency_key` and keep it with the
+queued job. A 409 `idempotency_key_in_use` means the first request with
+that key still runs. Send the same request with the same key after
+`retry_after`, and you get the first request's answer. A new key can send
+the fax or ring the phone a second time.
 
 ```python
 import httpx
@@ -1240,6 +1268,7 @@ except ValueError:
     queue.give_up()  # refused before sending: fix the call
 except (ApiError, httpx.TransportError) as error:
     if is_retryable(error):
+        # Unchanged means the same idempotency key too, for a send or a call.
         wait = getattr(error, "retry_after", None)  # seconds the server asked for, or None
         queue.retry_later(seconds=wait or your_backoff(attempt))
     elif isinstance(error, ApiError) and error.status_code in (401, 403, 404):
@@ -1247,7 +1276,7 @@ except (ApiError, httpx.TransportError) as error:
         # alert someone to fix it.
         queue.retry_later(seconds=your_slow_backoff(attempt))
     else:
-        queue.give_up()  # 400, 409, 422: never retry unchanged
+        queue.give_up()  # 400, 422, any other 409: never retry unchanged
 ```
 
 `retry_after` is set from a `Retry-After` header in either of its forms;
