@@ -483,8 +483,8 @@ after that replaces the `failed`, so a later `get()` can read `delivered`.
 If the timeout runs out first, `wait()` raises `WebhookTestTimeoutError`;
 its `delivery` is the last result it read, and `is_retryable()` is False for
 it. The reads count against the API's general rate limit: when one is
-refused with a 429 that carries `Retry-After`, `wait()` sleeps that long (no
-longer than the time left) and reads again. Every other refusal, and a 429
+refused with a 429 that carries `Retry-After`, `wait()` sleeps that long, or
+`interval` if that is longer (never past the timeout), and reads again. Every other refusal, and a 429
 after the timeout, is raised. `type=""` is refused with `ValueError`: the
 API reads `""` as no type and would send the endpoint's first type.
 

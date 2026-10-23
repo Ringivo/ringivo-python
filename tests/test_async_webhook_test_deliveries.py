@@ -477,3 +477,26 @@ async def test_wait_refuses_a_timeout_that_is_not_zero_or_more(
             await client.webhook_test_deliveries.wait(TEST_ID, timeout=timeout)
 
     assert not route.called
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize(
+    ("header", "expected"),
+    [("0", 2.0), ("1", 2.0), ("5", 5)],
+    ids=["zero", "under-interval", "over-interval"],
+)
+async def test_a_429_sleeps_at_least_the_interval(
+    respx_mock: respx.MockRouter, client: AsyncRingivo, clock: _Clock, header: str, expected: float
+) -> None:
+    respx_mock.get(TEST_URL).mock(
+        side_effect=[
+            _refusal(429, "Too Many Requests", retry_after=header),
+            httpx.Response(200, json=_document(**_DELIVERED)),
+        ]
+    )
+    pending = WebhookTestDelivery._from_resource(_resource())
+
+    async with client:
+        await client.webhook_test_deliveries.wait(pending, interval=2.0)
+
+    assert clock.slept == [2.0, expected]

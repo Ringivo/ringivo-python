@@ -106,8 +106,9 @@ class AsyncWebhookTestDeliveries:
             ValueError: `interval` was not more than 0, `timeout` was
                 negative or NaN, or the id was empty, `.` or `..`.
             ApiError: A read was refused. A 429 with `retry_after` is slept
-                through and read again while time is left, and raised after
-                the timeout; every other refusal is raised at once.
+                through — `max(retry_after, interval)`, cut to the time left
+                — and read again, and raised after the timeout; every other
+                refusal is raised at once.
         """
         _check_interval(interval)
         _check_timeout(timeout)
@@ -116,18 +117,18 @@ class AsyncWebhookTestDeliveries:
         if isinstance(test, WebhookTestDelivery):
             test_id, current = test.id, test
         else:
-            test_id, current = test, await self._read(test, deadline)
+            test_id, current = test, await self._read(test, deadline, interval)
 
         while current.status == _PENDING:
             remaining = deadline - _monotonic()
             if remaining <= 0:
                 raise _timed_out(current, timeout)
             await _sleep(min(interval, remaining))
-            current = await self._read(test_id, deadline)
+            current = await self._read(test_id, deadline, interval)
 
         return current
 
-    async def _read(self, test_id: str, deadline: float) -> WebhookTestDelivery:
+    async def _read(self, test_id: str, deadline: float, interval: float) -> WebhookTestDelivery:
         """One read for `wait()`, sleeping through a rate-limited 429.
 
         The rule is `webhook_test_deliveries._rate_limited_for`; the time
@@ -137,7 +138,7 @@ class AsyncWebhookTestDeliveries:
             try:
                 return await self.get(test_id)
             except ApiError as error:
-                delay = _rate_limited_for(error, deadline - _monotonic())
+                delay = _rate_limited_for(error, deadline - _monotonic(), interval)
                 if delay is None:
                     raise
                 await _sleep(delay)

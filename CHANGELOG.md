@@ -63,7 +63,8 @@
   returned with no request. The platform fails a test with no result after
   2 minutes, so the default timeout is longer than that (a later result
   replaces that `failed`). A read refused with a 429 that carries
-  `retry_after` is slept through, cut to the time left, and read again;
+  `retry_after` is slept through — `max(retry_after, interval)`, cut to the
+  time left — and read again;
   every other refusal, and a 429 after the timeout, is raised. A negative
   or NaN `timeout` is refused with `ValueError`.
 - **New public names**: `WebhookTestDelivery`, `WebhookTestDeliveryPage`,

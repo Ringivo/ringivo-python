@@ -652,3 +652,43 @@ def test_wait_refuses_a_dot_segment_or_empty_id_before_any_request(
         client.webhook_test_deliveries.wait(value)
 
     assert not route.called
+
+
+@pytest.mark.parametrize(
+    ("header", "expected"),
+    [("0", 2.0), ("1", 2.0), ("5", 5)],
+    ids=["zero", "under-interval", "over-interval"],
+)
+def test_a_429_sleeps_at_least_the_interval(
+    respx_mock: respx.MockRouter, client: Ringivo, clock: _Clock, header: str, expected: float
+) -> None:
+    # max(retry_after, interval): a `Retry-After: 0` cannot turn wait() into
+    # a loop that re-reads with no pause.
+    respx_mock.get(TEST_URL).mock(
+        side_effect=[
+            _refusal(429, "Too Many Requests", retry_after=header),
+            httpx.Response(200, json=_document(**_DELIVERED)),
+        ]
+    )
+    pending = WebhookTestDelivery._from_resource(_resource())
+
+    with client:
+        client.webhook_test_deliveries.wait(pending, interval=2.0)
+
+    assert clock.slept == [2.0, expected]
+
+
+def test_a_429_sleep_at_the_interval_is_still_cut_to_the_deadline(
+    respx_mock: respx.MockRouter, client: Ringivo, clock: _Clock
+) -> None:
+    route = respx_mock.get(TEST_URL).mock(
+        return_value=_refusal(429, "Too Many Requests", retry_after="0")
+    )
+    pending = WebhookTestDelivery._from_resource(_resource())
+
+    with client, pytest.raises(ApiError):
+        client.webhook_test_deliveries.wait(pending, interval=4.0, timeout=5.0)
+
+    # 4 s interval, then max(0, 4) = 4 cut to the 1 s left, then the 429.
+    assert clock.slept == [4.0, 1.0]
+    assert route.call_count == 2
