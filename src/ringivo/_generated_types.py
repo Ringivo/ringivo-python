@@ -694,6 +694,57 @@ class WebhookDeliveryCollectionDocument(TypedDict):
     meta: NotRequired[DocumentMeta]
 
 
+WebhookTestEventType: TypeAlias = WebhookEventType | Literal['webhook.test']
+
+
+class WebhookTestRequest(TypedDict):
+    eventType: NotRequired[WebhookTestEventType]
+
+
+WebhookTestDeliveryStatus: TypeAlias = Literal['pending', 'delivered', 'failed']
+
+
+class WebhookTestDeliveryAttributes(TypedDict):
+    eventType: NotRequired[WebhookTestEventType]
+    status: NotRequired[WebhookTestDeliveryStatus]
+    statusCode: NotRequired[int | None]
+    durationMs: NotRequired[int | None]
+    responseBody: NotRequired[str | None]
+    error: NotRequired[str | None]
+    attemptedAt: NotRequired[str | None]
+    createdAt: NotRequired[str | None]
+    updatedAt: NotRequired[str | None]
+
+
+class Endpoint(TypedDict):
+    data: ResourceIdentifier
+
+
+class Relationships6(TypedDict):
+    endpoint: NotRequired[Endpoint]
+
+
+class WebhookTestDeliveryResource(TypedDict):
+    type: Literal['webhook-test-deliveries']
+    id: str
+    attributes: NotRequired[WebhookTestDeliveryAttributes]
+    relationships: NotRequired[Relationships6]
+    links: NotRequired[ResourceLinks]
+    meta: NotRequired[ResourceMeta]
+
+
+class WebhookTestDeliveryDocumentResponse(TypedDict):
+    data: WebhookTestDeliveryResource
+    links: NotRequired[ResourceLinks]
+    meta: NotRequired[DocumentMeta]
+
+
+class WebhookTestDeliveryCollectionDocument(TypedDict):
+    data: list[WebhookTestDeliveryResource]
+    links: NotRequired[CollectionLinks]
+    meta: NotRequired[DocumentMeta]
+
+
 FaxEventData = TypedDict(
     'FaxEventData',
     {
@@ -727,6 +778,7 @@ class WebhookEventEnvelope(TypedDict):
     eventId: str
     type: WebhookEventType
     occurredAt: str
+    test: NotRequired[Literal[True]]
 
 
 class FaxEvent(WebhookEventEnvelope):
@@ -775,6 +827,10 @@ class WebhookHeartbeatEventData(TypedDict):
 
 class WebhookHeartbeatEvent(WebhookEventEnvelope):
     data: WebhookHeartbeatEventData
+
+
+class WebhookTestPingEventData(TypedDict):
+    endpointId: str
 
 
 class CallTranscriptAvailableEvent(WebhookEventEnvelope):
@@ -1140,13 +1196,13 @@ class PhoneNumber(TypedDict):
     data: ResourceIdentifier
 
 
-class Relationships6(TypedDict):
+class Relationships7(TypedDict):
     phoneNumber: PhoneNumber
 
 
 class Data9(TypedDict):
     type: Literal['messaging-enablements']
-    relationships: Relationships6
+    relationships: Relationships7
 
 
 class MessagingEnablementCreateRequest(TypedDict):
@@ -1207,14 +1263,14 @@ class Attributes9(TypedDict):
     endUser: EndUser
 
 
-class Relationships7(TypedDict):
+class Relationships8(TypedDict):
     customer: NotRequired[Customer]
 
 
 class Data10(TypedDict):
     type: Literal['hosted-messaging-orders']
     attributes: Attributes9
-    relationships: NotRequired[Relationships7]
+    relationships: NotRequired[Relationships8]
 
 
 class HostedMessagingOrderCreateRequest(TypedDict):
@@ -1270,14 +1326,14 @@ class Customer3(TypedDict):
     data: ResourceIdentifier | None
 
 
-class Relationships8(TypedDict):
+class Relationships9(TypedDict):
     customer: NotRequired[Customer3]
 
 
 class Data11(TypedDict):
     type: Literal['ztp-devices']
     attributes: Attributes10
-    relationships: NotRequired[Relationships8]
+    relationships: NotRequired[Relationships9]
 
 
 class ZtpDeviceCreateRequest(TypedDict):
@@ -1288,7 +1344,7 @@ class Attributes11(TypedDict):
     label: NotRequired[str | None]
 
 
-class Relationships9(TypedDict):
+class Relationships10(TypedDict):
     customer: NotRequired[Customer3]
 
 
@@ -1296,7 +1352,7 @@ class Data12(TypedDict):
     type: Literal['ztp-devices']
     id: str
     attributes: NotRequired[Attributes11]
-    relationships: NotRequired[Relationships9]
+    relationships: NotRequired[Relationships10]
 
 
 class ZtpDeviceUpdateRequest(TypedDict):
@@ -1789,14 +1845,14 @@ class Customer5(TypedDict):
     data: ResourceIdentifier
 
 
-class Relationships10(TypedDict):
+class Relationships11(TypedDict):
     customer: Customer5
 
 
 class Data16(TypedDict):
     type: Literal['sip-trunks']
     attributes: SipTrunkCreateAttributes
-    relationships: Relationships10
+    relationships: Relationships11
 
 
 class SipTrunkCreateRequest(TypedDict):
@@ -1859,14 +1915,14 @@ class SipTrunk(TypedDict):
     data: ResourceIdentifier
 
 
-class Relationships11(TypedDict):
+class Relationships12(TypedDict):
     sipTrunk: SipTrunk
 
 
 class Data18(TypedDict):
     type: Literal['sip-trunk-ips']
     attributes: SipTrunkIpCreateAttributes
-    relationships: Relationships11
+    relationships: Relationships12
 
 
 class SipTrunkIpCreateRequest(TypedDict):
@@ -1934,14 +1990,14 @@ class SipTrunkTargetCreateAttributes(TypedDict):
     enabled: bool
 
 
-class Relationships12(TypedDict):
+class Relationships13(TypedDict):
     sipTrunk: SipTrunk
 
 
 class Data20(TypedDict):
     type: Literal['sip-trunk-targets']
     attributes: SipTrunkTargetCreateAttributes
-    relationships: Relationships12
+    relationships: Relationships13
 
 
 class SipTrunkTargetCreateRequest(TypedDict):
@@ -2263,6 +2319,14 @@ class PortOrderBillExtractionSettledEventData(TypedDict):
     portOrderId: NotRequired[str]
     tenantId: NotRequired[str]
     status: NotRequired[PortOrderBillExtractionStatus]
+
+
+class WebhookTestPingEvent(TypedDict):
+    eventId: str
+    type: Literal['webhook.test']
+    occurredAt: str
+    test: Literal[True]
+    data: WebhookTestPingEventData
 
 
 class CallRecordCompletedEventData(TypedDict):

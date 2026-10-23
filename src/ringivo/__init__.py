@@ -44,12 +44,15 @@ which months are read. `pbx.subscribers.call()` asks a subscriber's phone to
 ring and dial somebody. Reads need `pbx-users:read` (subscribers AND devices) or
 `pbx-call-records:read`; the call needs `pbx-calls:write`.
 
-Webhooks have two namespaces. `client.webhook_endpoints` registers where the
+Webhooks have three namespaces. `client.webhook_endpoints` registers where the
 platform should call you and with what signing secret — and the secret is
 readable ONCE, in the answer to the create or the rotate that minted it.
 `client.webhook_deliveries` is the evidence of what could not be delivered:
 a delivery that lands leaves no row, so `list(status="dead")` is what an
-outage cost you. Both need `webhooks:read`/`webhooks:write`, except on a
+outage cost you. `client.webhook_endpoints.send_test()` sends one test event
+to one endpoint and returns its result, normally `pending`, and
+`client.webhook_test_deliveries.wait()` re-reads it until it is `delivered`
+or `failed`. All three need `webhooks:read`/`webhooks:write`, except on a
 `fax_account`-scoped endpoint, which a `fax:*` token already reaches.
 
 The base URL has no default and no hostname is compiled into this package:
@@ -78,7 +81,9 @@ body as a `MessageEvent`: one class per event type (`MessageReceivedEvent`,
 same call again (no answer, 408, 429, 5xx, and a 409
 `idempotency_key_in_use`); `ApiError.retry_after` says how long the server
 asked you to wait. The client never retries by itself, apart from one
-resend with a fresh token after a 401.
+resend with a fresh token after a 401, and
+`webhook_test_deliveries.wait()`, which sleeps through a 429 with
+`Retry-After` while it polls.
 """
 
 from . import webhooks
@@ -98,6 +103,7 @@ from .async_pbx import (
 )
 from .async_webhook_deliveries import AsyncWebhookDeliveries
 from .async_webhook_endpoints import AsyncWebhookEndpoints
+from .async_webhook_test_deliveries import AsyncWebhookTestDeliveries
 from .client import Ringivo
 from .customers import Customers
 from .errors import (
@@ -109,6 +115,7 @@ from .errors import (
     SignatureVerificationError,
     TranscriptionCappedError,
     TranscriptRequestLimitedError,
+    WebhookTestTimeoutError,
     is_retryable,
 )
 from .fax_account_users import FaxAccountUsers
@@ -160,10 +167,13 @@ from .models import (
     WebhookDeliveryPage,
     WebhookEndpoint,
     WebhookEndpointPage,
+    WebhookTestDelivery,
+    WebhookTestDeliveryPage,
 )
 from .pbx import Pbx, PbxCallRecords, PbxDevices, PbxSubscribers
 from .webhook_deliveries import WebhookDeliveries
 from .webhook_endpoints import WebhookEndpoints
+from .webhook_test_deliveries import WebhookTestDeliveries
 
 __all__ = [
     "ApiError",
@@ -181,6 +191,7 @@ __all__ = [
     "AsyncRingivo",
     "AsyncWebhookDeliveries",
     "AsyncWebhookEndpoints",
+    "AsyncWebhookTestDeliveries",
     "AuthenticationError",
     "CallRecord",
     "CallRecordPage",
@@ -245,6 +256,10 @@ __all__ = [
     "WebhookEndpoint",
     "WebhookEndpointPage",
     "WebhookEndpoints",
+    "WebhookTestDeliveries",
+    "WebhookTestDelivery",
+    "WebhookTestDeliveryPage",
+    "WebhookTestTimeoutError",
     "__version__",
     "is_retryable",
     "sender_label",

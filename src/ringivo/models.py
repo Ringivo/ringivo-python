@@ -69,6 +69,8 @@ __all__ = [
     "WebhookDeliveryPage",
     "WebhookEndpoint",
     "WebhookEndpointPage",
+    "WebhookTestDelivery",
+    "WebhookTestDeliveryPage",
 ]
 
 
@@ -763,6 +765,93 @@ class WebhookDeliveryPage:
         return len(self.deliveries)
 
     def __getitem__(self, index: int) -> WebhookDelivery:
+        return self.deliveries[index]
+
+
+@dataclass(frozen=True)
+class WebhookTestDelivery:
+    """The result of ONE test event, sent to one endpoint when you asked.
+
+    `webhook_endpoints.send_test()` returns one of these with its 202, and
+    `webhook_test_deliveries.get()` reads it again. `id` is also the
+    `eventId` of the body that was sent, so a receiver that logs event ids
+    can find this test in its own log.
+
+    `endpoint_id` is the endpoint the test was sent to. The API always
+    sends that linkage on this resource, on every read, so it is set; it is
+    None only on a body that left it out (see `_relationship_id`).
+
+    `status` is `pending` until the one attempt is made — normally within a
+    few seconds — and then `delivered` (your server answered 2XX) or
+    `failed` (any other answer, or none). A 202 can already read `failed`,
+    with `error` saying why, when the platform could not queue the test.
+    A test with no result after 2 minutes reads `failed`; a result that
+    arrives later replaces it, so a later read can say `delivered`.
+    `webhook_test_deliveries.wait()` re-reads until it is not `pending`.
+
+    `status_code` is what your server answered and is None while pending or
+    when it was never reached; `error` is why the test did not land, and
+    None on a 2XX. `response_body` is the first 1 KiB of your server's
+    answer, as text. `duration_ms` is how long the attempt took.
+
+    Unlike a `WebhookDelivery`, this IS a history: a test that landed keeps
+    its row, for 7 days.
+    """
+
+    id: str
+    endpoint_id: str | None = None
+    event_type: str | None = None
+    status: str | None = None
+    status_code: int | None = None
+    duration_ms: int | None = None
+    response_body: str | None = None
+    error: str | None = None
+    attempted_at: datetime | None = None
+    created_at: datetime | None = None
+    updated_at: datetime | None = None
+    raw: Mapping[str, Any] = field(default_factory=dict, repr=False)
+
+    @classmethod
+    def _from_resource(cls, resource: Mapping[str, Any]) -> WebhookTestDelivery:
+        """Build from a JSON:API resource object — the send, the read and the list."""
+        attributes = _mapping(resource, "attributes") or {}
+
+        return cls(
+            id=_text(resource, "id") or "",
+            endpoint_id=_relationship_id(resource, "endpoint"),
+            event_type=_text(attributes, "eventType"),
+            status=_text(attributes, "status"),
+            status_code=_integer(attributes, "statusCode"),
+            duration_ms=_integer(attributes, "durationMs"),
+            response_body=_text(attributes, "responseBody"),
+            error=_text(attributes, "error"),
+            attempted_at=_parse_datetime(attributes.get("attemptedAt")),
+            created_at=_parse_datetime(attributes.get("createdAt")),
+            updated_at=_parse_datetime(attributes.get("updatedAt")),
+            raw=resource,
+        )
+
+
+@dataclass(frozen=True)
+class WebhookTestDeliveryPage:
+    """One page of `webhook_test_deliveries.list()`, newest first.
+
+    The same shape and the same cursor rules as `WebhookDeliveryPage`.
+    Results older than 7 days are removed, so they are not on any page.
+    """
+
+    deliveries: tuple[WebhookTestDelivery, ...] = ()
+    next_url: str | None = None
+    next_cursor: str | None = None
+    raw: Mapping[str, Any] = field(default_factory=dict, repr=False)
+
+    def __iter__(self) -> Iterator[WebhookTestDelivery]:
+        return iter(self.deliveries)
+
+    def __len__(self) -> int:
+        return len(self.deliveries)
+
+    def __getitem__(self, index: int) -> WebhookTestDelivery:
         return self.deliveries[index]
 
 
@@ -2065,6 +2154,9 @@ class MessageReceivedEvent:
     `event_id` is the delivery's own id; dedupe on it, because delivery is
     at least once. `raw` is the whole decoded body, as it was handed to the
     parser.
+
+    `test` is True on a test event (`webhook_endpoints.send_test()`): its
+    `message` is a published sample, so answer 2XX and do no work.
     """
 
     type: Literal["message.received"] = "message.received"
@@ -2072,6 +2164,7 @@ class MessageReceivedEvent:
     occurred_at: datetime | None = None
     message: MessageReceivedEventData = field(default_factory=MessageReceivedEventData)
     raw: Mapping[str, Any] = field(default_factory=dict, repr=False)
+    test: bool = False
 
 
 @dataclass(frozen=True)
@@ -2082,6 +2175,9 @@ class MessageSentEvent:
     `event_id` is the delivery's own id; dedupe on it, because delivery is
     at least once. `raw` is the whole decoded body, as it was handed to the
     parser.
+
+    `test` is True on a test event (`webhook_endpoints.send_test()`): its
+    `message` is a published sample, so answer 2XX and do no work.
     """
 
     type: Literal["message.sent"] = "message.sent"
@@ -2089,6 +2185,7 @@ class MessageSentEvent:
     occurred_at: datetime | None = None
     message: OutboundMessageEventData = field(default_factory=OutboundMessageEventData)
     raw: Mapping[str, Any] = field(default_factory=dict, repr=False)
+    test: bool = False
 
 
 @dataclass(frozen=True)
@@ -2099,6 +2196,9 @@ class MessageDeliveredEvent:
     `event_id` is the delivery's own id; dedupe on it, because delivery is
     at least once. `raw` is the whole decoded body, as it was handed to the
     parser.
+
+    `test` is True on a test event (`webhook_endpoints.send_test()`): its
+    `message` is a published sample, so answer 2XX and do no work.
     """
 
     type: Literal["message.delivered"] = "message.delivered"
@@ -2106,6 +2206,7 @@ class MessageDeliveredEvent:
     occurred_at: datetime | None = None
     message: OutboundMessageEventData = field(default_factory=OutboundMessageEventData)
     raw: Mapping[str, Any] = field(default_factory=dict, repr=False)
+    test: bool = False
 
 
 @dataclass(frozen=True)
@@ -2116,6 +2217,9 @@ class MessageFailedEvent:
     `event_id` is the delivery's own id; dedupe on it, because delivery is
     at least once. `raw` is the whole decoded body, as it was handed to the
     parser.
+
+    `test` is True on a test event (`webhook_endpoints.send_test()`): its
+    `message` is a published sample, so answer 2XX and do no work.
     """
 
     type: Literal["message.failed"] = "message.failed"
@@ -2123,6 +2227,7 @@ class MessageFailedEvent:
     occurred_at: datetime | None = None
     message: MessageFailedEventData = field(default_factory=MessageFailedEventData)
     raw: Mapping[str, Any] = field(default_factory=dict, repr=False)
+    test: bool = False
 
 
 @dataclass(frozen=True)
@@ -2135,12 +2240,16 @@ class UnknownMessageEvent:
     the body when it was a JSON object, or `{}` when it was not. It carries
     no `message`, because this release does not know what such a body
     holds. Accept the delivery and ignore it.
+
+    `test` is True on a test event — the `webhook.test` ping parses as one of
+    these, with its endpoint's id at `raw["data"]["endpointId"]`.
     """
 
     type: None = None
     event_id: str | None = None
     occurred_at: datetime | None = None
     raw: Mapping[str, Any] = field(default_factory=dict, repr=False)
+    test: bool = False
 
 
 #: What `webhooks.parse_message_event()` returns: one variant per message
@@ -2172,6 +2281,9 @@ def _message_event_from_json(payload: Any) -> MessageEvent:
     occurred_at = _parse_datetime(source.get("occurredAt"))
     event_type = _text(source, "type")
     data = _mapping(source, "data") or {}
+    # Only the JSON `true` marks a test event. `is True`, not `== True`:
+    # `1 == True` in Python, and a number is not the member the spec defines.
+    test = source.get("test") is True
 
     if event_type == "message.received":
         return MessageReceivedEvent(
@@ -2179,6 +2291,7 @@ def _message_event_from_json(payload: Any) -> MessageEvent:
             occurred_at=occurred_at,
             message=MessageReceivedEventData._from_json(data),
             raw=source,
+            test=test,
         )
 
     if event_type == "message.sent":
@@ -2187,6 +2300,7 @@ def _message_event_from_json(payload: Any) -> MessageEvent:
             occurred_at=occurred_at,
             message=OutboundMessageEventData._from_json(data),
             raw=source,
+            test=test,
         )
 
     if event_type == "message.delivered":
@@ -2195,6 +2309,7 @@ def _message_event_from_json(payload: Any) -> MessageEvent:
             occurred_at=occurred_at,
             message=OutboundMessageEventData._from_json(data),
             raw=source,
+            test=test,
         )
 
     if event_type == "message.failed":
@@ -2203,6 +2318,7 @@ def _message_event_from_json(payload: Any) -> MessageEvent:
             occurred_at=occurred_at,
             message=MessageFailedEventData._from_json(data),
             raw=source,
+            test=test,
         )
 
-    return UnknownMessageEvent(event_id=event_id, occurred_at=occurred_at, raw=source)
+    return UnknownMessageEvent(event_id=event_id, occurred_at=occurred_at, raw=source, test=test)

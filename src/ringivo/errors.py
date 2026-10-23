@@ -38,6 +38,8 @@ from typing import Any
 
 import httpx
 
+from .models import WebhookTestDelivery
+
 __all__ = [
     "ApiError",
     "ApiErrorDetail",
@@ -47,6 +49,7 @@ __all__ = [
     "SignatureVerificationError",
     "TranscriptRequestLimitedError",
     "TranscriptionCappedError",
+    "WebhookTestTimeoutError",
     "is_retryable",
 ]
 
@@ -192,6 +195,26 @@ _BY_CODE: Mapping[str, type[ApiError]] = {
     "transcription_capped": TranscriptionCappedError,
     "transcript_request_limited": TranscriptRequestLimitedError,
 }
+
+
+class WebhookTestTimeoutError(RingivoError, TimeoutError):
+    """`webhook_test_deliveries.wait()` ran out of time while the test was pending.
+
+    `delivery` is the last result that was read, still `pending`. The
+    platform itself fails a test with no result after 2 minutes, so the
+    default timeout is longer than that and this is rare; read the test
+    again later with `webhook_test_deliveries.get(delivery.id)`.
+
+    It is also a `TimeoutError`, so code that already catches the built-in
+    one catches this. A `TimeoutError` is an `OSError`, so an
+    `except OSError:` around your call catches it too. `is_retryable()` is
+    False for it: nothing was refused, the test is simply not settled yet.
+    """
+
+    def __init__(self, message: str, *, delivery: WebhookTestDelivery) -> None:
+        super().__init__(message)
+        #: The last `WebhookTestDelivery` read before the timeout ran out.
+        self.delivery = delivery
 
 
 class SignatureVerificationError(RingivoError):
@@ -349,13 +372,18 @@ def is_retryable(error: BaseException) -> bool:
     False too for `httpx.UnsupportedProtocol` and `httpx.LocalProtocolError`:
     those are transport errors this client caused (a bad URL, an invalid
     request), and an unchanged retry fails the same way. False for anything
-    else, because this package did not raise it.
+    else: an exception this package did not raise, and the ones it raises
+    that are not a refusal — `SignatureVerificationError` and
+    `WebhookTestTimeoutError` (a test still pending is not a failed call;
+    read it again with `webhook_test_deliveries.get()`).
 
     This decides WHETHER to retry, never WHEN. Wait at least
     `error.retry_after` seconds when it is set; otherwise use your own
     backoff. The client never retries by itself, apart from one resend
-    with a fresh token after a 401: a retry belongs in your durable queue,
-    not inside a call that would block your worker.
+    with a fresh token after a 401, and `webhook_test_deliveries.wait()`,
+    which sleeps through a 429 with `Retry-After` while it polls: a retry
+    belongs in your durable queue, not inside a call that would block your
+    worker.
     """
     if isinstance(error, _NEVER_RETRYABLE_TRANSPORT_ERRORS):
         return False

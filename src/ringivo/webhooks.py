@@ -226,6 +226,11 @@ def parse_message_event(payload: Any) -> MessageEvent:
         whole body is on `raw`, or `raw` is `{}` when the body is not a JSON
         object.
 
+        Every variant has `test`: True only when the body's `test` member is
+        the JSON `true`, which marks a test event. Its data is a published
+        sample, so answer 2XX and do no work. Any other value, or no member,
+        reads False.
+
         NEVER RAISES. A receiver that answered a malformed delivery with a
         500 would only be sent it again.
     """

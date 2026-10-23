@@ -6,8 +6,8 @@ nothing is shared between the two classes, because the only thing they
 could share is the awaiting itself.
 
 What IS shared is the module-private helpers webhook_endpoints.py already
-owns — `_events_for_create`, `_events_for_update`, `_page` and the constants
-— plus the `NOT_GIVEN` sentinel and `_given` from fax_accounts.py and
+owns — `_events_for_create`, `_events_for_update`, `_page`, `_test_body` and
+the constants — plus the `NOT_GIVEN` sentinel and `_given` from fax_accounts.py and
 `_path_segment` and `_data_object` from faxes.py. Those are pure functions
 of their arguments, they touch no client, and one of them (`_path_segment`)
 is a security control: a second copy of it is a second thing to get wrong.
@@ -26,8 +26,15 @@ from typing import TYPE_CHECKING, Any
 
 from .fax_accounts import NOT_GIVEN, _JSONAPI, NotGiven, _given
 from .faxes import _data_object, _path_segment
-from .models import WebhookEndpoint, WebhookEndpointPage
-from .webhook_endpoints import _NOUN, _TYPE, _events_for_create, _events_for_update, _page
+from .models import WebhookEndpoint, WebhookEndpointPage, WebhookTestDelivery
+from .webhook_endpoints import (
+    _NOUN,
+    _TYPE,
+    _events_for_create,
+    _events_for_update,
+    _page,
+    _test_body,
+)
 
 if TYPE_CHECKING:  # pragma: no cover - import cycle broken for the type only
     from .async_client import AsyncRingivo
@@ -201,3 +208,36 @@ class AsyncWebhookEndpoints:
             accept=_JSONAPI,
         )
         return WebhookEndpoint._from_resource(_data_object(response.json()))
+
+    async def send_test(
+        self, webhook_endpoint_id: str, *, type: str | None = None
+    ) -> WebhookTestDelivery:
+        """Send ONE test event to this endpoint, and return its result.
+
+        The awaited twin of `WebhookEndpoints.send_test`: `type` is one the
+        endpoint may receive, or `webhook.test`, and None sends its first
+        type. The 202 is normally `pending` — await
+        `webhook_test_deliveries.wait()` for the outcome — and can already
+        read `failed` when the test could not be queued.
+
+        Raises:
+            ValueError: `type` was `""` or whitespace only, which the API
+                would read as None.
+            ApiError: 409 (endpoint disabled), 422 (`type` not allowed),
+                429 (more than 5 tests a minute, or the API's general rate
+                limit) or 503 (the limit could not be checked). The 429 and
+                the 503 carry `retry_after`.
+
+        This client never sends a test again by itself, and sends no
+        `Idempotency-Key`: each send is a new test.
+
+        Needs `webhooks:write`, or `fax:write` for a fax-account-scoped
+        endpoint.
+        """
+        response = await self._client.request(
+            "POST",
+            f"/v1/webhook-endpoints/{_path_segment(webhook_endpoint_id, noun=_NOUN)}/test",
+            accept=_JSONAPI,
+            json=_test_body(type),
+        )
+        return WebhookTestDelivery._from_resource(_data_object(response.json()))
