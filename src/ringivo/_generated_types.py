@@ -1070,6 +1070,14 @@ class InboundMessageMediaItem(TypedDict):
     size: int
 
 
+class InboundMessageMediaWithLink(TypedDict):
+    contentType: str
+    filename: str | None
+    size: int
+    contentUrl: str | None
+    expiresAt: str | None
+
+
 InboundMessageAttributes = TypedDict(
     'InboundMessageAttributes',
     {
@@ -1077,7 +1085,7 @@ InboundMessageAttributes = TypedDict(
         'from': NotRequired[str],
         'to': NotRequired[str],
         'body': NotRequired[str | None],
-        'media': NotRequired[list[InboundMessageMediaItem]],
+        'media': NotRequired[list[InboundMessageMediaWithLink]],
         'receivedAt': NotRequired[str],
         'createdAt': NotRequired[str],
         'updatedAt': NotRequired[str],
