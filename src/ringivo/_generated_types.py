@@ -96,6 +96,7 @@ class RelationshipToMany(TypedDict):
 class ErrorSource(TypedDict):
     pointer: NotRequired[str]
     parameter: NotRequired[str]
+    header: NotRequired[str]
 
 
 ErrorCode: TypeAlias = Literal[
@@ -124,6 +125,10 @@ ErrorCode: TypeAlias = Literal[
     'media_timeout',
     'media_unreachable',
     'media_store_unavailable',
+    'idempotency_key_required',
+    'idempotency_key_invalid',
+    'idempotency_key_reused',
+    'idempotency_key_in_use',
 ]
 
 
