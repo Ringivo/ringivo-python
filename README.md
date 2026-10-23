@@ -485,8 +485,10 @@ its `delivery` is the last result it read, and `is_retryable()` is False for
 it. The reads count against the API's general rate limit: when one is
 refused with a 429 that carries `Retry-After`, `wait()` sleeps that long, or
 `interval` if that is longer (never past the timeout), and reads again. Every other refusal, and a 429
-after the timeout, is raised. `type=""` is refused with `ValueError`: the
-API reads `""` as no type and would send the endpoint's first type.
+after the timeout, is raised. An infinite `timeout` or `interval` is
+refused with `ValueError`. A blank `type` (`""` or whitespace only) is
+refused with `ValueError`: the API reads it as no type and would send the
+endpoint's first type.
 
 `result.endpoint_id` is the endpoint the test was sent to; the API always
 sends it.
@@ -1352,7 +1354,8 @@ are deliberately not wrapped.
 ### Retrying from a queue
 
 The client never retries a call by itself (apart from re-minting a token
-once on a 401): a retry belongs in your own durable queue, not in a sleep
+once on a 401, and `webhook_test_deliveries.wait()`, which sleeps through a
+429 with `Retry-After` while it polls): a retry belongs in your own durable queue, not in a sleep
 that blocks your worker. `ringivo.is_retryable(error)` is the API's retry
 contract — True for no answer (an `httpx.TransportError`, except the
 `UnsupportedProtocol` and `LocalProtocolError` this client caused), for

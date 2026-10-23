@@ -334,11 +334,11 @@ class WebhookEndpoints:
             webhook_endpoint_id: The endpoint to test.
             type: The event type to send: one this endpoint may receive, or
                 `webhook.test`, a plain ping. None sends the endpoint's
-                first type. `""` is refused, because the API would read it
-                as None.
+                first type. `""` and whitespace only are refused, because
+                the API would read them as None.
 
         Raises:
-            ValueError: `type` was `""`.
+            ValueError: `type` was `""` or whitespace only.
             ApiError: 409 — the endpoint is disabled; enable it first.
                 422 — `type` is not one this endpoint may receive; the
                 error's `source` points at `/eventType`. 429 — more than 5
@@ -371,17 +371,19 @@ def _test_body(event_type: str | None) -> dict[str, str]:
     `json=` body). With no type the body is `{}`, and the API sends the
     endpoint's first type; `eventType` is never sent as `null`.
 
-    `""` IS REFUSED. The API turns an empty string into null before it
-    reads the body, so `type=""` would not be a 422: it would be a 202 that
-    sends the endpoint's first type, a test the caller did not ask for.
+    A BLANK TYPE IS REFUSED: `""` and whitespace only. The API trims
+    every string and then turns an empty one into null before it reads the
+    body, so `type="  "` would not be a 422: it would be a 202 that sends
+    the endpoint's first type, a test the caller did not ask for.
 
     Raises:
-        ValueError: `event_type` was `""`.
+        ValueError: `event_type` was `""` or whitespace only.
     """
-    if event_type == "":
+    if event_type is not None and not event_type.strip():
         raise ValueError(
-            'type must name an event type or be None, not "": the API reads "" as no '
-            "type and sends the endpoint's first type instead. Pass type=None for that."
+            f"type must name an event type or be None, not {event_type!r}: the API reads "
+            "a blank type as no type and sends the endpoint's first type instead. "
+            "Pass type=None for that."
         )
     return {} if event_type is None else {"eventType": event_type}
 

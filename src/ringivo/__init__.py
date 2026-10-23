@@ -81,7 +81,9 @@ body as a `MessageEvent`: one class per event type (`MessageReceivedEvent`,
 same call again (no answer, 408, 429, 5xx, and a 409
 `idempotency_key_in_use`); `ApiError.retry_after` says how long the server
 asked you to wait. The client never retries by itself, apart from one
-resend with a fresh token after a 401.
+resend with a fresh token after a 401, and
+`webhook_test_deliveries.wait()`, which sleeps through a 429 with
+`Retry-After` while it polls.
 """
 
 from . import webhooks

@@ -77,6 +77,9 @@ class _Clock:
         return self.now
 
     async def sleep(self, seconds: float) -> None:
+        # A sleep that does not move time forward would make a hot loop in
+        # wait() HANG the suite instead of failing it: fail it here.
+        assert seconds > 0, f"wait() slept {seconds!r} s, which never ends a loop"
         self.slept.append(seconds)
         self.now += seconds
 
@@ -500,3 +503,35 @@ async def test_a_429_sleeps_at_least_the_interval(
         await client.webhook_test_deliveries.wait(pending, interval=2.0)
 
     assert clock.slept == [2.0, expected]
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize("value", ["", " ", "\t", " \n "], ids=["empty", "space", "tab", "mixed"])
+async def test_send_test_refuses_a_blank_type_before_any_request(
+    respx_mock: respx.MockRouter, client: AsyncRingivo, value: str
+) -> None:
+    route = respx_mock.post(SEND_URL)
+
+    async with client:
+        with pytest.raises(ValueError, match="type"):
+            await client.webhook_endpoints.send_test(ENDPOINT_ID, type=value)
+
+    assert not route.called
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize(
+    "arguments",
+    [{"timeout": float("inf")}, {"interval": float("inf")}],
+    ids=["timeout-inf", "interval-inf"],
+)
+async def test_wait_refuses_an_infinite_timeout_or_interval(
+    respx_mock: respx.MockRouter, client: AsyncRingivo, arguments: dict[str, float]
+) -> None:
+    route = respx_mock.get(url__startswith=TESTS_URL)
+
+    async with client:
+        with pytest.raises(ValueError, match="timeout|interval"):
+            await client.webhook_test_deliveries.wait(TEST_ID, **arguments)
+
+    assert not route.called

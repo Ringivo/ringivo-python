@@ -221,7 +221,8 @@ class AsyncWebhookEndpoints:
         read `failed` when the test could not be queued.
 
         Raises:
-            ValueError: `type` was `""`, which the API would read as None.
+            ValueError: `type` was `""` or whitespace only, which the API
+                would read as None.
             ApiError: 409 (endpoint disabled), 422 (`type` not allowed),
                 429 (more than 5 tests a minute, or the API's general rate
                 limit) or 503 (the limit could not be checked). The 429 and

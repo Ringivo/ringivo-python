@@ -103,8 +103,9 @@ class AsyncWebhookTestDeliveries:
         Raises:
             WebhookTestTimeoutError: The test was still `pending` when
                 `timeout` ran out. Its `delivery` is the last result read.
-            ValueError: `interval` was not more than 0, `timeout` was
-                negative or NaN, or the id was empty, `.` or `..`.
+            ValueError: `interval` was not a finite number above 0,
+                `timeout` was negative, NaN or infinite, or the id was empty,
+                `.` or `..`.
             ApiError: A read was refused. A 429 with `retry_after` is slept
                 through — `max(retry_after, interval)`, cut to the time left
                 — and read again, and raised after the timeout; every other

@@ -380,8 +380,10 @@ def is_retryable(error: BaseException) -> bool:
     This decides WHETHER to retry, never WHEN. Wait at least
     `error.retry_after` seconds when it is set; otherwise use your own
     backoff. The client never retries by itself, apart from one resend
-    with a fresh token after a 401: a retry belongs in your durable queue,
-    not inside a call that would block your worker.
+    with a fresh token after a 401, and `webhook_test_deliveries.wait()`,
+    which sleeps through a 429 with `Retry-After` while it polls: a retry
+    belongs in your durable queue, not inside a call that would block your
+    worker.
     """
     if isinstance(error, _NEVER_RETRYABLE_TRANSPORT_ERRORS):
         return False

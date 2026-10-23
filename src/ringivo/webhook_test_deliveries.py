@@ -36,6 +36,7 @@ test can replace them.
 
 from __future__ import annotations
 
+import math
 import time
 from collections.abc import Mapping, Sequence
 from typing import TYPE_CHECKING, Any
@@ -110,19 +111,23 @@ def _params(
 
 
 def _check_interval(interval: float) -> None:
-    """Refuse an interval that would read the test in a tight loop."""
-    if not interval > 0:
-        raise ValueError(f"interval must be more than 0 seconds, not {interval!r}")
+    """Refuse an interval that would read the test in a tight loop, or never.
+
+    Infinity is refused too: `time.sleep(inf)` raises `OverflowError`.
+    """
+    if not (interval > 0 and math.isfinite(interval)):
+        raise ValueError(f"interval must be a finite number of seconds above 0, not {interval!r}")
 
 
 def _check_timeout(timeout: float) -> None:
-    """Refuse a timeout that is negative or NaN.
+    """Refuse a timeout that is negative, NaN or infinite.
 
-    A negative one would give up before the first read, and NaN compares
-    False with everything, so it would never end the wait.
+    A negative one would give up before the first read, NaN compares False
+    with everything, and infinity has no deadline, so either of those would
+    never end the wait against a server that never settles the test.
     """
-    if not timeout >= 0:
-        raise ValueError(f"timeout must be 0 seconds or more, not {timeout!r}")
+    if not (timeout >= 0 and math.isfinite(timeout)):
+        raise ValueError(f"timeout must be a finite number of seconds, 0 or more, not {timeout!r}")
 
 
 def _rate_limited_for(error: ApiError, remaining: float, interval: float) -> float | None:
@@ -224,8 +229,9 @@ class WebhookTestDeliveries:
                 its id. A result that is already not `pending` — a 202 that
                 already reads `failed` — is returned as it is, with no
                 request. An id is read once at once.
-            interval: Seconds to sleep before each read. More than 0.
-            timeout: Seconds to wait in all, 0 or more. The last sleep is
+            interval: Seconds to sleep before each read. Finite, more than
+                0.
+            timeout: Seconds to wait in all. Finite, 0 or more. The last sleep is
                 cut short to end at the timeout, and one last read is made
                 there.
 
@@ -235,8 +241,9 @@ class WebhookTestDeliveries:
         Raises:
             WebhookTestTimeoutError: The test was still `pending` when the
                 timeout ran out. Its `delivery` is the last result read.
-            ValueError: `interval` was not more than 0, `timeout` was
-                negative or NaN, or the id was empty, `.` or `..`.
+            ValueError: `interval` was not a finite number above 0,
+                `timeout` was negative, NaN or infinite, or the id was empty,
+                `.` or `..`.
             ApiError: A read was refused. A 429 with `retry_after` is slept
                 through — `max(retry_after, interval)`, cut to the time left
                 — and read again, and raised after the timeout; every other

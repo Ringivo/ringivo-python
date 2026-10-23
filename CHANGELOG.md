@@ -52,9 +52,9 @@
   `ApiError`s: 409 (endpoint disabled), 422 (type not allowed, pointer
   `/eventType`), and 429 (the test limits or the API's general rate limit)
   and 503 with `retry_after`. The client never sends a test again by itself
-  and sends no `Idempotency-Key`. `type=""` is refused with `ValueError`,
-  because the API reads `""` as no type and would send the endpoint's first
-  type. `WebhookTestDelivery.endpoint_id` is always set: the API always
+  and sends no `Idempotency-Key`. A blank `type` (`""` or whitespace only)
+  is refused with `ValueError`, because the API reads it as no type and
+  would send the endpoint's first type. `WebhookTestDelivery.endpoint_id` is always set: the API always
   sends the linkage.
 - **`client.webhook_test_deliveries`**: `get(id)` reads one test result,
   `list(endpoint=, ids=, …)` lists the tests of the last 7 days, and
@@ -65,8 +65,9 @@
   replaces that `failed`). A read refused with a 429 that carries
   `retry_after` is slept through — `max(retry_after, interval)`, cut to the
   time left — and read again;
-  every other refusal, and a 429 after the timeout, is raised. A negative
-  or NaN `timeout` is refused with `ValueError`.
+  every other refusal, and a 429 after the timeout, is raised. A negative,
+  NaN or infinite `timeout`, and an infinite `interval`, are refused with
+  `ValueError`.
 - **New public names**: `WebhookTestDelivery`, `WebhookTestDeliveryPage`,
   `WebhookTestDeliveries`, `AsyncWebhookTestDeliveries` and
   `WebhookTestTimeoutError` (a `RingivoError` and a `TimeoutError`, raised

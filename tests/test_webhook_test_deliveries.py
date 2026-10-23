@@ -83,6 +83,9 @@ class _Clock:
         return self.now
 
     def sleep(self, seconds: float) -> None:
+        # A sleep that does not move time forward would make a hot loop in
+        # wait() HANG the suite instead of failing it: fail it here.
+        assert seconds > 0, f"wait() slept {seconds!r} s, which never ends a loop"
         self.slept.append(seconds)
         self.now += seconds
 
@@ -692,3 +695,33 @@ def test_a_429_sleep_at_the_interval_is_still_cut_to_the_deadline(
     # 4 s interval, then max(0, 4) = 4 cut to the 1 s left, then the 429.
     assert clock.slept == [4.0, 1.0]
     assert route.call_count == 2
+
+
+@pytest.mark.parametrize("value", [" ", "\t", " \n "], ids=["space", "tab", "mixed"])
+def test_send_test_refuses_a_whitespace_only_type_before_any_request(
+    respx_mock: respx.MockRouter, client: Ringivo, value: str
+) -> None:
+    # The API trims strings and then turns "" into null, so "   " would be a
+    # 202 for the endpoint's FIRST type, exactly like "".
+    route = respx_mock.post(SEND_URL)
+
+    with client, pytest.raises(ValueError, match="type"):
+        client.webhook_endpoints.send_test(ENDPOINT_ID, type=value)
+
+    assert not route.called
+
+
+@pytest.mark.parametrize(
+    "arguments",
+    [{"timeout": float("inf")}, {"interval": float("inf")}],
+    ids=["timeout-inf", "interval-inf"],
+)
+def test_wait_refuses_an_infinite_timeout_or_interval(
+    respx_mock: respx.MockRouter, client: Ringivo, arguments: dict[str, float]
+) -> None:
+    route = respx_mock.get(url__startswith=TESTS_URL)
+
+    with client, pytest.raises(ValueError, match="timeout|interval"):
+        client.webhook_test_deliveries.wait(TEST_ID, **arguments)
+
+    assert not route.called
