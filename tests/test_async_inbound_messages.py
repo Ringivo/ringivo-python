@@ -156,11 +156,12 @@ async def test_get_reads_the_media_link_and_download_media_follows_it_without_th
 
 
 @pytest.mark.anyio
+@pytest.mark.parametrize("content_url", [None, ""])
 async def test_download_media_refuses_an_item_with_no_link_before_any_request(
-    respx_mock: respx.MockRouter,
+    respx_mock: respx.MockRouter, content_url: str | None
 ) -> None:
     route = respx_mock.route(host="api.yourprovider.example", method="GET")
-    item = InboundMessageMediaWithLink(content_type="text/plain", size=26)
+    item = InboundMessageMediaWithLink(content_type="text/plain", size=26, content_url=content_url)
 
     async with _client() as client:
         with pytest.raises(ValueError, match="no download link"):
@@ -183,18 +184,26 @@ async def test_download_media_refuses_a_webhook_media_item(respx_mock: respx.Moc
 
 @pytest.mark.anyio
 @pytest.mark.parametrize(
-    ("status", "code"),
-    [(403, None), (404, "not_found")],
+    ("status", "code", "headers"),
+    [
+        (403, None, {}),
+        (404, "not_found", {}),
+        (429, "rate_limited", {"Retry-After": "12"}),
+    ],
 )
-async def test_an_expired_or_missing_download_is_an_api_error(
-    respx_mock: respx.MockRouter, openapi_spec: dict[str, Any], status: int, code: str | None
+async def test_a_refused_download_is_an_api_error(
+    respx_mock: respx.MockRouter,
+    openapi_spec: dict[str, Any],
+    status: int,
+    code: str | None,
+    headers: dict[str, str],
 ) -> None:
     link = _media_link(openapi_spec)
-    error: dict[str, Any] = {"status": str(status), "title": "Invalid signature."}
+    error: dict[str, Any] = {"status": str(status), "title": "Refused"}
     if code is not None:
         error["code"] = code
     respx_mock.get(link["contentUrl"]).mock(
-        return_value=httpx.Response(status, json={"errors": [error]})
+        return_value=httpx.Response(status, json={"errors": [error]}, headers=headers)
     )
     item = InboundMessageMediaWithLink._from_json(_held_item(link))
 
@@ -204,3 +213,4 @@ async def test_an_expired_or_missing_download_is_an_api_error(
 
     assert caught.value.status_code == status
     assert caught.value.code == code
+    assert caught.value.retry_after == (12 if status == 429 else None)

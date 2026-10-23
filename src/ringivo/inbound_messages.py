@@ -93,7 +93,7 @@ def _content_url(item: InboundMessageMediaWithLink) -> str:
             f"link: read the message with client.inbound_messages.get() and download "
             f"one of its media items"
         )
-    if item.content_url is None:
+    if not item.content_url:
         raise ValueError(
             "this media item has no download link: the platform does not hold the file. "
             "The number is not connected to your phone system, the item is the "
@@ -216,8 +216,9 @@ class InboundMessages:
             item: A media item of a message read with `list()` or `get()`.
 
         Raises:
-            ValueError: The item has no link (`content_url` is None): the
-                platform does not hold the file. No request is sent.
+            ValueError: The item has no link (`content_url` is None, or an
+                empty string): the platform does not hold the file. No
+                request is sent.
             TypeError: The item is a `message.received` webhook item, which
                 never has a link. Read the message with `get()` first.
             ApiError: 403 when the link expired (`expires_at` passed) or was

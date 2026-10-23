@@ -996,9 +996,9 @@ if page:  # a page can be empty
   `before` and `page_size`, as on every list here.
 - **`received_at` is when the message was sent**, and the date filters match
   it. `created_at` is when the platform stored it.
-- **Media items are described**: `media` holds
-  `InboundMessageMediaWithLink(content_type, filename, size, content_url,
-  expires_at)`. `size` is in bytes; `filename` is the name the sender's
+- **Media items are described**: `media` holds `InboundMessageMediaWithLink`
+  items, with the members `content_type`, `filename`, `size`, `content_url`
+  and `expires_at`. `size` is in bytes; `filename` is the name the sender's
   carrier gave the item, or `None`. `body` is `None` for an MMS with no
   caption. The class is a subclass of `InboundMessageMediaItem`, so code that
   names that class still works.
@@ -1034,7 +1034,11 @@ for item in message.media:
 - **Refusals are `ApiError`s.** A 403 means the link expired or was changed:
   read the message again. A 404 `not_found` means the platform no longer
   holds the file. Downloads count against the API rate limit (60 requests a
-  minute from one client address): a 429 carries `retry_after`.
+  minute from one client address): a 429 carries `retry_after`. For a client
+  credential, that limit is shared with your other API calls.
+- **`repr()` leaves out `content_url`**, so logging an item or a message
+  does not write a working link into your logs. Read the attribute when you
+  need it.
 - **`message.received` webhook items have no link**, because a webhook body
   can reach your logs and a retry can arrive hours later. Read the message
   with `client.inbound_messages.get(event.message.id)` to download its

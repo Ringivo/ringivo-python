@@ -1721,9 +1721,15 @@ class InboundMessageMediaWithLink(InboundMessageMediaItem):
     messaging provider has those files. For a customer-scoped credential
     they are None too when the file was kept for another customer or for
     your pool.
+
+    `content_url` is left out of `repr()`, so logging an item or its
+    `InboundMessage` does not write a working link into your logs. Read the
+    attribute when you need it.
+
+    `filename` is sender input: clean it before you use it as a file path.
     """
 
-    content_url: str | None = None
+    content_url: str | None = field(default=None, repr=False)
     expires_at: datetime | None = None
 
     @classmethod

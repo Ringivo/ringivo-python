@@ -329,17 +329,43 @@ def test_download_media_follows_the_link_without_the_bearer(
     assert str(sent.url) == media_link["contentUrl"]
 
 
+@pytest.mark.parametrize(
+    "content_url",
+    # None is what the API sends for a file it does not hold. "" is never
+    # sent (the spec says `format: uri`), but if it arrives it is refused the
+    # same way, not followed into an `httpx.UnsupportedProtocol`.
+    [None, ""],
+)
 def test_download_media_refuses_an_item_with_no_link_before_any_request(
-    client: Ringivo, respx_mock: respx.MockRouter
+    client: Ringivo, respx_mock: respx.MockRouter, content_url: str | None
 ) -> None:
     route = respx_mock.route(host="api.yourprovider.example", method="GET")
-    item = InboundMessageMediaWithLink._from_json(_unheld_item())
+    item = InboundMessageMediaWithLink._from_json({**_unheld_item(), "contentUrl": content_url})
 
     with pytest.raises(ValueError, match="no download link") as caught:
         client.inbound_messages.download_media(item)
 
     assert "messaging provider" in str(caught.value)
     assert not route.called
+
+
+def test_the_signed_link_stays_out_of_repr(
+    client: Ringivo, respx_mock: respx.MockRouter, media_link: dict[str, str]
+) -> None:
+    # A logged message must not carry a working five-minute link into the
+    # logs. The link is still on the attribute and on `raw`.
+    respx_mock.get(f"{MESSAGES_URL}/{MESSAGE_ID}").mock(
+        return_value=httpx.Response(200, json={"data": _mms_resource(_held_item(media_link))})
+    )
+
+    message = client.inbound_messages.get(MESSAGE_ID)
+    (item,) = message.media
+
+    assert item.content_url == media_link["contentUrl"]
+    assert "signature=" not in repr(item)
+    assert "signature=" not in repr(message)
+    assert "content_url" not in repr(item)
+    assert "expires_at=" in repr(item)
 
 
 def test_download_media_refuses_a_webhook_media_item(
