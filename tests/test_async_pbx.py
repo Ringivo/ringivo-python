@@ -1136,6 +1136,133 @@ async def test_call_sends_every_optional_attribute_it_was_given(
 
 
 @pytest.mark.anyio
+async def test_call_always_carries_an_idempotency_key_and_honours_the_one_given(
+    respx_mock: respx.MockRouter, client: AsyncRingivo
+) -> None:
+    # Required by the server (a 400 without one); generated fresh per call
+    # when the caller passes none, sent as given when they do.
+    route = respx_mock.post(CALLS_URL).mock(
+        return_value=httpx.Response(202, json={"data": _call_resource()})
+    )
+
+    async with client:
+        await client.pbx.subscribers.call(USER_ID, destination="+13025046250")
+        await client.pbx.subscribers.call(USER_ID, destination="+13025046250")
+        await client.pbx.subscribers.call(
+            USER_ID, destination="+13025046250", idempotency_key="crm-task-8812-dial"
+        )
+
+    keys = [call.request.headers.get("Idempotency-Key") for call in route.calls]
+
+    assert all(keys)
+    assert keys[0] != keys[1], "a generated key must not repeat across calls"
+    assert keys[2] == "crm-task-8812-dial"
+
+
+@pytest.mark.anyio
+async def test_call_sends_an_empty_key_as_given_rather_than_replacing_it(
+    respx_mock: respx.MockRouter, client: AsyncRingivo
+) -> None:
+    # AN EMPTY KEY IS SENT AS GIVEN, not swapped for a fresh one. The API
+    # reads a blank key as a refusal (400 `idempotency_key_required`), never
+    # as "no key"; a retry key that came out blank — a column defaulting to
+    # "" — must fail loudly, not turn into a new key that does the act again.
+    route = respx_mock.post(CALLS_URL).mock(
+        return_value=httpx.Response(
+            400, json={"errors": [{"status": "400", "code": "idempotency_key_required"}]}
+        )
+    )
+
+    async with client:
+        with pytest.raises(ApiError) as caught:
+            await client.pbx.subscribers.call(
+                USER_ID, destination="+13025046250", idempotency_key=""
+            )
+
+    assert route.calls.last.request.headers.get("Idempotency-Key") == ""
+    assert caught.value.code == "idempotency_key_required"
+
+
+@pytest.mark.anyio
+async def test_a_key_reused_for_another_call_is_a_typed_422_naming_the_header(
+    respx_mock: respx.MockRouter, client: AsyncRingivo
+) -> None:
+    respx_mock.post(CALLS_URL).mock(
+        return_value=httpx.Response(
+            422,
+            json={
+                "errors": [
+                    {
+                        "status": "422",
+                        "code": "idempotency_key_reused",
+                        "title": "Idempotency-Key reused",
+                        "source": {"header": "Idempotency-Key"},
+                    }
+                ]
+            },
+        )
+    )
+
+    async with client:
+        with pytest.raises(ApiError) as caught:
+            await client.pbx.subscribers.call(
+                USER_ID, destination="+13025550000", idempotency_key="crm-task-8812-dial"
+            )
+
+    assert caught.value.status_code == 422
+    assert caught.value.code == "idempotency_key_reused"
+    assert caught.value.errors[0].source == {"header": "Idempotency-Key"}
+
+
+@pytest.mark.anyio
+async def test_call_sends_the_same_key_again_on_the_401_retry(
+    respx_mock: respx.MockRouter, client: AsyncRingivo
+) -> None:
+    # The 401 retry (async_auth.py) is the one request this client repeats by
+    # itself, and a fresh key there would be a second phone call.
+    route = respx_mock.post(CALLS_URL).mock(
+        side_effect=[
+            httpx.Response(401, json={"errors": [{"status": "401", "title": "Unauthorized"}]}),
+            httpx.Response(202, json={"data": _call_resource()}),
+        ]
+    )
+
+    async with client:
+        placed = await client.pbx.subscribers.call(USER_ID, destination="+13025046250")
+
+    keys = [call.request.headers.get("Idempotency-Key") for call in route.calls]
+
+    assert route.call_count == 2
+    assert keys[0]
+    assert keys[0] == keys[1]
+    assert placed.id == CALL_ID
+
+
+@pytest.mark.anyio
+async def test_call_reports_whether_the_server_replayed_an_earlier_call(
+    respx_mock: respx.MockRouter, client: AsyncRingivo
+) -> None:
+    route = respx_mock.post(CALLS_URL).mock(
+        side_effect=[
+            httpx.Response(
+                202, json={"data": _call_resource()}, headers={"Idempotent-Replay": "true"}
+            ),
+            httpx.Response(202, json={"data": _call_resource()}),
+        ]
+    )
+
+    async with client:
+        replayed = await client.pbx.subscribers.call(
+            USER_ID, destination="+13025046250", idempotency_key="crm-task-8812-dial"
+        )
+        fresh = await client.pbx.subscribers.call(USER_ID, destination="+13025046250")
+
+    assert route.call_count == 2
+    assert replayed.idempotent_replay is True
+    assert fresh.idempotent_replay is False
+
+
+@pytest.mark.anyio
 async def test_a_device_that_is_not_this_users_is_refused_with_a_pointer(
     respx_mock: respx.MockRouter, client: AsyncRingivo
 ) -> None:

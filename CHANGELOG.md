@@ -1,5 +1,44 @@
 # Release notes
 
+## Unreleased — Added
+
+- **`pbx.subscribers.call()` sends an `Idempotency-Key`.** The API is about
+  to require the header on click-to-dial and to refuse a call without it
+  with a 400 `idempotency_key_required`. Versions before this one send no
+  key, so their `call()` stops working when the API change ships. Pass
+  `idempotency_key=` to retry a call whose answer you never saw: the same
+  key with the same request returns the first call's 202, with the same id,
+  and nothing is dialled. With no key, a fresh UUID is made for each call,
+  and the client's own 401 retry sends that same key again. The same key
+  with a different request is a 422 `idempotency_key_reused`; while the
+  first request still runs it is a 409 `idempotency_key_in_use`. Applies to
+  both clients. The TypeScript client has the same change, as
+  `idempotencyKey`.
+- **`PbxCall.idempotent_replay`**: True when the API replayed an earlier
+  call sent with the same key, and False for a call it accepted now. The
+  body is the same either way, so this is the only way to tell them apart.
+  Migration: none; the field is new and has a default.
+
+## Unreleased — Changed
+
+- **`is_retryable()` is True for a 409 `idempotency_key_in_use`.** The API
+  is about to answer that 409 when a request with the same
+  `Idempotency-Key` still runs. Its contract is to send the same request
+  again, WITH THE SAME KEY, after `retry_after`; a new key could send the
+  fax or ring the phone twice. Every other 409 stays False. Applies to both
+  clients. Migration: a queue that gave up on every 409 now retries this
+  one; keep the key with the queued job.
+- **An empty `idempotency_key` is sent as given.** `faxes.send()` and
+  `pbx.subscribers.call()` used to replace `""` with a fresh UUID; only
+  `None` gets one now. The API refuses a blank key with a 400
+  `idempotency_key_required`, so a retry key that came out blank fails
+  loudly instead of becoming a new key that sends or dials again. This is
+  the TypeScript client's behaviour too. Migration: pass `None`, not `""`,
+  to have a key generated.
+- **The `faxes.send()` docs name the API's new answers to a reused key**: a
+  422 `idempotency_key_reused` for the same key with a different request,
+  and a 409 `idempotency_key_in_use` while the first send still runs.
+
 ## 0.23.0 (2026-10-22) — Breaking
 
 These removals are part of one clean breaking release (0.23.0). The package

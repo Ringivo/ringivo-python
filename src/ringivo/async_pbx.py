@@ -37,6 +37,7 @@ from .pbx import (
     _DEVICE_NOUN,
     _SUBSCRIBER_NOUN,
     _call_document,
+    _call_headers,
     _call_record_page,
     _device_page,
     _fields_param,
@@ -44,6 +45,7 @@ from .pbx import (
     _transcript_path,
     _transcripts,
     _kind_param,
+    _placed_call,
     _subscriber_page,
 )
 
@@ -127,6 +129,7 @@ class AsyncPbxSubscribers:
         caller_id: str | None = None,
         auto_answer: bool = False,
         device: str | None = None,
+        idempotency_key: str | None = None,
     ) -> PbxCall:
         """Ask this subscriber's phone to call somebody: click-to-dial.
 
@@ -134,9 +137,19 @@ class AsyncPbxSubscribers:
         warnings: a 202 says the request was accepted, not that a phone
         rang; the id it hands back names the call on the PHONE SYSTEM rather
         than a call record, and `call_records.list(call_id=...)` finds the
-        records it wrote once the call has ended; and THIS IS NOT SAFE TO
-        RETRY BLINDLY — a call is undoable by nothing and the
-        action carries no idempotency key. A 502 is the exception, and
+        records it wrote once the call has ended; and A RETRY IS SAFE ONLY
+        WITH THE SAME KEY — a call is undoable by nothing, so every request
+        carries the `Idempotency-Key` the API requires. A fresh UUID is
+        made per call when you pass no `idempotency_key`, and the 401 retry
+        resends that same key; to retry a call whose answer you never saw,
+        pass your own key and send the same request with it again. The
+        same key with the same request replays the first call (with
+        `idempotent_replay` True), with a different request is a 422
+        `idempotency_key_reused`, and while the first still runs is a 409
+        `idempotency_key_in_use` (retry it with the same key). An empty key
+        is sent as given and refused with a 400. A refusal of a retry does
+        not prove nothing rang: the 404, 403 and `Not Callable` checks come
+        before the key. A 502 says nothing was dialled, and
         `errors[0].meta["vendor_status"]` is why.
 
         `caller_id` and `device` are left off the request when you do not
@@ -149,7 +162,7 @@ class AsyncPbxSubscribers:
             "POST",
             f"/v1/pbx/subscribers/{_path_segment(subscriber_id, noun=_SUBSCRIBER_NOUN)}/calls",
             accept=_JSONAPI,
-            headers={"Content-Type": _JSONAPI},
+            headers=_call_headers(idempotency_key),
             json=_call_document(
                 destination=destination,
                 caller_id=caller_id,
@@ -157,7 +170,7 @@ class AsyncPbxSubscribers:
                 device=device,
             ),
         )
-        return PbxCall._from_resource(_data_object(response.json()))
+        return _placed_call(response)
 
 
 class AsyncPbxDevices:

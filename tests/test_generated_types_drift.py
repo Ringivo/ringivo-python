@@ -2141,6 +2141,9 @@ _EXCLUDED: dict[tuple[type, str], str] = {
     (models.TranscriptSegment, "raw"): "holds the whole source mapping this object was built from",
     (models.TranscriptChannel, "raw"): "holds the whole source mapping this object was built from",
     (models.PbxCall, "raw"): "holds the whole source mapping this object was built from",
+    (models.PbxCall, "idempotent_replay"): (
+        "read off the Idempotent-Replay response HEADER in pbx.py, never off the JSON body"
+    ),
     (models.Customer, "raw"): "holds the whole source mapping this object was built from",
     (
         models.OutboundMessageMediaItem,

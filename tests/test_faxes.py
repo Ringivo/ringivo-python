@@ -237,6 +237,26 @@ def test_send_always_carries_an_idempotency_key_and_honours_the_one_given(
     assert keys[2] == "chart-4471-attempt-1"
 
 
+def test_send_sends_an_empty_key_as_given_rather_than_replacing_it(
+    respx_mock: respx.MockRouter, client: Ringivo
+) -> None:
+    # AN EMPTY KEY IS SENT AS GIVEN, not swapped for a fresh one. The API
+    # reads a blank key as a refusal (400 `idempotency_key_required`), never
+    # as "no key"; a retry key that came out blank — a column defaulting to
+    # "" — must fail loudly, not turn into a new key that does the act again.
+    route = respx_mock.post(FAXES_URL).mock(
+        return_value=httpx.Response(
+            400, json={"errors": [{"status": "400", "code": "idempotency_key_required"}]}
+        )
+    )
+
+    with client, pytest.raises(ApiError) as caught:
+        client.faxes.send(fax_account=ACCOUNT_ID, to="+1302", file=b"a", idempotency_key="")
+
+    assert route.calls.last.request.headers.get("Idempotency-Key") == ""
+    assert caught.value.code == "idempotency_key_required"
+
+
 def test_send_reports_whether_the_server_replayed_an_earlier_send(
     respx_mock: respx.MockRouter, client: Ringivo
 ) -> None:

@@ -2199,6 +2199,153 @@ def test_call_reads_the_202_into_the_public_dataclass(
     assert placed.raw["type"] == "calls"
 
 
+def test_call_always_carries_an_idempotency_key_and_honours_the_one_given(
+    respx_mock: respx.MockRouter, client: Ringivo
+) -> None:
+    # The header is REQUIRED on this endpoint — a request without one is
+    # refused with a 400 `idempotency_key_required` — and it is what lets a
+    # retry of a call whose answer was never seen return the first call
+    # instead of ringing a real person a second time. A caller who passes no
+    # key still gets one, fresh per call; a caller who means to retry passes
+    # their own and reuses it.
+    route = respx_mock.post(CALLS_URL).mock(
+        return_value=httpx.Response(202, json={"data": _call_resource()})
+    )
+
+    with client:
+        client.pbx.subscribers.call(USER_ID, destination="+13025046250")
+        client.pbx.subscribers.call(USER_ID, destination="+13025046250")
+        client.pbx.subscribers.call(
+            USER_ID, destination="+13025046250", idempotency_key="crm-task-8812-dial"
+        )
+
+    keys = [call.request.headers.get("Idempotency-Key") for call in route.calls]
+
+    assert all(keys)
+    assert keys[0] != keys[1], "a generated key must not repeat across calls"
+    assert keys[2] == "crm-task-8812-dial"
+    # The key travels in the header only: the document is the spec's
+    # `PbxCallRequest`, which has no member for it.
+    assert "idempotencyKey" not in route.calls.last.request.content.decode()
+
+
+def test_call_sends_an_empty_key_as_given_rather_than_replacing_it(
+    respx_mock: respx.MockRouter, client: Ringivo
+) -> None:
+    # AN EMPTY KEY IS SENT AS GIVEN, not swapped for a fresh one. The API
+    # reads a blank key as a refusal (400 `idempotency_key_required`), never
+    # as "no key"; a retry key that came out blank — a column defaulting to
+    # "" — must fail loudly, not turn into a new key that does the act again.
+    route = respx_mock.post(CALLS_URL).mock(
+        return_value=httpx.Response(
+            400,
+            json={
+                "errors": [
+                    {
+                        "status": "400",
+                        "code": "idempotency_key_required",
+                        "title": "Idempotency-Key required",
+                        "source": {"header": "Idempotency-Key"},
+                    }
+                ]
+            },
+        )
+    )
+
+    with client, pytest.raises(ApiError) as caught:
+        client.pbx.subscribers.call(USER_ID, destination="+13025046250", idempotency_key="")
+
+    assert route.calls.last.request.headers.get("Idempotency-Key") == ""
+    assert caught.value.code == "idempotency_key_required"
+
+
+def test_call_sends_the_same_key_again_on_the_401_retry(
+    respx_mock: respx.MockRouter, client: Ringivo
+) -> None:
+    # The 401 retry (auth.py) is the ONE request this client ever repeats by
+    # itself. It must repeat the call with the SAME key: a fresh key there
+    # would make the server read the retry as a second call, which is the
+    # double dial the key exists to prevent.
+    route = respx_mock.post(CALLS_URL).mock(
+        side_effect=[
+            httpx.Response(401, json={"errors": [{"status": "401", "title": "Unauthorized"}]}),
+            httpx.Response(202, json={"data": _call_resource()}),
+        ]
+    )
+
+    with client:
+        placed = client.pbx.subscribers.call(USER_ID, destination="+13025046250")
+
+    keys = [call.request.headers.get("Idempotency-Key") for call in route.calls]
+
+    assert route.call_count == 2
+    assert keys[0]
+    assert keys[0] == keys[1]
+    assert placed.id == CALL_ID
+
+
+def test_call_reports_whether_the_server_replayed_an_earlier_call(
+    respx_mock: respx.MockRouter, client: Ringivo
+) -> None:
+    # `Idempotent-Replay: true` is the ONLY thing that tells a replay from a
+    # fresh accept — the body is the first call's 202 either way, same id and
+    # same `requestedAt` — so it would be unrecoverable if this client
+    # dropped it.
+    route = respx_mock.post(CALLS_URL).mock(
+        side_effect=[
+            httpx.Response(
+                202, json={"data": _call_resource()}, headers={"Idempotent-Replay": "true"}
+            ),
+            httpx.Response(202, json={"data": _call_resource()}),
+        ]
+    )
+
+    with client:
+        replayed = client.pbx.subscribers.call(
+            USER_ID, destination="+13025046250", idempotency_key="crm-task-8812-dial"
+        )
+        fresh = client.pbx.subscribers.call(USER_ID, destination="+13025046250")
+
+    assert route.call_count == 2
+    assert replayed.idempotent_replay is True
+    assert replayed.id == CALL_ID
+    assert fresh.idempotent_replay is False
+
+
+def test_a_key_reused_for_another_call_is_a_typed_422_naming_the_header(
+    respx_mock: respx.MockRouter, client: Ringivo
+) -> None:
+    # Same key, different request (another destination, another subscriber):
+    # the server refuses it rather than replaying a call that was not asked
+    # for, and nothing is dialled. The refusal points at the HEADER, not at
+    # the document.
+    respx_mock.post(CALLS_URL).mock(
+        return_value=httpx.Response(
+            422,
+            json={
+                "errors": [
+                    {
+                        "status": "422",
+                        "code": "idempotency_key_reused",
+                        "title": "Idempotency-Key reused",
+                        "detail": "This Idempotency-Key was already used with a different request.",
+                        "source": {"header": "Idempotency-Key"},
+                    }
+                ]
+            },
+        )
+    )
+
+    with client, pytest.raises(ApiError) as caught:
+        client.pbx.subscribers.call(
+            USER_ID, destination="+13025550000", idempotency_key="crm-task-8812-dial"
+        )
+
+    assert caught.value.status_code == 422
+    assert caught.value.code == "idempotency_key_reused"
+    assert caught.value.errors[0].source == {"header": "Idempotency-Key"}
+
+
 def test_a_device_that_is_not_this_users_is_refused_with_a_pointer(
     respx_mock: respx.MockRouter, client: Ringivo
 ) -> None:
