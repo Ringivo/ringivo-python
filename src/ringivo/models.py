@@ -42,6 +42,7 @@ __all__ = [
     "FaxPage",
     "InboundMessage",
     "InboundMessageMediaItem",
+    "InboundMessageMediaWithLink",
     "InboundMessagePage",
     "MediaLink",
     "MessageDeliveredEvent",
@@ -1671,11 +1672,16 @@ class OutboundMessageMediaItem:
 
 @dataclass(frozen=True)
 class InboundMessageMediaItem:
-    """One media item of an MMS sent to your number, DESCRIBED: there are no
-    bytes and no URL. Ask your messaging provider for the file.
+    """One media item of an MMS sent to your number, as a `message.received`
+    webhook carries it: DESCRIBED, with no bytes and no URL.
 
     `size` is its size in bytes. `filename` is the name the sender's carrier
     gave the item, and None when it gave none.
+
+    The webhook item never has a link, because a webhook body can reach your
+    logs and a retry can arrive hours later. To download the file, read the
+    message with `client.inbound_messages.get(event.message.id)`: its media
+    items are `InboundMessageMediaWithLink`, this class plus a link.
     """
 
     content_type: str | None = None
@@ -1693,6 +1699,51 @@ class InboundMessageMediaItem:
         )
 
 
+@dataclass(frozen=True)
+class InboundMessageMediaWithLink(InboundMessageMediaItem):
+    """One media item of an MMS sent to your number, as
+    `client.inbound_messages` reads it: the description, plus a download
+    link when the platform holds the file.
+
+    A subclass of `InboundMessageMediaItem`, so code that names that class
+    for an item of `InboundMessage.media` still works.
+
+    `content_url` downloads the file with NO `Authorization` header, until
+    `expires_at` (five minutes after the read). Every read makes new links:
+    read the message again for a fresh one, and do not cache the URL past
+    `expires_at` or hand it to anyone else. Do not change the URL; the
+    signature covers all of it. `client.inbound_messages.download_media()`
+    follows it for you, without your token.
+
+    Both are None when the platform does not hold the file: the number is
+    not connected to your phone system, the item is the message's text, or
+    the file was not kept (for example, it is larger than 10 MB). Your
+    messaging provider has those files. For a customer-scoped credential
+    they are None too when the file was kept for another customer or for
+    your pool.
+
+    `content_url` is left out of `repr()`, so logging an item or its
+    `InboundMessage` does not write a working link into your logs. Read the
+    attribute when you need it.
+
+    `filename` is sender input: clean it before you use it as a file path.
+    """
+
+    content_url: str | None = field(default=None, repr=False)
+    expires_at: datetime | None = None
+
+    @classmethod
+    def _from_json(cls, source: Mapping[str, Any]) -> InboundMessageMediaWithLink:
+        return cls(
+            content_type=_text(source, "contentType"),
+            filename=_text(source, "filename"),
+            size=_integer(source, "size"),
+            content_url=_text(source, "contentUrl"),
+            expires_at=_parse_datetime(source.get("expiresAt")),
+            raw=source,
+        )
+
+
 def _media_items(source: Mapping[str, Any]) -> list[Mapping[str, Any]]:
     value = source.get("media")
     return [
@@ -1705,7 +1756,15 @@ def _outbound_media(source: Mapping[str, Any]) -> tuple[OutboundMessageMediaItem
 
 
 def _inbound_media(source: Mapping[str, Any]) -> tuple[InboundMessageMediaItem, ...]:
+    """A `message.received` webhook's media items: described, never linked."""
     return tuple(InboundMessageMediaItem._from_json(item) for item in _media_items(source))
+
+
+def _inbound_media_with_links(
+    source: Mapping[str, Any],
+) -> tuple[InboundMessageMediaWithLink, ...]:
+    """`GET /v1/inbound-messages` media items: described, and linked when held."""
+    return tuple(InboundMessageMediaWithLink._from_json(item) for item in _media_items(source))
 
 
 @dataclass(frozen=True)
@@ -1771,9 +1830,11 @@ class InboundMessage:
     and an SMS both arrive with a body and no media item. `body` is None
     for an MMS with no caption.
 
-    `media` DESCRIBES each media item — content type, filename and size —
-    and carries no bytes and no URL: the platform does not serve the bytes.
-    Ask your messaging provider for the file.
+    `media` describes each media item — content type, filename and size —
+    and, when the platform holds the file, carries a short-lived download
+    link (`InboundMessageMediaWithLink.content_url`). Fetch it with
+    `client.inbound_messages.download_media(item)`. An item with no link is
+    one the platform does not hold: ask your messaging provider for the file.
 
     `received_at` is when the message was SENT, and is what the date
     filters match; `created_at` is when the platform stored it. They differ
@@ -1785,7 +1846,7 @@ class InboundMessage:
     from_: str | None = None
     to: str | None = None
     body: str | None = None
-    media: tuple[InboundMessageMediaItem, ...] = ()
+    media: tuple[InboundMessageMediaWithLink, ...] = ()
     received_at: datetime | None = None
     created_at: datetime | None = None
     updated_at: datetime | None = None
@@ -1802,7 +1863,7 @@ class InboundMessage:
             from_=_text(attributes, "from"),
             to=_text(attributes, "to"),
             body=_text(attributes, "body"),
-            media=_inbound_media(attributes),
+            media=_inbound_media_with_links(attributes),
             received_at=_parse_datetime(attributes.get("receivedAt")),
             created_at=_parse_datetime(attributes.get("createdAt")),
             updated_at=_parse_datetime(attributes.get("updatedAt")),

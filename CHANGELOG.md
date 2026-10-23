@@ -1,5 +1,47 @@
 # Release notes
 
+## Unreleased — Added
+
+- **Download the media of a received MMS.** Each media item of
+  `inbound_messages.list()` and `inbound_messages.get()` now has
+  `content_url` and `expires_at`. `content_url` is a signed link on your API
+  host that downloads the file with no `Authorization` header, for five
+  minutes (`expires_at`). Every read makes new links. Both are None when the
+  platform does not hold the file: the number is not connected to your phone
+  system, the item is the message's text, or the file was not kept (for
+  example, it is larger than 10 MB). For a customer-scoped credential they
+  are None too when the file was kept for another customer or for your pool.
+  `content_url` is left out of `repr()`, so a logged message does not carry a
+  working link. `filename` is sender input: clean it before you use it as a
+  file path. Applies to both clients.
+- **`inbound_messages.download_media(item)`** returns the bytes behind
+  `content_url`. It follows the link through the same unauthenticated
+  connection as `faxes.media()`, so your bearer token never travels with it.
+  An item with no link (`content_url` None or empty) is refused with
+  `ValueError` and no request is sent.
+  A `message.received` webhook item is refused with `TypeError`, because it
+  has no link: read the message with `inbound_messages.get()`. A changed or
+  expired link is an `ApiError` with status 403 (read the message again), a
+  file the platform no longer holds is a 404 `not_found`, and downloads count
+  against the API rate limit, 60 requests a minute from one client address
+  (429 with `retry_after`); for a client credential, that limit is shared
+  with your other API calls. Applies to both clients; on `AsyncRingivo` it
+  is awaited.
+- **New public name `InboundMessageMediaWithLink`**: the media item of
+  `InboundMessage.media`. It is a subclass of `InboundMessageMediaItem`, so
+  code that names that class still works. `InboundMessageMediaItem` stays
+  the `message.received` webhook's item, with no link, as in the spec.
+  Migration: none, unless you build `InboundMessage` objects yourself (test
+  fakes, for example): make their media items `InboundMessageMediaWithLink`,
+  or a type checker refuses them. An `InboundMessageMediaItem` is also no
+  longer `==` to the item the client reads, because a dataclass compares
+  the exact class.
+- **The API now narrows a customer-scoped credential's reads.** In the same
+  API release, `inbound_messages.list()` and `get()` with a customer-scoped
+  credential return only the messages sent to numbers assigned to that
+  customer. Before, they returned every message of the reseller. This is a
+  server change; this client needs no change for it.
+
 ## 0.24.0 (2026-10-23) — Added
 
 - **`pbx.subscribers.call()` sends an `Idempotency-Key`.** The API is about

@@ -62,10 +62,11 @@ go through a second, UNAUTHENTICATED client.
 The URL is on the tenant's own API host — media is served through their
 branded proxy, so it is not somebody else's server — and it is STILL
 fetched with no `Authorization` header. A pre-signed URL is already a
-capability: it reads ONE document, briefly, and it is the kind of string
-that ends up in a browser bar, a ticket or an access log. The bearer token
-reads every fax this client can reach, and must never travel attached to
-it.
+capability: it reads ONE file — a fax document or a received message's
+media item — briefly, and it is the kind of string that ends up in a
+browser bar, a ticket or an access log. The bearer token reads every fax
+and every message this client can reach, and must never travel attached
+to it.
 """
 
 from __future__ import annotations
@@ -338,7 +339,7 @@ class Ringivo:
 
         Deliberately not through `self._http`: that client carries our
         bearer token. The URL is on the tenant's own API host, but it is a
-        capability in its own right — one document, briefly — and attaching
+        capability in its own right — one file, briefly — and attaching
         our credential to it would give whoever ends up holding the URL far
         more than the URL grants.
         """

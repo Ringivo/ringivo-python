@@ -503,10 +503,38 @@ def test_the_specs_message_received_example_parses(openapi_spec: dict[str, Any])
     assert message.body == "Here is the referral form."
     assert message.received_at == datetime(2026, 8, 16, 11, 14, 7, tzinfo=timezone.utc)
     (item,) = message.media
-    assert isinstance(item, InboundMessageMediaItem)
+    # Exactly the webhook's item, never the API's linked one: a webhook body
+    # carries no download link.
+    assert type(item) is InboundMessageMediaItem
+    assert not hasattr(item, "content_url")
     assert item.content_type == "image/jpeg"
     assert item.filename == "photo.jpg"
     assert item.size == 40213
+
+
+def test_a_link_on_a_received_media_item_is_not_read() -> None:
+    """`message.received` media items have no link: a webhook body can reach
+    logs, and a retry can arrive hours after a link died. A body that carries
+    one anyway (a server bug, or a forged body) still parses as the
+    webhook's item, and the member stays on `raw` only. A download goes
+    through `inbound_messages.get()` with the caller's own credential.
+    """
+    item = {
+        "contentType": "image/jpeg",
+        "filename": "photo.jpg",
+        "size": 40213,
+        "contentUrl": "https://api.yourprovider.example/v1/inbound-messages/x/media/y/content",
+        "expiresAt": "2026-08-18T12:43:57+00:00",
+    }
+    event = webhooks.parse_message_event(
+        {"type": "message.received", "data": {"id": "x", "media": [item]}}
+    )
+
+    assert isinstance(event, MessageReceivedEvent)
+    (read,) = event.message.media
+    assert type(read) is InboundMessageMediaItem
+    assert not hasattr(read, "content_url")
+    assert read.raw == item
 
 
 def test_outbound_members_on_a_received_body_are_not_read() -> None:

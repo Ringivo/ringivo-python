@@ -996,12 +996,56 @@ if page:  # a page can be empty
   `before` and `page_size`, as on every list here.
 - **`received_at` is when the message was sent**, and the date filters match
   it. `created_at` is when the platform stored it.
-- **Media is described, never carried**: `media` holds
-  `InboundMessageMediaItem(content_type, filename, size)` and no bytes or
-  URL. `size` is in bytes; `filename` is the name the sender's carrier gave
-  the item, or `None`. The platform does not serve the bytes, so ask your
-  messaging provider for the file. `body` is `None` for an MMS with no
-  caption.
+- **Media items are described**: `media` holds `InboundMessageMediaWithLink`
+  items, with the members `content_type`, `filename`, `size`, `content_url`
+  and `expires_at`. `size` is in bytes; `filename` is the name the sender's
+  carrier gave the item, or `None`. `body` is `None` for an MMS with no
+  caption. The class is a subclass of `InboundMessageMediaItem`, so code that
+  names that class still works.
+
+### Downloading the media of a received MMS
+
+When the platform holds the file, a media item carries `content_url`: a link
+on your API host that downloads the file. It works for five minutes, until
+`expires_at`. `download_media()` follows the link and returns the bytes:
+
+```python
+message = client.inbound_messages.get(message_id)
+for item in message.media:
+    if item.content_url is None:
+        continue  # we do not hold this file: ask your messaging provider
+    content = client.inbound_messages.download_media(item)
+    print(item.content_type, item.filename, len(content))
+```
+
+- **The download sends no `Authorization` header.** The link is the
+  authorization, and your token never travels with it. This is the same path
+  `faxes.media()` uses.
+- **Every read makes new links.** Read the message again for a fresh link.
+  Do not keep a link past `expires_at`, and do not give it to anyone. Do not
+  change it: the signature covers the whole URL.
+- **`content_url` and `expires_at` are `None` when the platform does not hold
+  the file**: the number is not connected to your phone system, the item is
+  the message's text, or the file was not kept (for example, it is larger
+  than 10 MB). For a customer-scoped credential they are also `None` when
+  the file was kept for another customer or for your pool. Your messaging
+  provider has those files. `download_media()` refuses such an item with
+  `ValueError`, and sends no request.
+- **Refusals are `ApiError`s.** A 403 means the link expired or was changed:
+  read the message again. A 404 `not_found` means the platform no longer
+  holds the file. Downloads count against the API rate limit (60 requests a
+  minute from one client address): a 429 carries `retry_after`. For a client
+  credential, that limit is shared with your other API calls.
+- **`repr()` leaves out `content_url`**, so logging an item or a message
+  does not write a working link into your logs. Read the attribute when you
+  need it.
+- **`message.received` webhook items have no link**, because a webhook body
+  can reach your logs and a retry can arrive hours later. Read the message
+  with `client.inbound_messages.get(event.message.id)` to download its
+  media. `download_media()` refuses a webhook item with `TypeError`.
+- The file name the download answers with is not the sender's; use the
+  item's `filename`. It comes from the sender's carrier, so never use it as
+  a path on your disk as it is. Pick a file extension from `content_type`.
 
 ## The async client
 
@@ -1194,7 +1238,9 @@ def receive(request):
   `client.inbound_messages.get()` takes, and `received_at` is when it was
   sent.
 - **Media items are described, never linked.** On `message.received`,
-  `media` holds `InboundMessageMediaItem(content_type, filename, size)`. On
+  `media` holds `InboundMessageMediaItem(content_type, filename, size)`. To
+  download one, read the message with `client.inbound_messages.get()` (see
+  "Downloading the media of a received MMS" above). On
   the three outbound events it holds
   `OutboundMessageMediaItem(content_type, size)`, with no filename. `size`
   is in bytes.
@@ -1329,6 +1375,7 @@ when it is `None`, use your own backoff.
 | `client.messages.record(*, from_, to, sender_label, provider_message_id, provider_part_ids, sent_at, body=None, media_urls=(), mark_conversation_read=False)` | `messages:record` | Record a text your own system already sent. Returns an `OutboundMessage`; `replayed` is True on a 200 repeat. |
 | `client.inbound_messages.list(*, number=None, from_=None, kind=None, received_after=None, received_before=None, ids=None, after=None, before=None, page_size=None)` | `numbers:read` or `numbers:messaging` | An `InboundMessagePage` of texts sent to your numbers, newest first: iterable, with `next_cursor`. |
 | `client.inbound_messages.get(inbound_message_id)` | `numbers:read` or `numbers:messaging` | One `InboundMessage`. A message to a number you do not carry text messaging for is a 404. |
+| `client.inbound_messages.download_media(item)` | — (the link is the authorization) | The bytes of one `InboundMessageMediaWithLink`, fetched from its `content_url` with no `Authorization` header. `ValueError` when the item has no link. |
 | `webhooks.verify(payload, header, secret, *, tolerance=300)` | — | Raises unless the body is genuine and fresh. |
 | `webhooks.parse_message_event(payload)` | — | A `MessageEvent` from a decoded body: a `MessageReceivedEvent`, `MessageSentEvent`, `MessageDeliveredEvent` or `MessageFailedEvent`, one per event type, or an `UnknownMessageEvent` for anything else. Never raises on content. |
 | `sender_label(text)` | — | A valid record label made from any text. |
@@ -1337,7 +1384,8 @@ when it is `None`, use your own backoff.
 `CallRecord`, `CallRecordPage`, `Customer`, `CustomerPage`, `Fax`,
 `FaxAccount`, `FaxAccountNumber`, `FaxAccountPage`, `FaxAccountUser`,
 `FaxAccountUserPage`, `FaxDocument`, `FaxPage`, `InboundMessage`,
-`InboundMessageMediaItem`, `InboundMessagePage`, `MediaLink`,
+`InboundMessageMediaItem`, `InboundMessageMediaWithLink`,
+`InboundMessagePage`, `MediaLink`,
 `MessageDeliveredEvent`, `MessageFailedEvent`, `MessageFailedEventData`,
 `MessageReceivedEvent`, `MessageReceivedEventData`, `MessageSender`,
 `MessageSentEvent`, `OutboundMessage`, `OutboundMessageEventData`,
