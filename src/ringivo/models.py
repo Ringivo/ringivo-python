@@ -1484,6 +1484,12 @@ class PbxCall:
     There is no relationships block on this resource at all: a call request
     is answered before the call exists, so there is nothing yet to point
     at.
+
+    `idempotent_replay` is True when the API said this 202 replays an
+    earlier call sent with the same `Idempotency-Key` — nothing was dialled
+    this time — and False for a call it accepted now. It is the only thing
+    that tells the two apart, because a replay carries the first call's
+    body, with the same `id` and `requested_at`.
     """
 
     id: str
@@ -1493,6 +1499,7 @@ class PbxCall:
     device: str | None = None
     status: str | None = None
     requested_at: datetime | None = None
+    idempotent_replay: bool | None = None
     raw: Mapping[str, Any] = field(default_factory=dict, repr=False)
 
     @classmethod

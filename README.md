@@ -809,10 +809,36 @@ One call writes two records: by default the list returns the visible
 dial-out record, and the hidden leg that rang the subscriber comes back
 only with `include_hidden=True`.
 
-**Do not retry this blindly.** A call is undoable by nothing, and unlike
-`faxes.send()` it carries no idempotency key: a retry is a second phone
-call to a real person. If you never saw the answer, find out what happened
-first.
+**Retry only with the same key.** A call is undoable by nothing, so every
+call carries an `Idempotency-Key`, and the API requires it (a request
+without one is refused with a 400 `idempotency_key_required`). The client
+makes a fresh key for each call when you do not pass one, and sends the
+same key again on the one retry it makes by itself (after a 401). A second
+`call()` with no key is a second phone call to a real person. If you
+intend to **retry** a call whose answer you never saw — a timeout, a
+dropped connection — pass your own key and reuse it. The API returns the
+first call's 202, with the same id, dials nothing, and tells you it did:
+
+```python
+    placed = client.pbx.subscribers.call(
+        subscriber.id,
+        destination="+13025556789",
+        idempotency_key="crm-task-8812-dial",
+    )
+
+    if placed.idempotent_replay:
+        print("this call was already placed")
+```
+
+A key is 1 to 255 printable ASCII characters, and it belongs to this
+endpoint and to the customer or tenant your credential acts for. The API
+keeps it for at least 24 hours. The same key with a different request
+(another destination, another subscriber) is refused with a 422
+`idempotency_key_reused`. The same key while the first request still runs
+is refused with a 409 `idempotency_key_in_use`; send it again after
+`error.retry_after` seconds. Nothing is dialled on these refusals, and only
+a 202 is kept against a key, so after a refusal the same key may be sent
+again.
 
 A **502** is the one refusal you can act on without checking: the phone
 system said no or could not be reached, nothing was dialled, and the
@@ -1262,7 +1288,7 @@ when it is `None`, use your own backoff.
 | `client.customers.get(customer_id)` | `customers:read` | One `Customer`. A customer that is not on your account is a 404, not a 403. |
 | `client.pbx.subscribers.list(*, customer=None, user=None, search=None, kind=None, has_devices=None, after=None, before=None, page_size=None)` | `pbx-users:read` | A `PbxSubscriberPage`: iterable, with `next_cursor`. `user` is an EXACT extension; `search` is the directory search box; `kind` is one word, a comma list or a list of words; `has_devices` narrows to subscribers with (or without) a device. |
 | `client.pbx.subscribers.get(subscriber_id)` | `pbx-users:read` | One `PbxSubscriber`. A subscriber you cannot reach is a 404, not a 403. |
-| `client.pbx.subscribers.call(subscriber_id, *, destination, caller_id=None, auto_answer=False, device=None)` | `pbx-calls:write` | Ring this subscriber and dial `destination`. Returns the accepted `PbxCall` — a 202, no idempotency key, and an id that names the call on the phone system rather than a call record. Pass that id to `call_records.list(call_id=...)` once the call has ended. |
+| `client.pbx.subscribers.call(subscriber_id, *, destination, caller_id=None, auto_answer=False, device=None, idempotency_key=None)` | `pbx-calls:write` | Ring this subscriber and dial `destination`. Returns the accepted `PbxCall` — a 202, an `Idempotency-Key` on every request (yours, or a fresh UUID), and an id that names the call on the phone system rather than a call record. Pass that id to `call_records.list(call_id=...)` once the call has ended. |
 | `client.pbx.devices.list(*, customer=None, subscriber=None, registered=None, after=None, before=None, page_size=None)` | `pbx-users:read` | A `PbxDevicePage`. `subscriber` is a `subscribers` ID, not an extension. |
 | `client.pbx.devices.get(pbx_device_id)` | `pbx-users:read` | One `PbxDevice` — one registration, not one handset. |
 | `client.pbx.call_records.list(*, customer=None, started_after=None, started_before=None, direction=None, fields=None, subscriber=None, call_id=None, include_hidden=None, after=None, before=None, page_size=None)` | `pbx-call-records:read` | A `CallRecordPage`, newest first. The date range decides which months are read; no range means the current and previous one. `fields=` asks for the extended tier — a sparse fieldset, so it narrows rather than adds. `call_id` finds the records that carry one call id — a `subscribers.call()` id, a leg's SIP Call-ID, or a recording webhook's `callId` — matched only inside the range's months. |
