@@ -450,6 +450,54 @@ what was sent. Reading needs `webhooks:read`; a delivery borrows its
 endpoint's reach, so a `fax:read` token sees the deliveries of
 fax-account-scoped endpoints alone.
 
+### Sending a test event
+
+Check that your server receives and verifies our webhooks without waiting
+for a real event:
+
+```python
+    test = client.webhook_endpoints.send_test(endpoint.id, type="fax.delivered")
+    result = client.webhook_test_deliveries.wait(test)
+
+    print(result.status)  # "delivered" or "failed"
+    print(result.status_code, result.duration_ms, result.error)
+    print(result.response_body)  # the first 1 KiB your server answered
+```
+
+The platform sends ONE test event to that endpoint, and to no other, the way
+it sends a real one: signed, with the same headers, from the same addresses.
+It is sent once and never retried. `type` is one the endpoint may receive, or
+`webhook.test`, a plain ping; without it, the endpoint's first type is sent.
+The body is the published example for that type, with a new `eventId`,
+`test: true`, and the header `Ringivo-Webhook-Test: true`. **Its ids are
+samples: check `test` first, answer 2XX, and do no work.**
+
+`send_test()` answers with the test's result, normally `pending`. When the
+platform could not queue the test, the result already reads `failed`, with
+`error` saying why. `wait()` returns such a result at once. Otherwise it reads
+the test every `interval` seconds (default 2) until it is `delivered` or
+`failed`. The platform marks a test with no result after 2 minutes as
+`failed`, so the default `timeout` is 150 seconds. If the timeout runs out
+first, `wait()` raises `WebhookTestTimeoutError`; its `delivery` is the last
+result it read.
+
+| Answer | Why | `retry_after` | `is_retryable()` |
+|---|---|---|---|
+| 409 | The endpoint is disabled. Enable it first. | None | False |
+| 422 | `type` is not one this endpoint may receive. `errors[0].source` is `{"pointer": "/eventType"}`. | None | False |
+| 429 | More than 5 tests a minute to this endpoint, or 5 a minute from your account. | Seconds to wait | True |
+| 503 | The platform could not check that limit. | Seconds to wait | True |
+
+Each is an `ApiError`. **The client never sends a test again by itself**, and
+the request carries no `Idempotency-Key`: each send is a new test. After a
+429 or a 503 nothing was sent, so send again after `retry_after` seconds.
+
+`client.webhook_test_deliveries.get(test_id)` reads one result, and
+`list(endpoint=..., ids=[...])` lists the tests of the last 7 days, newest
+first. Unlike a real delivery, a test that lands keeps its row. Sending needs
+`webhooks:write` and reading needs `webhooks:read`, or `fax:write` and
+`fax:read` on a fax-account-scoped endpoint.
+
 ## Customers
 
 `client.customers` reads the businesses you sell to: list them, or read one.
@@ -1359,6 +1407,10 @@ when it is `None`, use your own backoff.
 | `client.webhook_endpoints.rotate_secret(webhook_endpoint_id)` | `webhooks:write` | Mint a new secret and start the 24-hour grace window. |
 | `client.webhook_deliveries.list(*, endpoint=None, event_type=None, status=None, after=None, before=None, page_size=None)` | `webhooks:read` | A `WebhookDeliveryPage` of what is still owed or was given up on. `status="dead"` is the one to ask after an outage. |
 | `client.webhook_deliveries.get(webhook_delivery_id)` | `webhooks:read` | One `WebhookDelivery`. |
+| `client.webhook_endpoints.send_test(webhook_endpoint_id, *, type=None)` | `webhooks:write` | Send one test event to the endpoint. Returns its `WebhookTestDelivery` (a 202), normally `pending`. Never sent again by the client. |
+| `client.webhook_test_deliveries.list(*, endpoint=None, ids=None, after=None, before=None, page_size=None)` | `webhooks:read` | A `WebhookTestDeliveryPage` of the tests of the last 7 days, newest first. |
+| `client.webhook_test_deliveries.get(webhook_test_delivery_id)` | `webhooks:read` | One `WebhookTestDelivery`: `pending`, `delivered` or `failed`. |
+| `client.webhook_test_deliveries.wait(test, *, interval=2.0, timeout=150.0)` | `webhooks:read` | Re-read a test until it is not `pending`. Raises `WebhookTestTimeoutError` when the timeout runs out. |
 | `client.customers.list(*, ids=None, code=None, after=None, before=None, page_size=None)` | `customers:read` | A `CustomerPage`, newest first: iterable, with `next_cursor`. `ids=` reads several customers by id in one request — the ids `list()` and `get()` hand back — and combines with `code=`. A customer's `id` is what `client.pbx.*.list(customer=...)` takes. |
 | `client.customers.get(customer_id)` | `customers:read` | One `Customer`. A customer that is not on your account is a 404, not a 403. |
 | `client.pbx.subscribers.list(*, customer=None, user=None, search=None, kind=None, has_devices=None, after=None, before=None, page_size=None)` | `pbx-users:read` | A `PbxSubscriberPage`: iterable, with `next_cursor`. `user` is an EXACT extension; `search` is the directory search box; `kind` is one word, a comma list or a list of words; `has_devices` narrows to subscribers with (or without) a device. |
@@ -1392,8 +1444,9 @@ when it is `None`, use your own backoff.
 `OutboundMessageMediaItem`, `PbxCall`,
 `PbxDevice`, `PbxDevicePage`, `PbxSubscriber`, `PbxSubscriberPage`, `Recording`,
 `Transcript`, `TranscriptChannel`, `TranscriptSegment`, `UnknownMessageEvent`,
-`WebhookDelivery`, `WebhookDeliveryPage`, `WebhookEndpoint`
-and `WebhookEndpointPage` are frozen dataclasses, and each keeps the JSON
+`WebhookDelivery`, `WebhookDeliveryPage`, `WebhookEndpoint`,
+`WebhookEndpointPage`, `WebhookTestDelivery` and `WebhookTestDeliveryPage`
+are frozen dataclasses, and each keeps the JSON
 it was built from in `.raw` — so a field the API adds after this release
 reaches you without a new SDK.
 

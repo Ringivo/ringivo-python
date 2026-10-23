@@ -62,6 +62,7 @@ from .async_messages import AsyncMessages
 from .async_pbx import AsyncPbx
 from .async_webhook_deliveries import AsyncWebhookDeliveries
 from .async_webhook_endpoints import AsyncWebhookEndpoints
+from .async_webhook_test_deliveries import AsyncWebhookTestDeliveries
 from .auth import USER_AGENT
 from .client import JSONAPI_MEDIA_TYPE, _clean_params
 from .errors import raise_for_response
@@ -196,6 +197,7 @@ class AsyncRingivo:
         self.pbx = AsyncPbx(self)
         self.webhook_endpoints = AsyncWebhookEndpoints(self)
         self.webhook_deliveries = AsyncWebhookDeliveries(self)
+        self.webhook_test_deliveries = AsyncWebhookTestDeliveries(self)
         self.messages = AsyncMessages(self)
         self.inbound_messages = AsyncInboundMessages(self)
 

@@ -61,7 +61,9 @@ _CASES: list[tuple[str, str, dict[str, Any]]] = [
     ("webhook_endpoints.delete", "webhook_endpoint_id", {}),
     ("webhook_endpoints.get", "webhook_endpoint_id", {}),
     ("webhook_endpoints.rotate_secret", "webhook_endpoint_id", {}),
+    ("webhook_endpoints.send_test", "webhook_endpoint_id", {}),
     ("webhook_endpoints.update", "webhook_endpoint_id", {"active": False}),
+    ("webhook_test_deliveries.get", "webhook_test_delivery_id", {}),
 ]
 
 _REFUSED = ["", ".", ".."]
@@ -106,7 +108,7 @@ def _path_id_methods(
 def test_the_table_names_every_path_id_on_both_clients(make: Callable[[], Any]) -> None:
     found = _path_id_methods(make())
 
-    assert len(found) == 28, f"{len(found)} path ids found — the sweep is broken: {sorted(found)}"
+    assert len(found) == 30, f"{len(found)} path ids found — the sweep is broken: {sorted(found)}"
     assert found == {(method, parameter) for method, parameter, _ in _CASES}
 
 

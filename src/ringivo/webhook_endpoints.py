@@ -45,6 +45,13 @@ sends `null`: a caller who names no other member alongside a stray
 platform. `[]` is refused locally on both calls, for the same reason.
 `_events_for_create()` and `_events_for_update()` are where each rule lives.
 
+-- A TEST EVENT IS A VERB, AND ITS BODY IS FLAT JSON ---------------------------
+`send_test()` asks the platform to send one test event to one endpoint.
+Like `rotate_secret()` it is a verb rather than a field, and unlike every
+other write here its body is plain `{"eventType": ...}`, not a JSON:API
+document. Its answer is a `webhook-test-deliveries` resource, which
+webhook_test_deliveries.py reads, lists and waits on.
+
 -- A KNOWN DEFECT IN THE VENDORED SPEC ----------------------------------------
 `spec/openapi.yaml` marks `url` as REQUIRED in `WebhookEndpointUpdateRequest`.
 The server does not require it: a PATCH is merged over the stored attributes
@@ -61,7 +68,7 @@ from typing import TYPE_CHECKING, Any
 
 from .fax_accounts import NOT_GIVEN, _JSONAPI, NotGiven, _given
 from .faxes import _data_object, _next_cursor, _next_link, _path_segment
-from .models import WebhookEndpoint, WebhookEndpointPage
+from .models import WebhookEndpoint, WebhookEndpointPage, WebhookTestDelivery
 
 if TYPE_CHECKING:  # pragma: no cover - import cycle broken for the type only
     from .client import Ringivo
@@ -305,6 +312,64 @@ class WebhookEndpoints:
             accept=_JSONAPI,
         )
         return WebhookEndpoint._from_resource(_data_object(response.json()))
+
+    def send_test(
+        self, webhook_endpoint_id: str, *, type: str | None = None
+    ) -> WebhookTestDelivery:
+        """Send ONE test event to this endpoint, and return its result.
+
+        The platform sends the test once, to this endpoint only, the way it
+        sends a real event: signed, with the same headers, from the same
+        addresses. The body is the published example for the type, with a
+        new `eventId`, `test: true`, and the header
+        `Ringivo-Webhook-Test: true`. Its ids are samples: a receiver must
+        not act on them.
+
+        The answer is a 202 with the test's result, normally `pending`.
+        Pass it to `webhook_test_deliveries.wait()` to read the outcome. A
+        202 can already read `failed`, with `error`, when the platform
+        could not queue the test; send it again later.
+
+        Args:
+            webhook_endpoint_id: The endpoint to test.
+            type: The event type to send: one this endpoint may receive, or
+                `webhook.test`, a plain ping. None sends the endpoint's
+                first type.
+
+        Raises:
+            ApiError: 409 — the endpoint is disabled; enable it first.
+                422 — `type` is not one this endpoint may receive; the
+                error's `source` points at `/eventType`. 429 — more than 5
+                tests a minute to this endpoint, or 5 a minute from your
+                account. 503 — the platform could not check that limit.
+                The 429 and the 503 carry `retry_after`.
+
+        THIS CLIENT NEVER SENDS A TEST AGAIN BY ITSELF, and the request
+        carries no `Idempotency-Key`: each send is a new test. After a 429
+        or a 503 nothing was sent, so `is_retryable()` is True and it is
+        safe to send again after `retry_after` seconds.
+
+        Needs `webhooks:write`, or `fax:write` for a fax-account-scoped
+        endpoint.
+        """
+        response = self._client.request(
+            "POST",
+            f"/v1/webhook-endpoints/{_path_segment(webhook_endpoint_id, noun=_NOUN)}/test",
+            accept=_JSONAPI,
+            json=_test_body(type),
+        )
+        return WebhookTestDelivery._from_resource(_data_object(response.json()))
+
+
+def _test_body(event_type: str | None) -> dict[str, str]:
+    """The flat JSON body of a test send — NOT a JSON:API document.
+
+    The spec's `WebhookTestRequest` is `{"eventType": ...}` with every
+    member optional, sent as `application/json` (httpx sets that type for a
+    `json=` body). With no type the body is `{}`, and the API sends the
+    endpoint's first type; `eventType` is never sent as `null`.
+    """
+    return {} if event_type is None else {"eventType": event_type}
 
 
 def _page(document: Any) -> WebhookEndpointPage:

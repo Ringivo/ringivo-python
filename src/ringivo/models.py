@@ -69,6 +69,8 @@ __all__ = [
     "WebhookDeliveryPage",
     "WebhookEndpoint",
     "WebhookEndpointPage",
+    "WebhookTestDelivery",
+    "WebhookTestDeliveryPage",
 ]
 
 
@@ -763,6 +765,88 @@ class WebhookDeliveryPage:
         return len(self.deliveries)
 
     def __getitem__(self, index: int) -> WebhookDelivery:
+        return self.deliveries[index]
+
+
+@dataclass(frozen=True)
+class WebhookTestDelivery:
+    """The result of ONE test event, sent to one endpoint when you asked.
+
+    `webhook_endpoints.send_test()` returns one of these with its 202, and
+    `webhook_test_deliveries.get()` reads it again. `id` is also the
+    `eventId` of the body that was sent, so a receiver that logs event ids
+    can find this test in its own log.
+
+    `status` is `pending` until the one attempt is made — normally within a
+    few seconds — and then `delivered` (your server answered 2XX) or
+    `failed` (any other answer, or none). A 202 can already read `failed`,
+    with `error` saying why, when the platform could not queue the test.
+    A test with no result after 2 minutes reads `failed`.
+    `webhook_test_deliveries.wait()` re-reads until it is not `pending`.
+
+    `status_code` is what your server answered and is None while pending or
+    when it was never reached; `error` is why the test did not land, and
+    None on a 2XX. `response_body` is the first 1 KiB of your server's
+    answer, as text. `duration_ms` is how long the attempt took.
+
+    Unlike a `WebhookDelivery`, this IS a history: a test that landed keeps
+    its row, for 7 days.
+    """
+
+    id: str
+    endpoint_id: str | None = None
+    event_type: str | None = None
+    status: str | None = None
+    status_code: int | None = None
+    duration_ms: int | None = None
+    response_body: str | None = None
+    error: str | None = None
+    attempted_at: datetime | None = None
+    created_at: datetime | None = None
+    updated_at: datetime | None = None
+    raw: Mapping[str, Any] = field(default_factory=dict, repr=False)
+
+    @classmethod
+    def _from_resource(cls, resource: Mapping[str, Any]) -> WebhookTestDelivery:
+        """Build from a JSON:API resource object — the send, the read and the list."""
+        attributes = _mapping(resource, "attributes") or {}
+
+        return cls(
+            id=_text(resource, "id") or "",
+            endpoint_id=_relationship_id(resource, "endpoint"),
+            event_type=_text(attributes, "eventType"),
+            status=_text(attributes, "status"),
+            status_code=_integer(attributes, "statusCode"),
+            duration_ms=_integer(attributes, "durationMs"),
+            response_body=_text(attributes, "responseBody"),
+            error=_text(attributes, "error"),
+            attempted_at=_parse_datetime(attributes.get("attemptedAt")),
+            created_at=_parse_datetime(attributes.get("createdAt")),
+            updated_at=_parse_datetime(attributes.get("updatedAt")),
+            raw=resource,
+        )
+
+
+@dataclass(frozen=True)
+class WebhookTestDeliveryPage:
+    """One page of `webhook_test_deliveries.list()`, newest first.
+
+    The same shape and the same cursor rules as `WebhookDeliveryPage`.
+    Results older than 7 days are removed, so they are not on any page.
+    """
+
+    deliveries: tuple[WebhookTestDelivery, ...] = ()
+    next_url: str | None = None
+    next_cursor: str | None = None
+    raw: Mapping[str, Any] = field(default_factory=dict, repr=False)
+
+    def __iter__(self) -> Iterator[WebhookTestDelivery]:
+        return iter(self.deliveries)
+
+    def __len__(self) -> int:
+        return len(self.deliveries)
+
+    def __getitem__(self, index: int) -> WebhookTestDelivery:
         return self.deliveries[index]
 
 

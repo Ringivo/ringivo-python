@@ -4,8 +4,8 @@
 one `httpx.Client` with the auth flow attached, and the resource namespaces
 hung off it (`client.faxes`, `client.fax_accounts`,
 `client.fax_account_users`, `client.customers`, `client.pbx`,
-`client.webhook_endpoints`, `client.webhook_deliveries`, `client.messages`,
-`client.inbound_messages`).
+`client.webhook_endpoints`, `client.webhook_deliveries`,
+`client.webhook_test_deliveries`, `client.messages`, `client.inbound_messages`).
 
 -- NO HOSTNAME IS COMPILED IN --------------------------------------------------
 `base_url` is required and has no default. This package is grey-label: the
@@ -89,6 +89,7 @@ from .messages import Messages
 from .pbx import Pbx
 from .webhook_deliveries import WebhookDeliveries
 from .webhook_endpoints import WebhookEndpoints
+from .webhook_test_deliveries import WebhookTestDeliveries
 
 __all__ = ["Ringivo"]
 
@@ -227,6 +228,7 @@ class Ringivo:
         self.pbx = Pbx(self)
         self.webhook_endpoints = WebhookEndpoints(self)
         self.webhook_deliveries = WebhookDeliveries(self)
+        self.webhook_test_deliveries = WebhookTestDeliveries(self)
         self.messages = Messages(self)
         self.inbound_messages = InboundMessages(self)
 

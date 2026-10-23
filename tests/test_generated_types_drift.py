@@ -111,6 +111,27 @@ def _webhook_delivery_relationships() -> type:
 WebhookDeliveryRelationships = _webhook_delivery_relationships()
 
 
+def _webhook_test_delivery_relationships() -> type:
+    """The generated TypedDict for a test result's relationships block.
+
+    REACHED THROUGH THE RESOURCE THAT DECLARES IT, for the reason
+    `_fax_account_user_relationships` gives. A contents search cannot be
+    trusted here: the block is `{endpoint}` exactly like a delivery's, and
+    whether the generator emits one shared class or two numbered ones is its
+    choice, not the spec's (it shares one at the time of writing).
+    """
+    hints = typing_extensions.get_type_hints(generated.WebhookTestDeliveryResource)
+    block = hints.get("relationships")
+    assert isinstance(block, type), (
+        f"WebhookTestDeliveryResource declares no resolvable `relationships` member "
+        f"(got {block!r}) — the lookup is broken, not the spec"
+    )
+    return block
+
+
+WebhookTestDeliveryRelationships = _webhook_test_delivery_relationships()
+
+
 def _fax_account_user_relationships() -> type:
     """The generated TypedDict for a grant's relationships block.
 
@@ -630,6 +651,43 @@ _READS: tuple[_Read, ...] = (
         generated.WebhookDeliveryAttributes,
         "updatedAt",
         "WebhookDelivery._from_resource",
+    ),
+    # -- WebhookTestDelivery._from_resource reads a WebhookTestDeliveryResource
+    # (id) + its WebhookTestDeliveryAttributes, plus the endpoint LINKAGE off
+    # its relationships, as WebhookDelivery does.
+    _Read(
+        models.WebhookTestDelivery,
+        "id",
+        generated.WebhookTestDeliveryResource,
+        "id",
+        "WebhookTestDelivery._from_resource",
+    ),
+    _Read(
+        models.WebhookTestDelivery,
+        "endpoint_id",
+        WebhookTestDeliveryRelationships,
+        "endpoint",
+        "WebhookTestDelivery._from_resource",
+    ),
+    *(
+        _Read(
+            models.WebhookTestDelivery,
+            field,
+            generated.WebhookTestDeliveryAttributes,
+            key,
+            "WebhookTestDelivery._from_resource",
+        )
+        for field, key in (
+            ("event_type", "eventType"),
+            ("status", "status"),
+            ("status_code", "statusCode"),
+            ("duration_ms", "durationMs"),
+            ("response_body", "responseBody"),
+            ("error", "error"),
+            ("attempted_at", "attemptedAt"),
+            ("created_at", "createdAt"),
+            ("updated_at", "updatedAt"),
+        )
     ),
     # -- PbxSubscriber._from_resource reads a PbxSubscriberResource (id) + its
     # PbxSubscriberAttributes, plus BOTH relationship linkages.
@@ -2168,6 +2226,9 @@ _EXCLUDED: dict[tuple[type, str], str] = {
     (models.FaxAccountUser, "raw"): "holds the whole source mapping this object was built from",
     (models.WebhookEndpoint, "raw"): "holds the whole source mapping this object was built from",
     (models.WebhookDelivery, "raw"): "holds the whole source mapping this object was built from",
+    (models.WebhookTestDelivery, "raw"): (
+        "holds the whole source mapping this object was built from"
+    ),
     (models.PbxSubscriber, "raw"): "holds the whole source mapping this object was built from",
     (models.PbxDevice, "raw"): "holds the whole source mapping this object was built from",
     (models.CallRecord, "raw"): "holds the whole source mapping this object was built from",
@@ -2272,6 +2333,7 @@ _MODELS: tuple[type, ...] = (
     models.FaxAccountUser,
     models.WebhookEndpoint,
     models.WebhookDelivery,
+    models.WebhookTestDelivery,
     models.PbxSubscriber,
     models.PbxDevice,
     models.CallRecord,
@@ -2320,7 +2382,7 @@ def test_every_field_a_model_reads_is_covered_by_the_read_table() -> None:
     them, in both directions, or this whole test proves nothing about that
     model.
     """
-    assert len(_MODELS) == 31, (
+    assert len(_MODELS) == 32, (
         f"only {[m.__name__ for m in _MODELS]} was searched — the sweep is broken"
     )
 
@@ -2342,7 +2404,7 @@ def test_every_field_a_model_reads_is_covered_by_the_read_table() -> None:
 
 
 def test_every_field_a_model_reads_exists_in_the_generated_types() -> None:
-    assert len(_READS) == 308, f"{len(_READS)} reads were checked, not 308 — the sweep is broken"
+    assert len(_READS) == 319, f"{len(_READS)} reads were checked, not 319 — the sweep is broken"
 
     failures: list[str] = []
     for read in _READS:
@@ -2452,3 +2514,21 @@ def test_every_member_of_a_media_item_is_read(
 
     assert _generated_keys(typed_dict) == declared, "the media item's shape changed"
     assert read == declared
+
+
+def test_every_member_of_a_webhook_test_result_is_read() -> None:
+    """Both directions for a test result's attributes, as for the media
+    items above: every member the spec gives `WebhookTestDeliveryAttributes`
+    is read into `WebhookTestDelivery`, and nothing else is. Without this, a
+    member the spec added later would never reach a field, and nothing would
+    fail.
+    """
+    typed_dict = generated.WebhookTestDeliveryAttributes
+    read = {
+        r.key
+        for r in _READS
+        if r.model is models.WebhookTestDelivery and r.typed_dict is typed_dict
+    }
+
+    assert len(_generated_keys(typed_dict)) == 9, "the test result's shape changed"
+    assert read == _generated_keys(typed_dict)
