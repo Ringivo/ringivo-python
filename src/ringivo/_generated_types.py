@@ -716,11 +716,19 @@ class WebhookTestDeliveryAttributes(TypedDict):
     updatedAt: NotRequired[str | None]
 
 
+class Endpoint(TypedDict):
+    data: ResourceIdentifier
+
+
+class Relationships6(TypedDict):
+    endpoint: NotRequired[Endpoint]
+
+
 class WebhookTestDeliveryResource(TypedDict):
     type: Literal['webhook-test-deliveries']
     id: str
     attributes: NotRequired[WebhookTestDeliveryAttributes]
-    relationships: NotRequired[Relationships5]
+    relationships: NotRequired[Relationships6]
     links: NotRequired[ResourceLinks]
     meta: NotRequired[ResourceMeta]
 

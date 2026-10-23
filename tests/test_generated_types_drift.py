@@ -85,27 +85,19 @@ PhoneNumberAttributes = _phone_number_attributes()
 def _webhook_delivery_relationships() -> type:
     """The generated TypedDict for a webhook delivery's relationships block.
 
-    FOUND BY ITS CONTENTS, NOT BY ITS NAME, for the reason
-    `_phone_number_attributes` gives: the block is inline in the OpenAPI
-    document, so datamodel-code-generator names it positionally —
-    `Relationships4` at the time of writing — and that number moves whenever
-    an inline schema is added ahead of it.
-
-    `endpoint` is the whole block and it is unique in the generated module,
-    which is what makes one member enough to identify it. The search reports
-    its own denominator either way.
+    REACHED THROUGH THE RESOURCE THAT DECLARES IT, for the reason
+    `_fax_account_user_relationships` gives. It used to be found by its
+    contents, `{endpoint}`, but a test result's relationships block carries
+    exactly that member too, so a contents search now matches two types
+    (`Relationships5` and `Relationships6` at the time of writing).
     """
-    wanted = {"endpoint"}
-    found = [
-        value
-        for value in vars(generated).values()
-        if isinstance(value, type) and wanted <= set(getattr(value, "__annotations__", {}))
-    ]
-    assert len(found) == 1, (
-        f"{len(found)} generated types carry {sorted(wanted)} "
-        f"({[t.__name__ for t in found]}) — the lookup is broken, not the spec"
+    hints = typing_extensions.get_type_hints(generated.WebhookDeliveryResource)
+    block = hints.get("relationships")
+    assert isinstance(block, type), (
+        f"WebhookDeliveryResource declares no resolvable `relationships` member "
+        f"(got {block!r}) — the lookup is broken, not the spec"
     )
-    return found[0]
+    return block
 
 
 WebhookDeliveryRelationships = _webhook_delivery_relationships()
@@ -116,9 +108,7 @@ def _webhook_test_delivery_relationships() -> type:
 
     REACHED THROUGH THE RESOURCE THAT DECLARES IT, for the reason
     `_fax_account_user_relationships` gives. A contents search cannot be
-    trusted here: the block is `{endpoint}` exactly like a delivery's, and
-    whether the generator emits one shared class or two numbered ones is its
-    choice, not the spec's (it shares one at the time of writing).
+    trusted here: the block is `{endpoint}` exactly like a delivery's.
     """
     hints = typing_extensions.get_type_hints(generated.WebhookTestDeliveryResource)
     block = hints.get("relationships")
@@ -2544,3 +2534,19 @@ def test_every_member_of_a_webhook_test_result_is_read() -> None:
 
     assert len(_generated_keys(typed_dict)) == 9, "the test result's shape changed"
     assert read == _generated_keys(typed_dict)
+
+
+def test_a_test_results_endpoint_relationship_is_data_and_nothing_else() -> None:
+    """The spec gives a test result's `endpoint` its own shape: `data`,
+    REQUIRED, a non-null identifier, and no `links` — not the shared
+    `RelationshipToOne`, whose `data` may be null. `endpoint_id` relies on
+    `data` being there, and the fixtures send exactly this shape.
+
+    Required-ness is not checked here: the generated module defers its
+    annotations, so `__required_keys__` reports every key as required (see
+    `_fax_account_user_relationships`). The non-null `data` is checked.
+    """
+    endpoint = typing_extensions.get_type_hints(WebhookTestDeliveryRelationships)["endpoint"]
+    assert isinstance(endpoint, type)
+    assert _generated_keys(endpoint) == {"data"}
+    assert typing_extensions.get_type_hints(endpoint)["data"] is generated.ResourceIdentifier
