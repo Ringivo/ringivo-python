@@ -63,6 +63,15 @@
   `WebhookTestTimeoutError` (a `RingivoError` and a `TimeoutError`, raised
   by `wait()` with the last result read as `delivery`). Applies to both
   clients. Migration: none; everything here is new.
+- **`test: bool` on every parsed message event** (`MessageReceivedEvent`,
+  `MessageSentEvent`, `MessageDeliveredEvent`, `MessageFailedEvent` and
+  `UnknownMessageEvent`). It is True only when the body's `test` member is
+  the JSON `true`, which marks a test event whose data is a published
+  sample: answer 2XX and do no work. A missing member or any other value
+  reads False, and `parse_message_event()` still never raises. The
+  `webhook.test` ping parses as an `UnknownMessageEvent` with `test` True.
+  Migration: none; the field is new, defaults to False, and is added after
+  `raw`, so positional construction is unchanged.
 
 ## 0.24.0 (2026-10-23) — Added
 

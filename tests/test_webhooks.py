@@ -403,7 +403,7 @@ def test_each_variant_carries_only_its_own_members() -> None:
     round. This is the whole point of the split: code cannot read `sent_by`
     off a customer's text and take it for a staff reply.
     """
-    envelope = {"type", "event_id", "occurred_at", "raw"}
+    envelope = {"type", "event_id", "occurred_at", "test", "raw"}
     assert _field_names(MessageReceivedEvent) == envelope | {"message"}
     assert _field_names(MessageSentEvent) == envelope | {"message"}
     assert _field_names(MessageDeliveredEvent) == envelope | {"message"}
@@ -845,3 +845,82 @@ def test_a_malformed_outbound_body_reads_none_and_never_raises(payload: Any) -> 
     assert event.message.sent_by is None
     if isinstance(event, MessageFailedEvent):
         assert event.message.failure_cause is None
+
+
+# -- test events: `test` is True only when the envelope says `true` -------------
+
+_EVERY_TYPE: list[dict[str, Any]] = [
+    {**MESSAGE_SENT, "type": "message.received", "data": {}},
+    MESSAGE_SENT,
+    MESSAGE_DELIVERED,
+    MESSAGE_FAILED,
+    {**MESSAGE_SENT, "type": "fax.delivered"},  # parses as UnknownMessageEvent
+]
+_EVERY_TYPE_IDS = ["received", "sent", "delivered", "failed", "unknown"]
+
+
+@pytest.mark.parametrize("payload", _EVERY_TYPE, ids=_EVERY_TYPE_IDS)
+def test_a_test_event_reads_test_true_on_every_variant(payload: dict[str, Any]) -> None:
+    event = webhooks.parse_message_event({**payload, "test": True})
+
+    assert event.test is True
+
+
+@pytest.mark.parametrize("payload", _EVERY_TYPE, ids=_EVERY_TYPE_IDS)
+def test_a_real_event_carries_no_test_member_and_reads_false(payload: dict[str, Any]) -> None:
+    assert "test" not in payload
+
+    event = webhooks.parse_message_event(payload)
+
+    assert event.test is False
+
+
+@pytest.mark.parametrize(
+    "value",
+    [False, None, "true", "True", 1, 1.0, [True], {"test": True}],
+    ids=["false", "null", "str-true", "str-True", "one", "one-float", "list", "object"],
+)
+@pytest.mark.parametrize("payload", _EVERY_TYPE, ids=_EVERY_TYPE_IDS)
+def test_only_a_literal_true_is_a_test(payload: dict[str, Any], value: Any) -> None:
+    # `1 == True` in Python, so a check written as `== True` would take the
+    # number 1 for a test. Only the JSON `true` is one.
+    event = webhooks.parse_message_event({**payload, "test": value})
+
+    assert event.test is False
+
+
+@pytest.mark.parametrize(
+    "payload", [None, [], "x", 7, {}, {"test": True}, {"type": 7, "test": True}]
+)
+def test_a_body_that_is_not_a_message_event_still_reads_test_and_never_raises(
+    payload: Any,
+) -> None:
+    event = webhooks.parse_message_event(payload)
+
+    assert isinstance(event, UnknownMessageEvent)
+    assert event.test is (isinstance(payload, dict) and payload.get("test") is True)
+
+
+def test_the_specs_test_ping_parses_as_unknown_with_test_true(
+    openapi_spec: dict[str, Any],
+) -> None:
+    operation = openapi_spec["webhooks"]["webhook.test"]["post"]
+    example = operation["requestBody"]["content"]["application/json"]["example"]
+
+    event = webhooks.parse_message_event(example)
+
+    assert isinstance(event, UnknownMessageEvent)
+    assert event.test is True
+    assert event.event_id == example["eventId"]
+
+
+def test_the_test_member_is_the_one_the_spec_puts_on_the_envelope(
+    openapi_spec: dict[str, Any],
+) -> None:
+    envelope = openapi_spec["components"]["schemas"]["WebhookEventEnvelope"]
+    assert envelope["properties"]["test"] == {
+        **envelope["properties"]["test"],
+        "type": "boolean",
+        "const": True,
+    }
+    assert "test" not in envelope["required"]

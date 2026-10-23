@@ -2149,6 +2149,9 @@ class MessageReceivedEvent:
     `event_id` is the delivery's own id; dedupe on it, because delivery is
     at least once. `raw` is the whole decoded body, as it was handed to the
     parser.
+
+    `test` is True on a test event (`webhook_endpoints.send_test()`): its
+    `message` is a published sample, so answer 2XX and do no work.
     """
 
     type: Literal["message.received"] = "message.received"
@@ -2156,6 +2159,7 @@ class MessageReceivedEvent:
     occurred_at: datetime | None = None
     message: MessageReceivedEventData = field(default_factory=MessageReceivedEventData)
     raw: Mapping[str, Any] = field(default_factory=dict, repr=False)
+    test: bool = False
 
 
 @dataclass(frozen=True)
@@ -2166,6 +2170,9 @@ class MessageSentEvent:
     `event_id` is the delivery's own id; dedupe on it, because delivery is
     at least once. `raw` is the whole decoded body, as it was handed to the
     parser.
+
+    `test` is True on a test event (`webhook_endpoints.send_test()`): its
+    `message` is a published sample, so answer 2XX and do no work.
     """
 
     type: Literal["message.sent"] = "message.sent"
@@ -2173,6 +2180,7 @@ class MessageSentEvent:
     occurred_at: datetime | None = None
     message: OutboundMessageEventData = field(default_factory=OutboundMessageEventData)
     raw: Mapping[str, Any] = field(default_factory=dict, repr=False)
+    test: bool = False
 
 
 @dataclass(frozen=True)
@@ -2183,6 +2191,9 @@ class MessageDeliveredEvent:
     `event_id` is the delivery's own id; dedupe on it, because delivery is
     at least once. `raw` is the whole decoded body, as it was handed to the
     parser.
+
+    `test` is True on a test event (`webhook_endpoints.send_test()`): its
+    `message` is a published sample, so answer 2XX and do no work.
     """
 
     type: Literal["message.delivered"] = "message.delivered"
@@ -2190,6 +2201,7 @@ class MessageDeliveredEvent:
     occurred_at: datetime | None = None
     message: OutboundMessageEventData = field(default_factory=OutboundMessageEventData)
     raw: Mapping[str, Any] = field(default_factory=dict, repr=False)
+    test: bool = False
 
 
 @dataclass(frozen=True)
@@ -2200,6 +2212,9 @@ class MessageFailedEvent:
     `event_id` is the delivery's own id; dedupe on it, because delivery is
     at least once. `raw` is the whole decoded body, as it was handed to the
     parser.
+
+    `test` is True on a test event (`webhook_endpoints.send_test()`): its
+    `message` is a published sample, so answer 2XX and do no work.
     """
 
     type: Literal["message.failed"] = "message.failed"
@@ -2207,6 +2222,7 @@ class MessageFailedEvent:
     occurred_at: datetime | None = None
     message: MessageFailedEventData = field(default_factory=MessageFailedEventData)
     raw: Mapping[str, Any] = field(default_factory=dict, repr=False)
+    test: bool = False
 
 
 @dataclass(frozen=True)
@@ -2219,12 +2235,16 @@ class UnknownMessageEvent:
     the body when it was a JSON object, or `{}` when it was not. It carries
     no `message`, because this release does not know what such a body
     holds. Accept the delivery and ignore it.
+
+    `test` is True on a test event — the `webhook.test` ping parses as one of
+    these, with its endpoint's id at `raw["data"]["endpointId"]`.
     """
 
     type: None = None
     event_id: str | None = None
     occurred_at: datetime | None = None
     raw: Mapping[str, Any] = field(default_factory=dict, repr=False)
+    test: bool = False
 
 
 #: What `webhooks.parse_message_event()` returns: one variant per message
@@ -2256,6 +2276,9 @@ def _message_event_from_json(payload: Any) -> MessageEvent:
     occurred_at = _parse_datetime(source.get("occurredAt"))
     event_type = _text(source, "type")
     data = _mapping(source, "data") or {}
+    # Only the JSON `true` marks a test event. `is True`, not `== True`:
+    # `1 == True` in Python, and a number is not the member the spec defines.
+    test = source.get("test") is True
 
     if event_type == "message.received":
         return MessageReceivedEvent(
@@ -2263,6 +2286,7 @@ def _message_event_from_json(payload: Any) -> MessageEvent:
             occurred_at=occurred_at,
             message=MessageReceivedEventData._from_json(data),
             raw=source,
+            test=test,
         )
 
     if event_type == "message.sent":
@@ -2271,6 +2295,7 @@ def _message_event_from_json(payload: Any) -> MessageEvent:
             occurred_at=occurred_at,
             message=OutboundMessageEventData._from_json(data),
             raw=source,
+            test=test,
         )
 
     if event_type == "message.delivered":
@@ -2279,6 +2304,7 @@ def _message_event_from_json(payload: Any) -> MessageEvent:
             occurred_at=occurred_at,
             message=OutboundMessageEventData._from_json(data),
             raw=source,
+            test=test,
         )
 
     if event_type == "message.failed":
@@ -2287,6 +2313,7 @@ def _message_event_from_json(payload: Any) -> MessageEvent:
             occurred_at=occurred_at,
             message=MessageFailedEventData._from_json(data),
             raw=source,
+            test=test,
         )
 
-    return UnknownMessageEvent(event_id=event_id, occurred_at=occurred_at, raw=source)
+    return UnknownMessageEvent(event_id=event_id, occurred_at=occurred_at, raw=source, test=test)

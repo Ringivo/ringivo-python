@@ -2208,6 +2208,18 @@ _READS: tuple[_Read, ...] = (
         "occurredAt",
         "_message_event_from_json",
     ),
+    # `test` is the envelope's, so every variant reads it from there — the
+    # unknown one too, because the `webhook.test` ping parses as unknown.
+    *(
+        _Read(model, "test", generated.WebhookEventEnvelope, "test", "_message_event_from_json")
+        for model in (
+            models.MessageReceivedEvent,
+            models.MessageSentEvent,
+            models.MessageDeliveredEvent,
+            models.MessageFailedEvent,
+            models.UnknownMessageEvent,
+        )
+    ),
 )
 
 # Fields a model carries that no `_from_*` classmethod reads off a generated
@@ -2404,7 +2416,7 @@ def test_every_field_a_model_reads_is_covered_by_the_read_table() -> None:
 
 
 def test_every_field_a_model_reads_exists_in_the_generated_types() -> None:
-    assert len(_READS) == 319, f"{len(_READS)} reads were checked, not 319 — the sweep is broken"
+    assert len(_READS) == 324, f"{len(_READS)} reads were checked, not 324 — the sweep is broken"
 
     failures: list[str] = []
     for read in _READS:

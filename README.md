@@ -470,7 +470,8 @@ It is sent once and never retried. `type` is one the endpoint may receive, or
 `webhook.test`, a plain ping; without it, the endpoint's first type is sent.
 The body is the published example for that type, with a new `eventId`,
 `test: true`, and the header `Ringivo-Webhook-Test: true`. **Its ids are
-samples: check `test` first, answer 2XX, and do no work.**
+samples: answer 2XX and do no work.** A parsed message event says so as
+`event.test` (see "Message events" below).
 
 `send_test()` answers with the test's result, normally `pending`. When the
 platform could not queue the test, the result already reads `failed`, with
@@ -1223,6 +1224,9 @@ def receive(request):
 
     event = webhooks.parse_message_event(json.loads(request.body))
 
+    if event.test:  # a test event: its message is a sample, so do no work
+        return Response(status=204)
+
     match event:
         case MessageReceivedEvent(message=message):  # somebody texted one of your numbers
             print(message.from_, "wrote to", message.to, ":", message.body)
@@ -1239,6 +1243,14 @@ def receive(request):
     return Response(status=204)
 ```
 
+- **Check `event.test` first.** It is True on a test event, sent by
+  `webhook_endpoints.send_test()` or "Send test event". Its `message` is
+  the published sample for its type, so every id in it is illustrative:
+  answer 2XX and do no work. Every variant has `test`, the
+  `UnknownMessageEvent` too (the `webhook.test` ping parses as one). It is
+  True only when the body's `test` member is the JSON `true`; a missing
+  member or any other value reads False, and the parse still never raises.
+  A test also carries the header `Ringivo-Webhook-Test: true`.
 - **Each variant has only its own members.** `MessageReceivedEventData` has
   no `source`, `status`, `sent_by`, `sent_at`, provider ids or
   `failure_cause`. `OutboundMessageEventData` has no `received_at` and no
@@ -1429,7 +1441,7 @@ when it is `None`, use your own backoff.
 | `client.inbound_messages.get(inbound_message_id)` | `numbers:read` or `numbers:messaging` | One `InboundMessage`. A message to a number you do not carry text messaging for is a 404. |
 | `client.inbound_messages.download_media(item)` | — (the link is the authorization) | The bytes of one `InboundMessageMediaWithLink`, fetched from its `content_url` with no `Authorization` header. `ValueError` when the item has no link. |
 | `webhooks.verify(payload, header, secret, *, tolerance=300)` | — | Raises unless the body is genuine and fresh. |
-| `webhooks.parse_message_event(payload)` | — | A `MessageEvent` from a decoded body: a `MessageReceivedEvent`, `MessageSentEvent`, `MessageDeliveredEvent` or `MessageFailedEvent`, one per event type, or an `UnknownMessageEvent` for anything else. Never raises on content. |
+| `webhooks.parse_message_event(payload)` | — | A `MessageEvent` from a decoded body: a `MessageReceivedEvent`, `MessageSentEvent`, `MessageDeliveredEvent` or `MessageFailedEvent`, one per event type, or an `UnknownMessageEvent` for anything else. `event.test` is True on a test event. Never raises on content. |
 | `sender_label(text)` | — | A valid record label made from any text. |
 | `is_retryable(error)` | — | Whether the API's contract allows the same call again. |
 
