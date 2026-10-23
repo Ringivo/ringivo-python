@@ -10962,7 +10962,8 @@ components:
           description: |
             Why the test did not land: the status your server answered, or why no answer came — a
             TLS or connection error, a timeout, an address we do not send to, a delivery service
-            too busy with other tests, or no result within 2 minutes. Null on a 2XX.
+            too busy with other tests, a test we could not hand to the delivery service (nothing
+            was sent), or no result within 2 minutes. Null on a 2XX.
         attemptedAt: { type: [string, 'null'], format: date-time }
         createdAt: { type: [string, 'null'], format: date-time }
         updatedAt: { type: [string, 'null'], format: date-time }
