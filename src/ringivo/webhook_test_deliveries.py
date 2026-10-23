@@ -21,8 +21,17 @@ that answer is the point of the test. Rows are removed after 7 days.
 status is not `pending` or `timeout` seconds have passed. The platform marks
 a test with no result after 2 minutes as `failed`, so the default timeout,
 150 seconds, is a little longer than that: a timeout here means the server
-did not settle the test as it says it will. The sleep and the clock are this
-module's `_sleep` and `_monotonic`, so a test can replace them.
+did not settle the test as it says it will. A result that arrives after
+the 2 minutes replaces that `failed`, so a later `get()` can read
+`delivered`.
+
+The reads count against the API's general rate limit like any other call.
+When one is refused with a 429 that carries `Retry-After`, `wait()` sleeps
+that long (cut to the time left) and reads again; past the timeout the 429
+is raised. Every other refusal is raised at once.
+
+The sleep and the clock are this module's `_sleep` and `_monotonic`, so a
+test can replace them.
 """
 
 from __future__ import annotations
@@ -31,7 +40,7 @@ import time
 from collections.abc import Mapping, Sequence
 from typing import TYPE_CHECKING, Any
 
-from .errors import WebhookTestTimeoutError
+from .errors import ApiError, WebhookTestTimeoutError
 from .faxes import _data_object, _next_cursor, _next_link, _path_segment
 from .models import WebhookTestDelivery, WebhookTestDeliveryPage
 
@@ -104,6 +113,33 @@ def _check_interval(interval: float) -> None:
     """Refuse an interval that would read the test in a tight loop."""
     if not interval > 0:
         raise ValueError(f"interval must be more than 0 seconds, not {interval!r}")
+
+
+def _check_timeout(timeout: float) -> None:
+    """Refuse a timeout that is negative or NaN.
+
+    A negative one would give up before the first read, and NaN compares
+    False with everything, so it would never end the wait.
+    """
+    if not timeout >= 0:
+        raise ValueError(f"timeout must be 0 seconds or more, not {timeout!r}")
+
+
+def _rate_limited_for(error: ApiError, remaining: float) -> float | None:
+    """How long `wait()` sleeps before it reads again after `error`, or None.
+
+    Only a 429 that says how long to wait is slept through: that is the
+    API's general rate limit on the reads themselves, and the server named
+    the time. The sleep is cut to `remaining`, the seconds left before the
+    deadline; each client measures that with its own clock. None —
+    raise the error — for every other refusal, for a 429 with no
+    `Retry-After`, and once the deadline has passed.
+    """
+    if error.status_code != 429 or error.retry_after is None:
+        return None
+    if remaining <= 0:
+        return None
+    return min(error.retry_after, remaining)
 
 
 def _timed_out(delivery: WebhookTestDelivery, timeout: float) -> WebhookTestTimeoutError:
@@ -187,8 +223,9 @@ class WebhookTestDeliveries:
                 already reads `failed` — is returned as it is, with no
                 request. An id is read once at once.
             interval: Seconds to sleep before each read. More than 0.
-            timeout: Seconds to wait in all. The last sleep is cut short to
-                end at the timeout, and one last read is made there.
+            timeout: Seconds to wait in all, 0 or more. The last sleep is
+                cut short to end at the timeout, and one last read is made
+                there.
 
         Returns the first result that is not `pending`: `delivered` or
         `failed`. Read `status_code`, `error` and `response_body` for why.
@@ -196,27 +233,40 @@ class WebhookTestDeliveries:
         Raises:
             WebhookTestTimeoutError: The test was still `pending` when the
                 timeout ran out. Its `delivery` is the last result read.
-            ValueError: `interval` was not more than 0, or the id was empty,
-                `.` or `..`.
-            ApiError: A read was refused — a 429 with `retry_after`, for
-                example. Nothing is retried here.
+            ValueError: `interval` was not more than 0, `timeout` was
+                negative or NaN, or the id was empty, `.` or `..`.
+            ApiError: A read was refused. A 429 with `retry_after` is slept
+                through and read again while time is left, and raised after
+                the timeout; every other refusal is raised at once.
         """
         _check_interval(interval)
+        _check_timeout(timeout)
         deadline = _monotonic() + timeout
 
         if isinstance(test, WebhookTestDelivery):
             test_id, current = test.id, test
         else:
-            test_id, current = test, self.get(test)
+            test_id, current = test, self._read(test, deadline)
 
         while current.status == _PENDING:
             remaining = deadline - _monotonic()
             if remaining <= 0:
                 raise _timed_out(current, timeout)
             _sleep(min(interval, remaining))
-            current = self.get(test_id)
+            current = self._read(test_id, deadline)
 
         return current
+
+    def _read(self, test_id: str, deadline: float) -> WebhookTestDelivery:
+        """One read for `wait()`, sleeping through a rate-limited 429."""
+        while True:
+            try:
+                return self.get(test_id)
+            except ApiError as error:
+                delay = _rate_limited_for(error, deadline - _monotonic())
+                if delay is None:
+                    raise
+                _sleep(delay)
 
 
 def _page(document: Any) -> WebhookTestDeliveryPage:

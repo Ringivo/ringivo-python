@@ -8,8 +8,9 @@ the two clients cannot drift.
 
 Read webhook_test_deliveries.py for the whys: what `pending` means, why a
 test keeps its row when a real delivery does not, and why the default
-timeout is 150 seconds. The sleep and the clock are this module's own
-`_sleep` and `_monotonic`, so a test can replace them.
+timeout is 150 seconds, and how a rate-limited read is slept through. The
+sleep and the clock are this module's own `_sleep` and `_monotonic`, so a
+test can replace them.
 """
 
 from __future__ import annotations
@@ -20,6 +21,7 @@ from collections.abc import Sequence
 from typing import TYPE_CHECKING
 
 from .faxes import _data_object, _path_segment
+from .errors import ApiError
 from .models import WebhookTestDelivery, WebhookTestDeliveryPage
 from .webhook_test_deliveries import (
     _NOUN,
@@ -28,8 +30,10 @@ from .webhook_test_deliveries import (
     DEFAULT_INTERVAL,
     DEFAULT_TIMEOUT,
     _check_interval,
+    _check_timeout,
     _page,
     _params,
+    _rate_limited_for,
     _timed_out,
 )
 
@@ -99,23 +103,41 @@ class AsyncWebhookTestDeliveries:
         Raises:
             WebhookTestTimeoutError: The test was still `pending` when
                 `timeout` ran out. Its `delivery` is the last result read.
-            ValueError: `interval` was not more than 0, or the id was empty,
-                `.` or `..`.
-            ApiError: A read was refused. Nothing is retried here.
+            ValueError: `interval` was not more than 0, `timeout` was
+                negative or NaN, or the id was empty, `.` or `..`.
+            ApiError: A read was refused. A 429 with `retry_after` is slept
+                through and read again while time is left, and raised after
+                the timeout; every other refusal is raised at once.
         """
         _check_interval(interval)
+        _check_timeout(timeout)
         deadline = _monotonic() + timeout
 
         if isinstance(test, WebhookTestDelivery):
             test_id, current = test.id, test
         else:
-            test_id, current = test, await self.get(test)
+            test_id, current = test, await self._read(test, deadline)
 
         while current.status == _PENDING:
             remaining = deadline - _monotonic()
             if remaining <= 0:
                 raise _timed_out(current, timeout)
             await _sleep(min(interval, remaining))
-            current = await self.get(test_id)
+            current = await self._read(test_id, deadline)
 
         return current
+
+    async def _read(self, test_id: str, deadline: float) -> WebhookTestDelivery:
+        """One read for `wait()`, sleeping through a rate-limited 429.
+
+        The rule is `webhook_test_deliveries._rate_limited_for`; the time
+        left is measured with this module's own `_monotonic`.
+        """
+        while True:
+            try:
+                return await self.get(test_id)
+            except ApiError as error:
+                delay = _rate_limited_for(error, deadline - _monotonic())
+                if delay is None:
+                    raise
+                await _sleep(delay)

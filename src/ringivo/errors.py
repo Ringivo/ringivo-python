@@ -206,7 +206,9 @@ class WebhookTestTimeoutError(RingivoError, TimeoutError):
     again later with `webhook_test_deliveries.get(delivery.id)`.
 
     It is also a `TimeoutError`, so code that already catches the built-in
-    one catches this.
+    one catches this. A `TimeoutError` is an `OSError`, so an
+    `except OSError:` around your call catches it too. `is_retryable()` is
+    False for it: nothing was refused, the test is simply not settled yet.
     """
 
     def __init__(self, message: str, *, delivery: WebhookTestDelivery) -> None:
@@ -370,7 +372,10 @@ def is_retryable(error: BaseException) -> bool:
     False too for `httpx.UnsupportedProtocol` and `httpx.LocalProtocolError`:
     those are transport errors this client caused (a bad URL, an invalid
     request), and an unchanged retry fails the same way. False for anything
-    else, because this package did not raise it.
+    else: an exception this package did not raise, and the ones it raises
+    that are not a refusal — `SignatureVerificationError` and
+    `WebhookTestTimeoutError` (a test still pending is not a failed call;
+    read it again with `webhook_test_deliveries.get()`).
 
     This decides WHETHER to retry, never WHEN. Wait at least
     `error.retry_after` seconds when it is set; otherwise use your own

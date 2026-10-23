@@ -334,14 +334,16 @@ class WebhookEndpoints:
             webhook_endpoint_id: The endpoint to test.
             type: The event type to send: one this endpoint may receive, or
                 `webhook.test`, a plain ping. None sends the endpoint's
-                first type.
+                first type. `""` is refused, because the API would read it
+                as None.
 
         Raises:
+            ValueError: `type` was `""`.
             ApiError: 409 — the endpoint is disabled; enable it first.
                 422 — `type` is not one this endpoint may receive; the
                 error's `source` points at `/eventType`. 429 — more than 5
                 tests a minute to this endpoint, or 5 a minute from your
-                account. 503 — the platform could not check that limit.
+                account, or the API's general rate limit. 503 — the platform could not check that limit.
                 The 429 and the 503 carry `retry_after`.
 
         THIS CLIENT NEVER SENDS A TEST AGAIN BY ITSELF, and the request
@@ -368,7 +370,19 @@ def _test_body(event_type: str | None) -> dict[str, str]:
     member optional, sent as `application/json` (httpx sets that type for a
     `json=` body). With no type the body is `{}`, and the API sends the
     endpoint's first type; `eventType` is never sent as `null`.
+
+    `""` IS REFUSED. The API turns an empty string into null before it
+    reads the body, so `type=""` would not be a 422: it would be a 202 that
+    sends the endpoint's first type, a test the caller did not ask for.
+
+    Raises:
+        ValueError: `event_type` was `""`.
     """
+    if event_type == "":
+        raise ValueError(
+            'type must name an event type or be None, not "": the API reads "" as no '
+            "type and sends the endpoint's first type instead. Pass type=None for that."
+        )
     return {} if event_type is None else {"eventType": event_type}
 
 

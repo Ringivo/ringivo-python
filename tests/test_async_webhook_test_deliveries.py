@@ -356,3 +356,124 @@ async def test_wait_refuses_an_interval_that_is_not_positive(client: AsyncRingiv
     async with client:
         with pytest.raises(ValueError, match="interval"):
             await client.webhook_test_deliveries.wait(TEST_ID, interval=0)
+
+
+@pytest.mark.anyio
+async def test_send_test_refuses_an_empty_type_before_any_request(
+    respx_mock: respx.MockRouter, client: AsyncRingivo
+) -> None:
+    route = respx_mock.post(SEND_URL)
+
+    async with client:
+        with pytest.raises(ValueError, match="type"):
+            await client.webhook_endpoints.send_test(ENDPOINT_ID, type="")
+
+    assert not route.called
+
+
+@pytest.mark.anyio
+async def test_send_test_reads_the_endpoint_id_the_server_always_sends(
+    respx_mock: respx.MockRouter, client: AsyncRingivo
+) -> None:
+    respx_mock.post(SEND_URL).mock(return_value=httpx.Response(202, json=_document()))
+
+    async with client:
+        test = await client.webhook_endpoints.send_test(ENDPOINT_ID)
+
+    assert test.endpoint_id == ENDPOINT_ID
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize(
+    "refusal",
+    [
+        _refusal(503, "Service Unavailable", retry_after="5"),
+        _refusal(404, "Not Found"),
+        _refusal(429, "Too Many Requests"),
+    ],
+    ids=["503-with-retry-after", "404", "429-without-retry-after"],
+)
+async def test_wait_lets_any_other_refused_read_propagate_at_once(
+    respx_mock: respx.MockRouter, client: AsyncRingivo, clock: _Clock, refusal: httpx.Response
+) -> None:
+    route = respx_mock.get(TEST_URL).mock(return_value=refusal)
+    pending = WebhookTestDelivery._from_resource(_resource())
+
+    async with client:
+        with pytest.raises(ApiError) as caught:
+            await client.webhook_test_deliveries.wait(pending, interval=2.0)
+
+    assert caught.value.status_code == refusal.status_code
+    assert route.call_count == 1
+    assert clock.slept == [2.0]
+
+
+@pytest.mark.anyio
+async def test_wait_sleeps_through_a_429_on_a_read_and_keeps_polling(
+    respx_mock: respx.MockRouter, client: AsyncRingivo, clock: _Clock
+) -> None:
+    route = respx_mock.get(TEST_URL).mock(
+        side_effect=[
+            _refusal(429, "Too Many Requests", retry_after="5"),
+            httpx.Response(200, json=_document(**_DELIVERED)),
+        ]
+    )
+    pending = WebhookTestDelivery._from_resource(_resource())
+
+    async with client:
+        result = await client.webhook_test_deliveries.wait(pending, interval=2.0)
+
+    assert result.status == "delivered"
+    assert route.call_count == 2
+    assert clock.slept == [2.0, 5]
+
+
+@pytest.mark.anyio
+async def test_wait_sleeps_through_a_429_on_the_first_read_of_an_id(
+    respx_mock: respx.MockRouter, client: AsyncRingivo, clock: _Clock
+) -> None:
+    route = respx_mock.get(TEST_URL).mock(
+        side_effect=[
+            _refusal(429, "Too Many Requests", retry_after="3"),
+            httpx.Response(200, json=_document(**_DELIVERED)),
+        ]
+    )
+
+    async with client:
+        result = await client.webhook_test_deliveries.wait(TEST_ID)
+
+    assert result.status == "delivered"
+    assert route.call_count == 2
+    assert clock.slept == [3]
+
+
+@pytest.mark.anyio
+async def test_wait_cuts_a_429_sleep_to_the_deadline_and_then_raises_the_429(
+    respx_mock: respx.MockRouter, client: AsyncRingivo, clock: _Clock
+) -> None:
+    route = respx_mock.get(TEST_URL).mock(
+        return_value=_refusal(429, "Too Many Requests", retry_after="30")
+    )
+    pending = WebhookTestDelivery._from_resource(_resource())
+
+    async with client:
+        with pytest.raises(ApiError) as caught:
+            await client.webhook_test_deliveries.wait(pending, interval=2.0, timeout=10.0)
+
+    assert clock.slept == [2.0, 8.0]
+    assert route.call_count == 2
+    assert caught.value.status_code == 429
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize("timeout", [-1.0, float("nan")], ids=["minus-one", "nan"])
+async def test_wait_refuses_a_timeout_that_is_not_zero_or_more(
+    respx_mock: respx.MockRouter, client: AsyncRingivo, timeout: float
+) -> None:
+    route = respx_mock.get(url__startswith=TESTS_URL)
+
+    async with client:
+        with pytest.raises(ValueError, match="timeout"):
+            await client.webhook_test_deliveries.wait(TEST_ID, timeout=timeout)
+
+    assert not route.called

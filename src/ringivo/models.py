@@ -777,11 +777,16 @@ class WebhookTestDelivery:
     `eventId` of the body that was sent, so a receiver that logs event ids
     can find this test in its own log.
 
+    `endpoint_id` is the endpoint the test was sent to. The API always
+    sends that linkage on this resource, on every read, so it is set; it is
+    None only on a body that left it out (see `_relationship_id`).
+
     `status` is `pending` until the one attempt is made — normally within a
     few seconds — and then `delivered` (your server answered 2XX) or
     `failed` (any other answer, or none). A 202 can already read `failed`,
     with `error` saying why, when the platform could not queue the test.
-    A test with no result after 2 minutes reads `failed`.
+    A test with no result after 2 minutes reads `failed`; a result that
+    arrives later replaces it, so a later read can say `delivered`.
     `webhook_test_deliveries.wait()` re-reads until it is not `pending`.
 
     `status_code` is what your server answered and is None while pending or

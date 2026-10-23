@@ -478,15 +478,24 @@ platform could not queue the test, the result already reads `failed`, with
 `error` saying why. `wait()` returns such a result at once. Otherwise it reads
 the test every `interval` seconds (default 2) until it is `delivered` or
 `failed`. The platform marks a test with no result after 2 minutes as
-`failed`, so the default `timeout` is 150 seconds. If the timeout runs out
-first, `wait()` raises `WebhookTestTimeoutError`; its `delivery` is the last
-result it read.
+`failed`, so the default `timeout` is 150 seconds; a result that arrives
+after that replaces the `failed`, so a later `get()` can read `delivered`.
+If the timeout runs out first, `wait()` raises `WebhookTestTimeoutError`;
+its `delivery` is the last result it read, and `is_retryable()` is False for
+it. The reads count against the API's general rate limit: when one is
+refused with a 429 that carries `Retry-After`, `wait()` sleeps that long (no
+longer than the time left) and reads again. Every other refusal, and a 429
+after the timeout, is raised. `type=""` is refused with `ValueError`: the
+API reads `""` as no type and would send the endpoint's first type.
+
+`result.endpoint_id` is the endpoint the test was sent to; the API always
+sends it.
 
 | Answer | Why | `retry_after` | `is_retryable()` |
 |---|---|---|---|
 | 409 | The endpoint is disabled. Enable it first. | None | False |
 | 422 | `type` is not one this endpoint may receive. `errors[0].source` is `{"pointer": "/eventType"}`. | None | False |
-| 429 | More than 5 tests a minute to this endpoint, or 5 a minute from your account. | Seconds to wait | True |
+| 429 | More than 5 tests a minute to this endpoint, 5 a minute from your account, or the API's general rate limit. | Seconds to wait | True |
 | 503 | The platform could not check that limit. | Seconds to wait | True |
 
 Each is an `ApiError`. **The client never sends a test again by itself**, and
@@ -1422,7 +1431,7 @@ when it is `None`, use your own backoff.
 | `client.webhook_endpoints.send_test(webhook_endpoint_id, *, type=None)` | `webhooks:write` | Send one test event to the endpoint. Returns its `WebhookTestDelivery` (a 202), normally `pending`. Never sent again by the client. |
 | `client.webhook_test_deliveries.list(*, endpoint=None, ids=None, after=None, before=None, page_size=None)` | `webhooks:read` | A `WebhookTestDeliveryPage` of the tests of the last 7 days, newest first. |
 | `client.webhook_test_deliveries.get(webhook_test_delivery_id)` | `webhooks:read` | One `WebhookTestDelivery`: `pending`, `delivered` or `failed`. |
-| `client.webhook_test_deliveries.wait(test, *, interval=2.0, timeout=150.0)` | `webhooks:read` | Re-read a test until it is not `pending`. Raises `WebhookTestTimeoutError` when the timeout runs out. |
+| `client.webhook_test_deliveries.wait(test, *, interval=2.0, timeout=150.0)` | `webhooks:read` | Re-read a test until it is not `pending`, sleeping through a 429 with `Retry-After`. Raises `WebhookTestTimeoutError` when the timeout runs out. |
 | `client.customers.list(*, ids=None, code=None, after=None, before=None, page_size=None)` | `customers:read` | A `CustomerPage`, newest first: iterable, with `next_cursor`. `ids=` reads several customers by id in one request — the ids `list()` and `get()` hand back — and combines with `code=`. A customer's `id` is what `client.pbx.*.list(customer=...)` takes. |
 | `client.customers.get(customer_id)` | `customers:read` | One `Customer`. A customer that is not on your account is a 404, not a 403. |
 | `client.pbx.subscribers.list(*, customer=None, user=None, search=None, kind=None, has_devices=None, after=None, before=None, page_size=None)` | `pbx-users:read` | A `PbxSubscriberPage`: iterable, with `next_cursor`. `user` is an EXACT extension; `search` is the directory search box; `kind` is one word, a comma list or a list of words; `has_devices` narrows to subscribers with (or without) a device. |

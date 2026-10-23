@@ -50,14 +50,22 @@
   `WebhookTestDelivery` from the 202, normally `pending`, or already
   `failed` with `error` when the test could not be queued. Refusals are
   `ApiError`s: 409 (endpoint disabled), 422 (type not allowed, pointer
-  `/eventType`), and 429 and 503 with `retry_after`. The client never sends
-  a test again by itself and sends no `Idempotency-Key`.
+  `/eventType`), and 429 (the test limits or the API's general rate limit)
+  and 503 with `retry_after`. The client never sends a test again by itself
+  and sends no `Idempotency-Key`. `type=""` is refused with `ValueError`,
+  because the API reads `""` as no type and would send the endpoint's first
+  type. `WebhookTestDelivery.endpoint_id` is always set: the API always
+  sends the linkage.
 - **`client.webhook_test_deliveries`**: `get(id)` reads one test result,
   `list(endpoint=, ids=, …)` lists the tests of the last 7 days, and
   `wait(test, *, interval=2.0, timeout=150.0)` re-reads a test until it is
   `delivered` or `failed`. A result that is already not `pending` is
   returned with no request. The platform fails a test with no result after
-  2 minutes, so the default timeout is longer than that.
+  2 minutes, so the default timeout is longer than that (a later result
+  replaces that `failed`). A read refused with a 429 that carries
+  `retry_after` is slept through, cut to the time left, and read again;
+  every other refusal, and a 429 after the timeout, is raised. A negative
+  or NaN `timeout` is refused with `ValueError`.
 - **New public names**: `WebhookTestDelivery`, `WebhookTestDeliveryPage`,
   `WebhookTestDeliveries`, `AsyncWebhookTestDeliveries` and
   `WebhookTestTimeoutError` (a `RingivoError` and a `TimeoutError`, raised

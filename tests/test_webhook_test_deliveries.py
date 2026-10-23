@@ -261,6 +261,48 @@ def test_send_test_reads_the_spec_202_example(
     assert test.id == example["data"]["id"]
     assert test.status == example["data"]["attributes"]["status"]
     assert test.event_type == example["data"]["attributes"]["eventType"]
+    # The server always names the endpoint, with `data` and no `links`.
+    assert example["data"]["relationships"] == {
+        "endpoint": {"data": {"type": "webhook-endpoints", "id": test.endpoint_id}}
+    }
+    assert test.endpoint_id is not None
+
+
+@pytest.mark.parametrize(
+    ("path", "status"),
+    [
+        ("/v1/webhook-endpoints/{webhookEndpoint}/test", "202"),
+        ("/v1/webhook-test-deliveries/{webhookTestDelivery}", "200"),
+    ],
+)
+def test_the_fixtures_use_the_exact_relationship_shape_the_spec_publishes(
+    openapi_spec: dict[str, Any], path: str, status: str
+) -> None:
+    operation = openapi_spec["paths"][path]
+    operation = operation.get("post") or operation["get"]
+    example = operation["responses"][status]["content"][JSONAPI]["example"]
+    published = example["data"]["relationships"]
+    endpoint_id = published["endpoint"]["data"]["id"]
+
+    # `data` is always there and there are no `links`: the fixtures here
+    # send exactly that shape, and nothing the server does not send.
+    assert published == {"endpoint": {"data": {"type": "webhook-endpoints", "id": endpoint_id}}}
+    assert _resource()["relationships"] == {
+        "endpoint": {"data": {"type": "webhook-endpoints", "id": ENDPOINT_ID}}
+    }
+
+
+def test_send_test_refuses_an_empty_type_before_any_request(
+    respx_mock: respx.MockRouter, client: Ringivo
+) -> None:
+    # The API turns "" into null and then sends the endpoint's FIRST type
+    # with a 202 — a test of a type the caller did not ask for.
+    route = respx_mock.post(SEND_URL)
+
+    with client, pytest.raises(ValueError, match="type"):
+        client.webhook_endpoints.send_test(ENDPOINT_ID, type="")
+
+    assert not route.called
 
 
 # -- send_test: the refusals --------------------------------------------------
@@ -488,16 +530,116 @@ def test_wait_refuses_an_interval_that_is_not_positive(client: Ringivo, interval
         client.webhook_test_deliveries.wait(TEST_ID, interval=interval)
 
 
-def test_wait_lets_a_refused_read_propagate(
-    respx_mock: respx.MockRouter, client: Ringivo, clock: _Clock
+@pytest.mark.parametrize(
+    "refusal",
+    [
+        _refusal(503, "Service Unavailable", retry_after="5"),
+        _refusal(404, "Not Found"),
+        _refusal(429, "Too Many Requests"),  # no Retry-After: nothing to wait for
+    ],
+    ids=["503-with-retry-after", "404", "429-without-retry-after"],
+)
+def test_wait_lets_any_other_refused_read_propagate_at_once(
+    respx_mock: respx.MockRouter, client: Ringivo, clock: _Clock, refusal: httpx.Response
 ) -> None:
-    respx_mock.get(TEST_URL).mock(return_value=_refusal(429, "Too Many Requests", retry_after="5"))
+    route = respx_mock.get(TEST_URL).mock(return_value=refusal)
     pending = WebhookTestDelivery._from_resource(_resource())
 
     with client, pytest.raises(ApiError) as caught:
-        client.webhook_test_deliveries.wait(pending)
+        client.webhook_test_deliveries.wait(pending, interval=2.0)
 
-    assert caught.value.retry_after == 5
+    assert caught.value.status_code == refusal.status_code
+    assert route.call_count == 1
+    assert clock.slept == [2.0]
+
+
+def test_wait_sleeps_through_a_429_on_a_read_and_keeps_polling(
+    respx_mock: respx.MockRouter, client: Ringivo, clock: _Clock
+) -> None:
+    route = respx_mock.get(TEST_URL).mock(
+        side_effect=[
+            _refusal(429, "Too Many Requests", retry_after="5"),
+            httpx.Response(200, json=_document(**_DELIVERED)),
+        ]
+    )
+    pending = WebhookTestDelivery._from_resource(_resource())
+
+    with client:
+        result = client.webhook_test_deliveries.wait(pending, interval=2.0)
+
+    assert result.status == "delivered"
+    assert route.call_count == 2
+    # The interval, then the server's own Retry-After, then the read.
+    assert clock.slept == [2.0, 5]
+
+
+def test_wait_sleeps_through_a_429_on_the_first_read_of_an_id(
+    respx_mock: respx.MockRouter, client: Ringivo, clock: _Clock
+) -> None:
+    route = respx_mock.get(TEST_URL).mock(
+        side_effect=[
+            _refusal(429, "Too Many Requests", retry_after="3"),
+            httpx.Response(200, json=_document(**_DELIVERED)),
+        ]
+    )
+
+    with client:
+        result = client.webhook_test_deliveries.wait(TEST_ID)
+
+    assert result.status == "delivered"
+    assert route.call_count == 2
+    assert clock.slept == [3]
+
+
+def test_wait_cuts_a_429_sleep_to_the_deadline_and_then_raises_the_429(
+    respx_mock: respx.MockRouter, client: Ringivo, clock: _Clock
+) -> None:
+    route = respx_mock.get(TEST_URL).mock(
+        return_value=_refusal(429, "Too Many Requests", retry_after="30")
+    )
+    pending = WebhookTestDelivery._from_resource(_resource())
+
+    with client, pytest.raises(ApiError) as caught:
+        client.webhook_test_deliveries.wait(pending, interval=2.0, timeout=10.0)
+
+    # 2 s interval, then min(30, 8 left) = 8 s, then one read at the
+    # deadline that is refused again: past the deadline the 429 propagates.
+    assert clock.slept == [2.0, 8.0]
+    assert route.call_count == 2
+    assert caught.value.status_code == 429
+    assert caught.value.retry_after == 30
+
+
+@pytest.mark.parametrize("timeout", [-1.0, -0.001, float("nan")], ids=["minus-one", "tiny", "nan"])
+def test_wait_refuses_a_timeout_that_is_not_zero_or_more(
+    respx_mock: respx.MockRouter, client: Ringivo, timeout: float
+) -> None:
+    route = respx_mock.get(url__startswith=TESTS_URL)
+
+    with client, pytest.raises(ValueError, match="timeout"):
+        client.webhook_test_deliveries.wait(TEST_ID, timeout=timeout)
+
+    assert not route.called
+
+
+def test_wait_with_a_zero_timeout_reads_an_id_once(
+    respx_mock: respx.MockRouter, client: Ringivo, clock: _Clock
+) -> None:
+    route = respx_mock.get(TEST_URL).mock(return_value=httpx.Response(200, json=_document()))
+
+    with client, pytest.raises(WebhookTestTimeoutError):
+        client.webhook_test_deliveries.wait(TEST_ID, timeout=0)
+
+    assert route.call_count == 1
+    assert clock.slept == []
+
+
+def test_the_timeout_error_is_not_retryable() -> None:
+    error = WebhookTestTimeoutError(
+        "still pending", delivery=WebhookTestDelivery._from_resource(_resource())
+    )
+
+    assert is_retryable(error) is False
 
 
 @pytest.mark.parametrize("value", ["", ".", ".."], ids=["empty", "dot", "dot-dot"])
