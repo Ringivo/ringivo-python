@@ -3412,6 +3412,9 @@ paths:
                     attemptedAt: null
                     createdAt: '2026-10-22T15:04:05.000000Z'
                     updatedAt: '2026-10-22T15:04:05.000000Z'
+                  relationships:
+                    endpoint:
+                      data: { type: webhook-endpoints, id: 0198c4a1-8192-73b4-e5b6-708192031425 }
         '401':
           $ref: '#/components/responses/Unauthenticated'
         '403':
@@ -3526,6 +3529,9 @@ paths:
                       attemptedAt: '2026-10-22T15:04:06.000000Z'
                       createdAt: '2026-10-22T15:04:05.000000Z'
                       updatedAt: '2026-10-22T15:04:06.000000Z'
+                    relationships:
+                      endpoint:
+                        data: { type: webhook-endpoints, id: 0198c4a1-8192-73b4-e5b6-708192031425 }
         '400':
           $ref: '#/components/responses/BadQuery'
         '401':
@@ -3577,6 +3583,9 @@ paths:
                     attemptedAt: '2026-10-22T15:04:06.000000Z'
                     createdAt: '2026-10-22T15:04:05.000000Z'
                     updatedAt: '2026-10-22T15:04:06.000000Z'
+                  relationships:
+                    endpoint:
+                      data: { type: webhook-endpoints, id: 0198c4a1-8192-73b4-e5b6-708192031425 }
         '401':
           $ref: '#/components/responses/Unauthenticated'
         '403':
@@ -10982,6 +10991,9 @@ components:
           type: object
           properties:
             endpoint:
+              description: |
+                The endpoint the test was sent to. `data` is always present, also on a plain read
+                that included nothing, and there are no `links`.
               $ref: '#/components/schemas/RelationshipToOne'
         links:
           $ref: '#/components/schemas/ResourceLinks'
