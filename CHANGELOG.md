@@ -1,6 +1,6 @@
 # Release notes
 
-## Unreleased — Added
+## 0.25.0 (2026-10-23) — Added
 
 - **Download the media of a received MMS.** Each media item of
   `inbound_messages.list()` and `inbound_messages.get()` now has
