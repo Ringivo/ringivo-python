@@ -19,8 +19,10 @@ from ringivo import (
     ApiError,
     InboundMessage,
     InboundMessageMediaItem,
+    InboundMessageMediaWithLink,
     InboundMessagePage,
     Ringivo,
+    __version__,
 )
 
 BASE_URL = "https://api.yourprovider.example"
@@ -66,7 +68,22 @@ def list_example(openapi_spec: dict[str, Any]) -> dict[str, Any]:
     ]["example"]
 
 
-def _mms_resource() -> dict[str, Any]:
+@pytest.fixture
+def media_link(openapi_spec: dict[str, Any]) -> dict[str, str]:
+    """The spec's own examples for a media item's `contentUrl` and `expiresAt`.
+
+    Read from `InboundMessageMediaWithLink`, so the download URL these tests
+    follow is the shape the API documents — on the API host, signed in the
+    query — and not a hand copy.
+    """
+    properties = openapi_spec["components"]["schemas"]["InboundMessageMediaWithLink"]["properties"]
+    return {
+        "contentUrl": properties["contentUrl"]["example"],
+        "expiresAt": properties["expiresAt"]["example"],
+    }
+
+
+def _mms_resource(*media: dict[str, Any]) -> dict[str, Any]:
     return {
         "type": "inbound-messages",
         "id": MESSAGE_ID,
@@ -75,13 +92,36 @@ def _mms_resource() -> dict[str, Any]:
             "from": "+12003004000",
             "to": "+13215550101",
             "body": None,
-            "media": [
-                {"contentType": "text/vcard", "filename": "dana.vcf", "size": 512},
+            "media": list(media)
+            or [
+                {
+                    "contentType": "text/vcard",
+                    "filename": "dana.vcf",
+                    "size": 512,
+                    "contentUrl": None,
+                    "expiresAt": None,
+                },
             ],
             "receivedAt": "2026-09-03T09:14:02.000000Z",
             "createdAt": "2026-09-03T09:14:03.000000Z",
             "updatedAt": "2026-09-03T09:14:03.000000Z",
         },
+    }
+
+
+def _held_item(link: dict[str, str]) -> dict[str, Any]:
+    """A media item the platform holds the file of: it carries a link."""
+    return {"contentType": "image/jpeg", "filename": "photo.jpg", "size": 40213, **link}
+
+
+def _unheld_item() -> dict[str, Any]:
+    """A media item the platform does not hold: both link members are null."""
+    return {
+        "contentType": "text/plain",
+        "filename": None,
+        "size": 26,
+        "contentUrl": None,
+        "expiresAt": None,
     }
 
 
@@ -193,10 +233,163 @@ def test_get_reads_one_message_and_its_media(client: Ringivo, respx_mock: respx.
     assert message.kind == "mms"
     assert message.body is None
     (item,) = message.media
+    assert isinstance(item, InboundMessageMediaWithLink)
+    # Still an `InboundMessageMediaItem`: code written against 0.24 that
+    # names the old class keeps working.
     assert isinstance(item, InboundMessageMediaItem)
     assert item.content_type == "text/vcard"
     assert item.filename == "dana.vcf"
     assert item.size == 512
+    assert item.content_url is None
+    assert item.expires_at is None
+
+
+def test_list_reads_each_media_items_link_and_when_it_dies(
+    client: Ringivo, respx_mock: respx.MockRouter, media_link: dict[str, str]
+) -> None:
+    respx_mock.get(MESSAGES_URL).mock(
+        return_value=httpx.Response(
+            200, json={"data": [_mms_resource(_held_item(media_link), _unheld_item())]}
+        )
+    )
+
+    (message,) = client.inbound_messages.list()
+
+    held, unheld = message.media
+    assert isinstance(held, InboundMessageMediaWithLink)
+    assert held.content_type == "image/jpeg"
+    assert held.filename == "photo.jpg"
+    assert held.size == 40213
+    assert held.content_url == media_link["contentUrl"]
+    assert held.expires_at == datetime(2026, 8, 18, 12, 43, 57, tzinfo=timezone.utc)
+    assert held.raw == _held_item(media_link)
+    assert isinstance(unheld, InboundMessageMediaWithLink)
+    assert unheld.content_url is None
+    assert unheld.expires_at is None
+
+
+def test_get_reads_each_media_items_link(
+    client: Ringivo, respx_mock: respx.MockRouter, media_link: dict[str, str]
+) -> None:
+    respx_mock.get(f"{MESSAGES_URL}/{MESSAGE_ID}").mock(
+        return_value=httpx.Response(200, json={"data": _mms_resource(_held_item(media_link))})
+    )
+
+    message = client.inbound_messages.get(MESSAGE_ID)
+
+    (item,) = message.media
+    assert item.content_url == media_link["contentUrl"]
+    assert item.expires_at == datetime(2026, 8, 18, 12, 43, 57, tzinfo=timezone.utc)
+
+
+def test_a_link_member_of_the_wrong_type_reads_none(
+    client: Ringivo, respx_mock: respx.MockRouter
+) -> None:
+    item = {"contentType": "image/jpeg", "size": 1, "contentUrl": 7, "expiresAt": "soon"}
+    respx_mock.get(f"{MESSAGES_URL}/{MESSAGE_ID}").mock(
+        return_value=httpx.Response(200, json={"data": _mms_resource(item)})
+    )
+
+    (read,) = client.inbound_messages.get(MESSAGE_ID).media
+
+    assert read.content_url is None
+    assert read.expires_at is None
+    assert read.raw == item
+
+
+# -- download_media -------------------------------------------------------------
+
+
+def test_download_media_follows_the_link_without_the_bearer(
+    client: Ringivo, respx_mock: respx.MockRouter, media_link: dict[str, str]
+) -> None:
+    # The link is on the tenant's OWN API host, the same host the bearer
+    # token goes to — which is why this is worth asserting. The link reads
+    # one file for five minutes; the token reads every message this client
+    # can reach, and must never travel with the link.
+    api = respx_mock.get(f"{MESSAGES_URL}/{MESSAGE_ID}").mock(
+        return_value=httpx.Response(200, json={"data": _mms_resource(_held_item(media_link))})
+    )
+    download = respx_mock.get(media_link["contentUrl"]).mock(
+        return_value=httpx.Response(200, content=b"\xff\xd8\xff the photo")
+    )
+
+    with client:
+        (item,) = client.inbound_messages.get(MESSAGE_ID).media
+        content = client.inbound_messages.download_media(item)
+
+    assert content == b"\xff\xd8\xff the photo"
+    assert api.calls.last.request.headers["authorization"] == "Bearer tok"
+    sent = download.calls.last.request
+    assert "authorization" not in sent.headers
+    # It drops the token and nothing else: the API host's access log still
+    # sees which client fetched the file.
+    assert sent.headers["user-agent"] == f"Ringivo/Python {__version__}"
+    # The link is followed exactly as minted: the signature covers all of it.
+    assert str(sent.url) == media_link["contentUrl"]
+
+
+def test_download_media_refuses_an_item_with_no_link_before_any_request(
+    client: Ringivo, respx_mock: respx.MockRouter
+) -> None:
+    route = respx_mock.route(host="api.yourprovider.example", method="GET")
+    item = InboundMessageMediaWithLink._from_json(_unheld_item())
+
+    with pytest.raises(ValueError, match="no download link") as caught:
+        client.inbound_messages.download_media(item)
+
+    assert "messaging provider" in str(caught.value)
+    assert not route.called
+
+
+def test_download_media_refuses_a_webhook_media_item(
+    client: Ringivo, respx_mock: respx.MockRouter
+) -> None:
+    # A `message.received` item has no link, by design. The refusal names
+    # the way to one: read the message with `get()`.
+    route = respx_mock.route(host="api.yourprovider.example", method="GET")
+    item = InboundMessageMediaItem(content_type="image/jpeg", filename="photo.jpg", size=40213)
+
+    with pytest.raises(TypeError, match=r"inbound_messages\.get\(\)"):
+        client.inbound_messages.download_media(item)  # type: ignore[arg-type]
+
+    assert not route.called
+
+
+@pytest.mark.parametrize(
+    ("status", "body", "headers"),
+    [
+        # A changed or expired link: the signature did not verify.
+        (403, {"errors": [{"status": "403", "title": "Invalid signature."}]}, {}),
+        # No such file to serve; every miss answers the same way.
+        (404, {"errors": [{"status": "404", "code": "not_found", "title": "Not found"}]}, {}),
+        # Downloads count against the API rate limit.
+        (
+            429,
+            {"errors": [{"status": "429", "code": "rate_limited", "title": "Too many"}]},
+            {"Retry-After": "12"},
+        ),
+    ],
+)
+def test_a_refused_download_is_an_api_error(
+    client: Ringivo,
+    respx_mock: respx.MockRouter,
+    media_link: dict[str, str],
+    status: int,
+    body: dict[str, Any],
+    headers: dict[str, str],
+) -> None:
+    respx_mock.get(media_link["contentUrl"]).mock(
+        return_value=httpx.Response(status, json=body, headers=headers)
+    )
+    item = InboundMessageMediaWithLink._from_json(_held_item(media_link))
+
+    with client, pytest.raises(ApiError) as caught:
+        client.inbound_messages.download_media(item)
+
+    assert caught.value.status_code == status
+    assert caught.value.code == body["errors"][0].get("code")
+    assert caught.value.retry_after == (12 if status == 429 else None)
 
 
 def test_an_inbound_message_id_stays_inside_its_own_path_segment(

@@ -7,7 +7,8 @@ imported rather than copied, so the two clients cannot drift.
 
 Read inbound_messages.py for the whys: the `message.received` webhook is
 the push half of this collection, `received_at` is when the message was
-sent, and media is described, never carried.
+sent, a media item carries a short-lived link when the platform holds the
+file, and the download sends no token.
 """
 
 from __future__ import annotations
@@ -16,8 +17,8 @@ from collections.abc import Sequence
 from typing import TYPE_CHECKING
 
 from .faxes import _data_object, _path_segment
-from .inbound_messages import _NOUN, _PATH, _page, _params
-from .models import InboundMessage, InboundMessagePage
+from .inbound_messages import _NOUN, _PATH, _content_url, _page, _params
+from .models import InboundMessage, InboundMessageMediaWithLink, InboundMessagePage
 
 if TYPE_CHECKING:  # pragma: no cover - import cycle broken for the type only
     from .async_client import AsyncRingivo
@@ -73,3 +74,11 @@ class AsyncInboundMessages:
             f"{_PATH}/{_path_segment(inbound_message_id, noun=_NOUN)}",
         )
         return InboundMessage._from_resource(_data_object(response.json()))
+
+    async def download_media(self, item: InboundMessageMediaWithLink) -> bytes:
+        """The bytes of one media item, with no `Authorization` header.
+
+        The awaited twin of `InboundMessages.download_media`; it refuses and
+        raises the same things.
+        """
+        return await self._client._download(_content_url(item))

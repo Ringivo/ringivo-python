@@ -1948,6 +1948,41 @@ _READS: tuple[_Read, ...] = (
         "InboundMessageMediaItem._from_json",
     ),
     _Read(
+        models.InboundMessageMediaWithLink,
+        "content_type",
+        generated.InboundMessageMediaWithLink,
+        "contentType",
+        "InboundMessageMediaWithLink._from_json",
+    ),
+    _Read(
+        models.InboundMessageMediaWithLink,
+        "filename",
+        generated.InboundMessageMediaWithLink,
+        "filename",
+        "InboundMessageMediaWithLink._from_json",
+    ),
+    _Read(
+        models.InboundMessageMediaWithLink,
+        "size",
+        generated.InboundMessageMediaWithLink,
+        "size",
+        "InboundMessageMediaWithLink._from_json",
+    ),
+    _Read(
+        models.InboundMessageMediaWithLink,
+        "content_url",
+        generated.InboundMessageMediaWithLink,
+        "contentUrl",
+        "InboundMessageMediaWithLink._from_json",
+    ),
+    _Read(
+        models.InboundMessageMediaWithLink,
+        "expires_at",
+        generated.InboundMessageMediaWithLink,
+        "expiresAt",
+        "InboundMessageMediaWithLink._from_json",
+    ),
+    _Read(
         models.InboundMessage,
         "id",
         generated.InboundMessageResource,
@@ -2153,6 +2188,10 @@ _EXCLUDED: dict[tuple[type, str], str] = {
         models.InboundMessageMediaItem,
         "raw",
     ): "holds the whole source mapping this object was built from",
+    (
+        models.InboundMessageMediaWithLink,
+        "raw",
+    ): "holds the whole source mapping this object was built from",
     (models.OutboundMessage, "raw"): "holds the whole source mapping this object was built from",
     (models.MessageSender, "raw"): "holds the whole source mapping this object was built from",
     (
@@ -2244,6 +2283,7 @@ _MODELS: tuple[type, ...] = (
     models.Customer,
     models.OutboundMessageMediaItem,
     models.InboundMessageMediaItem,
+    models.InboundMessageMediaWithLink,
     models.OutboundMessage,
     models.MessageSender,
     models.MessageReceivedEventData,
@@ -2280,7 +2320,7 @@ def test_every_field_a_model_reads_is_covered_by_the_read_table() -> None:
     them, in both directions, or this whole test proves nothing about that
     model.
     """
-    assert len(_MODELS) == 30, (
+    assert len(_MODELS) == 31, (
         f"only {[m.__name__ for m in _MODELS]} was searched — the sweep is broken"
     )
 
@@ -2302,7 +2342,7 @@ def test_every_field_a_model_reads_is_covered_by_the_read_table() -> None:
 
 
 def test_every_field_a_model_reads_exists_in_the_generated_types() -> None:
-    assert len(_READS) == 303, f"{len(_READS)} reads were checked, not 303 — the sweep is broken"
+    assert len(_READS) == 308, f"{len(_READS)} reads were checked, not 308 — the sweep is broken"
 
     failures: list[str] = []
     for read in _READS:
@@ -2390,14 +2430,21 @@ def test_every_member_of_a_message_event_is_read(
             generated.InboundMessageMediaItem,
             {"contentType", "filename", "size"},
         ),
+        (
+            models.InboundMessageMediaWithLink,
+            generated.InboundMessageMediaWithLink,
+            {"contentType", "filename", "size", "contentUrl", "expiresAt"},
+        ),
     ],
 )
 def test_every_member_of_a_media_item_is_read(
     model: type, typed_dict: type, declared: set[str]
 ) -> None:
-    """Both directions for the two media item shapes, as for the events
-    above: the spec gives an outbound item `contentType` and `size`, and an
-    inbound item `filename` too — every one is read, and nothing else is.
+    """Both directions for the three media item shapes, as for the events
+    above: the spec gives an outbound item `contentType` and `size`, a
+    webhook's inbound item `filename` too, and the API's inbound item
+    `contentUrl` and `expiresAt` on top — every one is read, and nothing else
+    is.
     Against a spec from before 0.23.0 (`bytes`, `encoding`, and one
     `...MediaPart` schema per surface) this fails on the names alone.
     """
