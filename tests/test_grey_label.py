@@ -14,6 +14,9 @@ scanned; `ringivo/_generated_types.py`, whose class names, field names and
 which is the half that could regress without anybody editing a line by
 hand.
 
+The same scan holds the API's vendor rule: the SDK names no vendor the
+platform is built on — only carriers may be named. The README, which PyPI shows to every integrator, is scanned too.
+
 Cheap and durable on purpose: it costs milliseconds, it needs no network,
 and it fails on the next `scripts/generate.sh` run that pulls a branded
 string out of a spec.
@@ -34,15 +37,59 @@ import ringivo
 # on 2026-10-01, and nothing here may name them either. The model family is
 # matched at a word start only, so an ordinary word that contains it does
 # not fail the test.
+#
+# The third group is the vendors the platform is built on (the API's vendor
+# rule): the phone system and its device and media products,
+# the rating engine, the speech, AI and email providers, the clouds, the edge,
+# the error inbox, the identity check, the number-lookup and porting services.
+# Carriers are allowed and are not here. A short or common token is matched
+# as a whole word only.
+VENDOR_NAMES = [
+    codecs.decode(name, "rot13")
+    for name in (
+        "argfncvraf",
+        "fancfbyhgvba",
+        "fanczbovyr",
+        "ptengrf",
+        "yvirxvg",
+        "bcranv",
+        "naguebcvp",
+        "pynhqr",
+        "ryriraynof",
+        "pybhqsyner",
+        "xnznvyvb",
+        "serrfjvgpu",
+        "egcratvar",
+        "zrvyvfrnepu",
+        "cbegpbageby",
+        "qvqvg",
+        "fxlfjvgpu",
+        "fragel",
+        "cbfgznex",
+        "benpyr",
+        "nznmba",
+    )
+]
+VENDOR_WORDS = [
+    codecs.decode(word, "rot13") for word in ("gryvdhr", "aqc", "azf", "bpv", "bpve", "njf", "frf")
+]
 FORBIDDEN = re.compile(
-    codecs.decode("gryanzvp|gryvzngvp", "rot13")
-    + "|"
-    + codecs.decode("qrrctenz", "rot13")
-    + r"|\b"
-    + codecs.decode("abin", "rot13")
-    + r"|ringivo\.com",
+    "|".join(
+        [
+            codecs.decode("gryanzvp|gryvzngvp", "rot13"),
+            codecs.decode("qrrctenz", "rot13"),
+            r"\b" + codecs.decode("abin", "rot13"),
+            r"ringivo\.com",
+            *VENDOR_NAMES,
+            codecs.decode("cbegvat", "rot13") + r"\.com",
+            codecs.decode("cynva", "rot13") + r"\.com",
+            *(rf"\b{word}\b" for word in VENDOR_WORDS),
+        ]
+    ),
     re.IGNORECASE,
 )
+
+README = Path(__file__).resolve().parent.parent / "README.md"
 
 # Everything the wheel carries that a human or a tool can read.
 SCANNED_SUFFIXES = {".py", ".pyi", ".txt", ".json", ".yaml", ".yml", ".md", ".cfg", ".typed"}
@@ -133,6 +180,24 @@ def test_the_forbidden_pattern_fires_on_the_speech_to_text_names() -> None:
     assert FORBIDDEN.search(f"made by {service}")
     assert FORBIDDEN.search(f"model: {model}")
     assert not FORBIDDEN.search("an innovation in transcripts")
+
+
+def test_the_readme_names_no_vendor() -> None:
+    # PyPI shows the README to every integrator, so it is SDK surface too.
+    text = README.read_text(encoding="utf-8")
+    assert len(text) > 1000, "the README read as almost empty — the scan is not reading it"
+    found = sorted({match.group(0).lower() for match in FORBIDDEN.finditer(text)})
+    assert found == [], f"the README names a forbidden brand, host or vendor: {found}"
+
+
+def test_the_forbidden_pattern_fires_on_the_vendor_names_and_passes_carriers() -> None:
+    # The control for the vendor half of both scans.
+    assert FORBIDDEN.search(codecs.decode("argfncvraf", "rot13") + "Number")
+    assert FORBIDDEN.search("the " + codecs.decode("aqc", "rot13").upper() + " login")
+    assert FORBIDDEN.search(codecs.decode("pybhqsyner", "rot13").upper() + " token")
+    assert not FORBIDDEN.search(
+        "Bandwidth, Sinch, Telnyx, Twilio and Inteliquent carry calls; uses a session"
+    )
 
 
 def test_no_client_compiles_in_a_base_url_of_its_own() -> None:
