@@ -48,8 +48,10 @@ VENDOR_NAMES = [
     codecs.decode(name, "rot13")
     for name in (
         "argfncvraf",
+        "arg-fncvraf",
         "fancfbyhgvba",
         "fanczbovyr",
+        "fancohvyqre",
         "ptengrf",
         "yvirxvg",
         "bcranv",
@@ -57,6 +59,7 @@ VENDOR_NAMES = [
         "pynhqr",
         "ryriraynof",
         "pybhqsyner",
+        "pybhqsebag",
         "xnznvyvb",
         "serrfjvgpu",
         "egcratvar",
@@ -70,8 +73,10 @@ VENDOR_NAMES = [
         "nznmba",
     )
 ]
-VENDOR_WORDS = [
-    codecs.decode(word, "rot13") for word in ("gryvdhr", "aqc", "azf", "bpv", "bpve", "njf", "frf")
+# The acronyms count only in capitals, and a short name only where no letter
+# touches it — the same rule the API's own check applies.
+VENDOR_ACRONYMS = [
+    codecs.decode(word, "rot13").upper() for word in ("aqc", "azf", "bpve", "bpv", "njf", "frf")
 ]
 FORBIDDEN = re.compile(
     "|".join(
@@ -81,9 +86,11 @@ FORBIDDEN = re.compile(
             r"\b" + codecs.decode("abin", "rot13"),
             r"ringivo\.com",
             *VENDOR_NAMES,
+            codecs.decode("fanc", "rot13") + r"\." + codecs.decode("uq", "rot13"),
             codecs.decode("cbegvat", "rot13") + r"\.com",
             codecs.decode("cynva", "rot13") + r"\.com",
-            *(rf"\b{word}\b" for word in VENDOR_WORDS),
+            r"(?<![A-Za-z])" + codecs.decode("gryvdhr", "rot13") + r"(?![A-Za-z])",
+            r"(?<![A-Za-z])(?-i:" + "|".join(VENDOR_ACRONYMS) + r")(?![A-Za-z])",
         ]
     ),
     re.IGNORECASE,
@@ -194,9 +201,11 @@ def test_the_forbidden_pattern_fires_on_the_vendor_names_and_passes_carriers() -
     # The control for the vendor half of both scans.
     assert FORBIDDEN.search(codecs.decode("argfncvraf", "rot13") + "Number")
     assert FORBIDDEN.search("the " + codecs.decode("aqc", "rot13").upper() + " login")
+    assert FORBIDDEN.search(codecs.decode("njf", "rot13").upper() + "_REGION")
     assert FORBIDDEN.search(codecs.decode("pybhqsyner", "rot13").upper() + " token")
+    assert FORBIDDEN.search(codecs.decode("fanc", "rot13").upper() + ".HD")
     assert not FORBIDDEN.search(
-        "Bandwidth, Sinch, Telnyx, Twilio and Inteliquent carry calls; uses a session"
+        "Bandwidth, Sinch, Telnyx, Twilio and Inteliquent carry calls; uses a session, aws-free"
     )
 
 
