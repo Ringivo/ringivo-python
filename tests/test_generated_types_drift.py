@@ -39,7 +39,7 @@ from ringivo import _generated_types as generated
 from ringivo import models
 from ringivo.models import (
     MediaLink as MediaLinkModel,
-)  # models.MediaLink shadows generated.MediaLink
+)  # named apart from the generated module's TypedDicts
 
 
 @dataclasses.dataclass(frozen=True)
@@ -259,32 +259,16 @@ _READS: tuple[_Read, ...] = (
     _Read(models.Fax, "documents", generated.FaxAttributes, "documents", "Fax._from_resource"),
     _Read(models.Fax, "created_at", generated.FaxAttributes, "createdAt", "Fax._from_resource"),
     _Read(models.Fax, "completed_at", generated.FaxAttributes, "completedAt", "Fax._from_resource"),
-    # -- Fax._from_acknowledgement reads the flat plain-JSON ------------------
-    # `data` object `send()` answers (camelCase) — Data1 (SendFaxAccepted),
-    # the fuller of the two acknowledgement shapes. `cancel()`'s answer is Data2, a
-    # strict subset (id + status only); the other fields simply read back
-    # None for a cancelled fax, which is correct, not a gap.
-    _Read(models.Fax, "id", generated.Data1, "id", "Fax._from_acknowledgement"),
-    _Read(models.Fax, "status", generated.Data1, "status", "Fax._from_acknowledgement"),
-    _Read(models.Fax, "direction", generated.Data1, "direction", "Fax._from_acknowledgement"),
-    _Read(models.Fax, "from_", generated.Data1, "from", "Fax._from_acknowledgement"),
-    _Read(models.Fax, "to", generated.Data1, "to", "Fax._from_acknowledgement"),
-    _Read(
-        models.Fax,
-        "client_reference",
-        generated.Data1,
-        "clientReference",
-        "Fax._from_acknowledgement",
-    ),
-    _Read(models.Fax, "created_at", generated.Data1, "createdAt", "Fax._from_acknowledgement"),
-    # -- MediaLink._from_json reads the generated MediaLink ------------------
-    # (camelCase, like the attribute blocks above).
-    _Read(MediaLinkModel, "url", generated.MediaLink, "url", "MediaLink._from_json"),
-    _Read(MediaLinkModel, "expires_at", generated.MediaLink, "expiresAt", "MediaLink._from_json"),
-    _Read(MediaLinkModel, "byte_size", generated.MediaLink, "byteSize", "MediaLink._from_json"),
-    _Read(MediaLinkModel, "sha256", generated.MediaLink, "sha256", "MediaLink._from_json"),
-    # The JSON:API document the endpoints answer now: a FaxMediaDocumentResource
-    # (id) + its attributes block. The flat reads above stay for an older server.
+    # -- The flat plain-JSON answers are not in this table ------------------
+    # `Fax._from_acknowledgement` (the flat `data` object `send()` and
+    # `cancel()` answered) and the flat branch of `MediaLink._from_json`
+    # (`{url, expiresAt, byteSize, sha256}`) still read an older server's
+    # answer, but the API removed those shapes on 2026-10-27 (the fax
+    # response-shape window closed) and the spec no longer describes them:
+    # there is no generated TypedDict left to hold their keys against. The
+    # tests in test_faxes.py / test_async_faxes.py still pin them.
+    # -- MediaLink._from_json reads the JSON:API document --------------------
+    # The endpoints answer a FaxMediaDocumentResource (id) + its attributes block.
     _Read(MediaLinkModel, "id", generated.FaxMediaDocumentResource, "id", "MediaLink._from_json"),
     _Read(MediaLinkModel, "url", FaxMediaDocumentAttributes, "contentUrl", "MediaLink._from_json"),
     _Read(
@@ -2406,7 +2390,7 @@ def test_every_field_a_model_reads_is_covered_by_the_read_table() -> None:
 
 
 def test_every_field_a_model_reads_exists_in_the_generated_types() -> None:
-    assert len(_READS) == 324, f"{len(_READS)} reads were checked, not 324 — the sweep is broken"
+    assert len(_READS) == 313, f"{len(_READS)} reads were checked, not 313 — the sweep is broken"
 
     failures: list[str] = []
     for read in _READS:
