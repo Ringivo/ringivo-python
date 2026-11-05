@@ -39,11 +39,13 @@ import ringivo
 # not fail the test.
 #
 # The third group is the vendors the platform is built on (the API's vendor
-# rule): the phone system and its device and media products,
-# the rating engine, the speech, AI and email providers, the clouds, the edge,
-# the error inbox, the identity check, the number-lookup and porting services.
-# Carriers are allowed and are not here. A short or common token is matched
-# as a whole word only.
+# rule): the phone system and its device and media products, the rating
+# engine, the speech, AI and email providers, the clouds, the edge, the error
+# inbox, the identity check, the number-lookup and porting services. Carriers
+# are allowed and are not here. The rule is the API's own check: a name counts
+# on a word or camelCase boundary in any case, never run into other letters
+# (so a carrier such as Inteliquent, or a schema named AddressEntry, passes),
+# and an acronym counts only in capitals.
 VENDOR_NAMES = [
     codecs.decode(name, "rot13")
     for name in (
@@ -52,6 +54,7 @@ VENDOR_NAMES = [
         "fancfbyhgvba",
         "fanczbovyr",
         "fancohvyqre",
+        "fanc.uq",
         "ptengrf",
         "yvirxvg",
         "bcranv",
@@ -65,16 +68,18 @@ VENDOR_NAMES = [
         "egcratvar",
         "zrvyvfrnepu",
         "cbegpbageby",
+        "cbegvat.pbz",
         "qvqvg",
+        "gryvdhr",
         "fxlfjvgpu",
         "fragel",
         "cbfgznex",
         "benpyr",
         "nznmba",
+        "nznmbanjf",
+        "cynva.pbz",
     )
 ]
-# The acronyms count only in capitals, and a short name only where no letter
-# touches it — the same rule the API's own check applies.
 VENDOR_ACRONYMS = [
     codecs.decode(word, "rot13").upper() for word in ("aqc", "azf", "bpve", "bpv", "njf", "frf")
 ]
@@ -85,11 +90,11 @@ FORBIDDEN = re.compile(
             codecs.decode("qrrctenz", "rot13"),
             r"\b" + codecs.decode("abin", "rot13"),
             r"ringivo\.com",
-            *VENDOR_NAMES,
-            codecs.decode("fanc", "rot13") + r"\." + codecs.decode("uq", "rot13"),
-            codecs.decode("cbegvat", "rot13") + r"\.com",
-            codecs.decode("cynva", "rot13") + r"\.com",
-            r"(?<![A-Za-z])" + codecs.decode("gryvdhr", "rot13") + r"(?![A-Za-z])",
+            # The case-insensitive part is scoped to the name, so the boundaries stay
+            # case-sensitive: a camelCase hump counts, a lowercase run-on does not.
+            r"(?-i:(?:(?<![A-Za-z])|(?<=[a-z])(?=[A-Z])))(?:"
+            + "|".join(re.escape(name) for name in VENDOR_NAMES)
+            + r")(?-i:(?![a-z]))",
             r"(?<![A-Za-z])(?-i:" + "|".join(VENDOR_ACRONYMS) + r")(?![A-Za-z])",
         ]
     ),
@@ -204,8 +209,10 @@ def test_the_forbidden_pattern_fires_on_the_vendor_names_and_passes_carriers() -
     assert FORBIDDEN.search(codecs.decode("njf", "rot13").upper() + "_REGION")
     assert FORBIDDEN.search(codecs.decode("pybhqsyner", "rot13").upper() + " token")
     assert FORBIDDEN.search(codecs.decode("fanc", "rot13").upper() + ".HD")
+    assert FORBIDDEN.search("is" + codecs.decode("argfncvraf", "rot13").capitalize() + "Enabled")
     assert not FORBIDDEN.search(
-        "Bandwidth, Sinch, Telnyx, Twilio and Inteliquent carry calls; uses a session, aws-free"
+        "Bandwidth, Sinch, Telnyx, Twilio and Inteliquent carry calls; uses a session, aws-free, "
+        "AddressEntry, whoDidItems"
     )
 
 
