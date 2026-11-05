@@ -1244,7 +1244,7 @@ class HostedMessagingOrderCreateRequest(TypedDict):
 
 
 class PbxNumberAttributes(TypedDict):
-    netsapiensNumber: NotRequired[str]
+    phoneSystemNumber: NotRequired[str]
     state: NotRequired[ProvisioningState]
     stateDetail: NotRequired[str | None]
     stateChangedAt: NotRequired[str | None]
