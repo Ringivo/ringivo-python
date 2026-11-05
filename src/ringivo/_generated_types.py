@@ -85,7 +85,7 @@ class ResourceMeta(TypedDict):
 
 class RelationshipToOne(TypedDict):
     links: NotRequired[ResourceLinks]
-    data: NotRequired[ResourceIdentifier | None]
+    data: ResourceIdentifier | None
 
 
 class RelationshipToMany(TypedDict):
