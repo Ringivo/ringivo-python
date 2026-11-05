@@ -386,6 +386,7 @@ class FaxAccountAttributes(TypedDict):
     retentionDays: NotRequired[int | None]
     retentionPages: NotRequired[int | None]
     status: NotRequired[FaxAccountStatus]
+    emailToFax: NotRequired[bool]
     createdAt: NotRequired[str | None]
     updatedAt: NotRequired[str | None]
 
@@ -429,6 +430,7 @@ class FaxAccountWritableAttributes(TypedDict):
     retentionDays: NotRequired[int | None]
     retentionPages: NotRequired[int | None]
     status: NotRequired[FaxAccountStatus]
+    emailToFax: NotRequired[bool]
 
 
 class FaxAccountCreateAttributes(TypedDict):
@@ -440,6 +442,7 @@ class FaxAccountCreateAttributes(TypedDict):
     retentionDays: NotRequired[int | None]
     retentionPages: NotRequired[int | None]
     status: NotRequired[FaxAccountStatus]
+    emailToFax: NotRequired[bool]
 
 
 class Relationships1(TypedDict):
