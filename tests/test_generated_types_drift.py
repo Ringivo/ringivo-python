@@ -262,11 +262,12 @@ _READS: tuple[_Read, ...] = (
     # -- The flat plain-JSON answers are not in this table ------------------
     # `Fax._from_acknowledgement` (the flat `data` object `send()` and
     # `cancel()` answered) and the flat branch of `MediaLink._from_json`
-    # (`{url, expiresAt, byteSize, sha256}`) still read an older server's
-    # answer, but the API removed those shapes on 2026-10-27 (the fax
-    # response-shape window closed) and the spec no longer describes them:
-    # there is no generated TypedDict left to hold their keys against. The
-    # tests in test_faxes.py / test_async_faxes.py still pin them.
+    # (`{url, expiresAt, byteSize, sha256}`) are kept for now, but the API
+    # stopped sending those shapes on 2026-10-27 (it answers JSON:API only)
+    # and the spec no longer describes them: there is no generated TypedDict
+    # left to hold their keys against, so nothing here guards them. They are
+    # dead code until a release removes them; test_faxes.py and
+    # test_async_faxes.py still pin how they read.
     # -- MediaLink._from_json reads the JSON:API document --------------------
     # The endpoints answer a FaxMediaDocumentResource (id) + its attributes block.
     _Read(MediaLinkModel, "id", generated.FaxMediaDocumentResource, "id", "MediaLink._from_json"),
