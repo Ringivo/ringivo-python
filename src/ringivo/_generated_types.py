@@ -133,6 +133,13 @@ ErrorCode: TypeAlias = Literal[
     'idempotency_key_invalid',
     'idempotency_key_reused',
     'idempotency_key_in_use',
+    'messaging_removal_refused',
+    'messaging_removal_too_soon',
+    'messaging_provider_unreachable',
+    'messaging_provider_access_failed',
+    'messaging_removal_running',
+    'messaging_removal_still_open',
+    'messaging_removal_not_recorded',
 ]
 
 
