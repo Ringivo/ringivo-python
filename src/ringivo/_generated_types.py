@@ -75,6 +75,10 @@ class DocumentMeta(TypedDict):
     page: NotRequired[PageMeta]
 
 
+class CallRecordReadMeta(TypedDict):
+    requestedId: NotRequired[str]
+
+
 class Page(TypedDict):
     cursor: NotRequired[str]
 
@@ -2251,6 +2255,7 @@ class RecordingResource(TypedDict):
 
 class RecordingCollectionDocument(TypedDict):
     data: list[RecordingResource]
+    meta: NotRequired[CallRecordReadMeta]
 
 
 class TranscriptSegment(TypedDict):
@@ -2296,20 +2301,23 @@ class TranscriptWithSegmentsResource(TypedDict):
 
 class TranscriptCollectionDocument(TypedDict):
     data: list[TranscriptResource]
+    meta: NotRequired[CallRecordReadMeta]
 
 
 class TranscriptCollectionItemDocument(TypedDict):
     data: TranscriptResource
+    meta: NotRequired[CallRecordReadMeta]
 
 
 class TranscriptDocumentResponse(TypedDict):
     data: TranscriptWithSegmentsResource
+    meta: NotRequired[CallRecordReadMeta]
 
 
 class CallRecordDocumentResponse(TypedDict):
     data: CallRecordResource
     links: NotRequired[ResourceLinks]
-    meta: NotRequired[DocumentMeta]
+    meta: NotRequired[CallRecordReadMeta]
 
 
 class CallRecordCollectionDocument(TypedDict):
