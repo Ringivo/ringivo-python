@@ -1726,6 +1726,25 @@ class CustomerPbxEnableRequest(TypedDict):
     domainLabel: NotRequired[str | None]
 
 
+class AppPageSetRequest(TypedDict):
+    url: str
+    label: str
+    icon: NotRequired[str | None]
+
+
+class AppPageValue(TypedDict):
+    url: str
+    label: str
+    icon: str
+
+
+class AppPageAttributes(TypedDict):
+    page: AppPageValue | None
+    complete: bool
+    effective: AppPageValue | None
+    source: Literal['subscriber', 'customer', 'default'] | None
+
+
 TenantStatus: TypeAlias = Literal[
     'pending_email',
     'pending_kyc',
@@ -2540,6 +2559,16 @@ class PortOrderStatusChangedEvent(WebhookEventEnvelope):
 
 class PortOrderBillExtractionSettledEvent(WebhookEventEnvelope):
     data: PortOrderBillExtractionSettledEventData
+
+
+class AppPage(TypedDict):
+    type: Literal['app-pages']
+    id: str
+    attributes: AppPageAttributes
+
+
+class AppPageDocument(TypedDict):
+    data: AppPage
 
 
 class Data23(TypedDict):
