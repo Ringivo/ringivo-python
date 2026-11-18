@@ -3727,7 +3727,8 @@ paths:
       description: |
         Numbers the carriers can sell you now, each with the `offerToken` you spend to buy it with
         `POST /v1/number-orders`. An offer is the carriers' answer to this one search, not a stored
-        record, so there is no `GET` by id: search again for fresh offers.
+        record, so there is no `GET` by id: search again for fresh offers. Only numbers we can sell
+        you are listed.
 
         **Search one way at a time.** By area code (`filter[npa]`, and `filter[nxx]` for one
         exchange), by place (`filter[state]`, and `filter[rateCenter]` within it), or toll-free
@@ -3908,6 +3909,9 @@ paths:
           description: |
             The body is refused, or an offer token is not one we issued to you. Or the
             `Idempotency-Key` was used before with a different body (`code: idempotency_key_reused`).
+            Or a number on the order cannot be sold (title `Number cannot be bought`). We check
+            every offer token before we order any number, so after a 422 nothing on the order was
+            bought.
           content:
             application/vnd.api+json:
               schema:
