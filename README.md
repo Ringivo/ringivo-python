@@ -4,7 +4,8 @@ The Python client for the Ringivo API: send a fax, read one, list them,
 cancel one, fetch its pages, read your customers, manage their fax accounts,
 register the webhooks that tell you what happened, and verify what arrives.
 It also reads your customers' phone systems — the subscribers, their
-registrations and the call log — and places a call from one. For text
+registrations and the call log — places a call from one, and sets the web
+page their phone apps show in the menu. For text
 messaging it records a text your own system already sent, reads the texts
 sent to your numbers, and parses the `message.*` webhook events.
 
@@ -513,9 +514,10 @@ first. Unlike a real delivery, a test that lands keeps its row. Sending needs
 ## Customers
 
 `client.customers` reads the businesses you sell to: list them, or read one.
-It needs `customers:read`, and only a credential issued for your whole
-reseller account can hold that scope. A credential issued for one customer
-never carries it.
+These two reads need `customers:read`, and only a credential issued for your
+whole reseller account can hold that scope. A credential issued for one
+customer never carries it. `client.customers` also sets each customer's app
+page, which the next section describes.
 
 ```python
     page = client.customers.list(code="jpz3k")
@@ -544,6 +546,56 @@ When `customer.pbx` is False, the five phone-system fields —
 `residential`, `call_limit`, `call_limit_external`, `transports` and
 `provisioning_state` — are None. `transports` keeps the server's order,
 because the order is the DNS preference.
+
+## The app page in your customers' phone apps
+
+An app page is one web page of yours, shown as an entry in the menu of the
+iOS app, the Android app and the web phone. It has an address (`url`), a
+menu label (`label`) and an icon (`icon`, a Material icon name). Set it for
+a customer, and every user of that customer sees it. Set it for one
+subscriber, and that page outranks the customer's for that user, which is
+how you show a page to one user first.
+
+```python
+    page = client.customers.set_app_page(
+        customer.id,
+        url="https://app.example.com/phone",
+        label="Missed calls",
+        icon="call_missed",
+    )
+    print(page.effective.url if page.effective else None, page.source)
+
+    # One user only:
+    client.pbx.subscribers.set_app_page(
+        subscriber.id, url="https://app.example.com/phone", label="Missed calls"
+    )
+
+    page = client.customers.get_app_page(customer.id)
+    client.pbx.subscribers.clear_app_page(subscriber.id)  # back to the customer's page
+```
+
+**Your page signs its users in itself.** The apps load the address as you
+set it and give your page nothing about the user. Use your own sign-in on
+the page. Never put a secret in the address: anyone can read it. A value of
+your own in it, such as your own customer id, is a hint only. To match a
+signed-in user to a phone user, read `client.pbx.subscribers.list()`: each
+subscriber has its extension, its email and its customer.
+
+A set replaces the whole page and is safe to send again: send the same call
+again after a 502 (the phone system failed part way;
+`error.errors[0].meta["changedSettings"]` counts what was already changed)
+or a 409 titled `Change in progress`. The body is flat JSON, and `icon` is
+left off when you pass none (the API then uses `open_in_new`). A refused
+address or label is an `ApiError` with status 422 whose
+`errors[0].source["pointer"]` names it (`/url`, `/label`), and nothing is
+written. The phone system applies a change a few seconds after it answers:
+`complete` is False until the three apps hold the same page.
+
+`page` is the page set for that customer or subscriber itself, None when it
+has none. `effective` is what the apps show, and `source` says where it
+comes from (`subscriber`, `customer` or `default`). Setting and clearing need
+`pbx-app-pages:write`, on a credential for your whole account; reading needs
+`pbx-app-pages:read`.
 
 ## Call records, subscribers, devices and click-to-dial
 
@@ -1437,9 +1489,15 @@ when it is `None`, use your own backoff.
 | `client.webhook_test_deliveries.wait(test, *, interval=2.0, timeout=150.0)` | `webhooks:read` | Re-read a test until it is not `pending`, sleeping through a 429 with `Retry-After`. Raises `WebhookTestTimeoutError` when the timeout runs out. |
 | `client.customers.list(*, ids=None, code=None, after=None, before=None, page_size=None)` | `customers:read` | A `CustomerPage`, newest first: iterable, with `next_cursor`. `ids=` reads several customers by id in one request — the ids `list()` and `get()` hand back — and combines with `code=`. A customer's `id` is what `client.pbx.*.list(customer=...)` takes. |
 | `client.customers.get(customer_id)` | `customers:read` | One `Customer`. A customer that is not on your account is a 404, not a 403. |
+| `client.customers.set_app_page(customer_id, *, url, label, icon=None)` | `pbx-app-pages:write` | Set or replace the customer's app page: the menu entry its users' phone apps show. Returns the `AppPage` as written. Safe to send again. |
+| `client.customers.get_app_page(customer_id)` | `pbx-app-pages:read` | The customer's `AppPage`: its own `page` (None when none), and the `effective` page with its `source`. |
+| `client.customers.clear_app_page(customer_id)` | `pbx-app-pages:write` | Remove the customer's app page. 204 also when there was none. |
 | `client.pbx.subscribers.list(*, customer=None, user=None, search=None, kind=None, has_devices=None, after=None, before=None, page_size=None)` | `pbx-users:read` | A `PbxSubscriberPage`: iterable, with `next_cursor`. `user` is an EXACT extension; `search` is the directory search box; `kind` is one word, a comma list or a list of words; `has_devices` narrows to subscribers with (or without) a device. |
 | `client.pbx.subscribers.get(subscriber_id)` | `pbx-users:read` | One `PbxSubscriber`. A subscriber you cannot reach is a 404, not a 403. |
 | `client.pbx.subscribers.call(subscriber_id, *, destination, caller_id=None, auto_answer=False, device=None, idempotency_key=None)` | `pbx-calls:write` | Ring this subscriber and dial `destination`. Returns the accepted `PbxCall` — a 202, an `Idempotency-Key` on every request (yours, or a fresh UUID), and an id that names the call on the phone system rather than a call record. Pass that id to `call_records.list(call_id=...)` once the call has ended. |
+| `client.pbx.subscribers.set_app_page(subscriber_id, *, url, label, icon=None)` | `pbx-app-pages:write` | Set or replace one subscriber's app page; it outranks the customer's. Returns the `AppPage` as written. Safe to send again. |
+| `client.pbx.subscribers.get_app_page(subscriber_id)` | `pbx-app-pages:read` | The subscriber's `AppPage`; `source` is `subscriber`, `customer` or `default`. |
+| `client.pbx.subscribers.clear_app_page(subscriber_id)` | `pbx-app-pages:write` | Remove the subscriber's own page; it then gets the customer's. |
 | `client.pbx.devices.list(*, customer=None, subscriber=None, registered=None, after=None, before=None, page_size=None)` | `pbx-users:read` | A `PbxDevicePage`. `subscriber` is a `subscribers` ID, not an extension. |
 | `client.pbx.devices.get(pbx_device_id)` | `pbx-users:read` | One `PbxDevice` — one registration, not one handset. |
 | `client.pbx.call_records.list(*, customer=None, started_after=None, started_before=None, direction=None, fields=None, subscriber=None, call_id=None, include_hidden=None, after=None, before=None, page_size=None)` | `pbx-call-records:read` | A `CallRecordPage`, newest first. The date range decides which months are read; no range means the current and previous one. `fields=` asks for the extended tier — a sparse fieldset, so it narrows rather than adds. `call_id` finds the records that carry one call id — a `subscribers.call()` id, a leg's SIP Call-ID, or a recording webhook's `callId` — matched only inside the range's months. |
@@ -1457,6 +1515,7 @@ when it is `None`, use your own backoff.
 | `sender_label(text)` | — | A valid record label made from any text. |
 | `is_retryable(error)` | — | Whether the API's contract allows the same call again. |
 
+`AppPage`, `AppPageValue`,
 `CallRecord`, `CallRecordPage`, `Customer`, `CustomerPage`, `Fax`,
 `FaxAccount`, `FaxAccountNumber`, `FaxAccountPage`, `FaxAccountUser`,
 `FaxAccountUserPage`, `FaxDocument`, `FaxPage`, `InboundMessage`,

@@ -1,14 +1,20 @@
-"""Your customers: list them, and read one.
+"""Your customers: list them, read one, and set the page in their phone apps.
 
--- READS ONLY -------------------------------------------------------------------
+-- THE CUSTOMER ITSELF IS READ ONLY HERE ---------------------------------------
 This namespace lists customers and reads one. It has no `create()`, no
-`update()` and no `delete()`, because the API publishes none of them here.
+`update()` and no `delete()` of a customer. Its one write is the customer's
+app page: `set_app_page()`, `get_app_page()` and `clear_app_page()` — the
+web page the customer's phone apps show in their menu. app_pages.py says
+what a page is and how a set behaves.
 
 -- AN ACCOUNT-WIDE CREDENTIAL ONLY ----------------------------------------------
-Both calls need `customers:read`, and only a credential issued for your whole
-reseller account can hold it. A credential issued for ONE customer never
-does: the platform drops that scope from a customer credential when the
-token is minted, so every call here is refused for such a client.
+`list()` and `get()` need `customers:read`, and only a credential issued for
+your whole reseller account can hold it. A credential issued for ONE
+customer never does: the platform drops that scope from a customer
+credential when the token is minted, so those two calls are refused for
+such a client. The app page calls need `pbx-app-pages:read` or
+`pbx-app-pages:write` instead; the write scope, too, is for an account-wide
+credential only.
 
 -- THE id IS WHAT THE REST OF THE API ASKS FOR ----------------------------------
 A customer's `id` is the value `customer=` takes on `pbx.subscribers.list()`,
@@ -31,8 +37,9 @@ from __future__ import annotations
 from collections.abc import Mapping, Sequence
 from typing import TYPE_CHECKING, Any
 
+from .app_pages import _app_page, _app_page_body
 from .faxes import _data_object, _next_cursor, _next_link, _path_segment
-from .models import Customer, CustomerPage
+from .models import AppPage, Customer, CustomerPage
 
 if TYPE_CHECKING:  # pragma: no cover - import cycle broken for the type only
     from .client import Ringivo
@@ -121,6 +128,83 @@ class Customers:
             f"/v1/customers/{_path_segment(customer_id, noun=_NOUN)}",
         )
         return Customer._from_resource(_data_object(response.json()))
+
+    def set_app_page(
+        self,
+        customer_id: str,
+        *,
+        url: str,
+        label: str,
+        icon: str | None = None,
+    ) -> AppPage:
+        """Set or replace the customer's app page.
+
+        This is the page of every user of the customer that has no page of
+        its own. The same page goes to the iOS app, the Android app and the
+        web phone. The apps load `url` as you set it and add nothing about
+        the user, so your page signs its users in itself. Never put a
+        secret in `url`: anyone can read it.
+
+        Safe to send again: a set the phone system already holds changes
+        nothing. Send the same call again after a 502 (the phone system
+        failed part way; `errors[0].meta["changedSettings"]` counts what was
+        already changed) or a 409 titled `Change in progress`.
+
+        Args:
+            customer_id: The customer, as `customers.list()` returns it.
+            url: The page's address: `https://` and a host name, at most
+                2,000 characters. The API refuses an address it cannot
+                pass to the apps safely with a 422 on `/url`.
+            label: The text of the menu entry, 1 to 64 characters.
+            icon: A Material icon name (lower-case letters, digits and
+                `_`). Left off the request when None, and the API then
+                uses `open_in_new`.
+
+        Returns the `AppPage` as written. Its `effective` and `source` say
+        what the apps now show to a subscriber with no page of its own.
+
+        Raises:
+            ApiError: 422 for a refused member (its `source.pointer` names
+                it; nothing is written), 409 for a customer with no phone
+                system or a change in progress, 502 and 503 as above.
+
+        Needs `pbx-app-pages:write`, on a credential for your whole account.
+        """
+        response = self._client.request(
+            "POST",
+            f"/v1/customers/{_path_segment(customer_id, noun=_NOUN)}/app-page",
+            json=_app_page_body(url=url, label=label, icon=icon),
+        )
+        return _app_page(response.json())
+
+    def get_app_page(self, customer_id: str) -> AppPage:
+        """Read the customer's app page.
+
+        `page` is None when the customer has no page of its own. A read
+        shows a change a few seconds after a set or clear; `complete` is
+        False while the three apps do not hold the same page yet.
+
+        Needs `pbx-app-pages:read`.
+        """
+        response = self._client.request(
+            "GET",
+            f"/v1/customers/{_path_segment(customer_id, noun=_NOUN)}/app-page",
+        )
+        return _app_page(response.json())
+
+    def clear_app_page(self, customer_id: str) -> None:
+        """Remove the customer's app page.
+
+        Its users then have no entry in the menu, except users with a page
+        of their own. The API answers 204 also when there was no page, so
+        this is safe to send again; send it again after a 502.
+
+        Needs `pbx-app-pages:write`.
+        """
+        self._client.request(
+            "DELETE",
+            f"/v1/customers/{_path_segment(customer_id, noun=_NOUN)}/app-page",
+        )
 
 
 def _id_filter(ids: Sequence[str] | None) -> tuple[str, ...] | None:

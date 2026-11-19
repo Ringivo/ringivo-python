@@ -1,5 +1,25 @@
 # Release notes
 
+## Unreleased — Added
+
+- **The app page: a web page of yours in the menu of your customers' phone
+  apps.** `customers.set_app_page(customer_id, *, url, label, icon=None)`
+  sets or replaces a customer's page, and
+  `pbx.subscribers.set_app_page(subscriber_id, *, url, label, icon=None)`
+  sets one subscriber's page, which outranks the customer's.
+  `get_app_page()` reads either, and `clear_app_page()` removes it (204 also
+  when there was none). A set sends flat JSON, leaves `icon` off when it is
+  None (the API then uses `open_in_new`), and is safe to send again after a
+  502 or a 409 titled `Change in progress`. The apps pass nothing about the
+  user to the page, so the page signs its users in itself; never put a
+  secret in `url`. Setting and clearing need `pbx-app-pages:write`; reading
+  needs `pbx-app-pages:read`. Applies to both clients.
+- **New public names `AppPage` and `AppPageValue`.** `AppPage` has `id` (the
+  customer's or subscriber's), `page` (its own page, or None), `complete`,
+  `effective` (what the apps show, or None) and `source` (`subscriber`,
+  `customer` or `default`, or None). `AppPageValue` has `url`, `label` and
+  `icon`. Both keep the JSON they were read from in `raw`.
+
 ## 0.25.0 (2026-10-23) — Added
 
 - **Download the media of a received MMS.** Each media item of

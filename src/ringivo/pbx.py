@@ -18,12 +18,15 @@ customer is REFUSED WITH A 400 rather than handed an empty page, so
 subscribers".
 That refusal arrives as an `ApiError`, like any other.
 
--- THIS SURFACE DOES NOT WRITE THE PHONE SYSTEM --------------------------------
+-- THIS SURFACE WRITES ONE SETTING OF THE PHONE SYSTEM -------------------------
 Every attribute on `subscribers` and `devices` is read-only, which is why
-neither has a `create()`, an `update()` or a `delete()`. The two writes in
-this module do not write the phone system either. `subscribers.call()` asks
-the switch to place a call, and `call_records.request_transcript()` asks it
-to transcribe one capture of a call. Each gets an acknowledgement back.
+neither has a `create()`, an `update()` or a `delete()`. Two writes in this
+module do not write the phone system. `subscribers.call()` asks the switch
+to place a call, and `call_records.request_transcript()` asks it to
+transcribe one capture of a call. Each gets an acknowledgement back. The
+one setting written is a subscriber's app page:
+`subscribers.set_app_page()` and `clear_app_page()`, which app_pages.py
+describes. It needs its own scope, `pbx-app-pages:write`.
 
 -- THE TWO SCOPES ARE NOT THE THREE COLLECTIONS --------------------------------
 `pbx-users:read` reaches BOTH `subscribers` and `devices` — a registration is
@@ -57,9 +60,11 @@ from collections.abc import Mapping, Sequence
 from dataclasses import replace
 from typing import TYPE_CHECKING, Any
 
+from .app_pages import _app_page, _app_page_body
 from .fax_accounts import _JSONAPI
 from .faxes import _data_object, _next_cursor, _next_link, _path_segment
 from .models import (
+    AppPage,
     CallRecord,
     CallRecordPage,
     PbxCall,
@@ -308,6 +313,85 @@ class PbxSubscribers:
             ),
         )
         return _placed_call(response)
+
+    def set_app_page(
+        self,
+        subscriber_id: str,
+        *,
+        url: str,
+        label: str,
+        icon: str | None = None,
+    ) -> AppPage:
+        """Set or replace the app page of one subscriber.
+
+        It outranks the customer's page for this subscriber, which makes it
+        the way to show a page to one user first (a pilot). The same page
+        goes to the iOS app, the Android app and the web phone. The apps
+        load `url` as you set it and add nothing about the user, so your
+        page signs its users in itself. Never put a secret in `url`: anyone
+        can read it.
+
+        Safe to send again: a set the phone system already holds changes
+        nothing. Send the same call again after a 502 (the phone system
+        failed part way) or a 409 titled `Change in progress`.
+
+        Args:
+            subscriber_id: The subscriber, as `subscribers.list()` returns
+                it — a `subscribers` id, not an extension.
+            url: The page's address: `https://` and a host name, at most
+                2,000 characters. The API refuses an address it cannot
+                pass to the apps safely with a 422 on `/url`.
+            label: The text of the menu entry, 1 to 64 characters.
+            icon: A Material icon name (lower-case letters, digits and
+                `_`). Left off the request when None, and the API then
+                uses `open_in_new`.
+
+        Returns the `AppPage` as written. Its `effective` and `source` say
+        what the apps now show to this subscriber.
+
+        Raises:
+            ApiError: 422 for a refused member (its `source.pointer` names
+                it; nothing is written), 409 for a change in progress, 502
+                and 503 as above. A subscriber you cannot reach is a 404.
+
+        Needs `pbx-app-pages:write`, on a credential for your whole account.
+        """
+        response = self._client.request(
+            "POST",
+            f"/v1/pbx/subscribers/{_path_segment(subscriber_id, noun=_SUBSCRIBER_NOUN)}/app-page",
+            json=_app_page_body(url=url, label=label, icon=icon),
+        )
+        return _app_page(response.json())
+
+    def get_app_page(self, subscriber_id: str) -> AppPage:
+        """Read the app page of one subscriber.
+
+        `page` is the subscriber's own page, or None when it has none.
+        `effective` is what its apps show, and `source` says where that
+        comes from: `subscriber`, `customer` or `default`. A read shows a
+        change a few seconds after a set or clear.
+
+        Needs `pbx-app-pages:read`.
+        """
+        response = self._client.request(
+            "GET",
+            f"/v1/pbx/subscribers/{_path_segment(subscriber_id, noun=_SUBSCRIBER_NOUN)}/app-page",
+        )
+        return _app_page(response.json())
+
+    def clear_app_page(self, subscriber_id: str) -> None:
+        """Remove the app page of one subscriber.
+
+        The subscriber then gets the customer's page. The API answers 204
+        also when there was no page, so this is safe to send again; send it
+        again after a 502.
+
+        Needs `pbx-app-pages:write`.
+        """
+        self._client.request(
+            "DELETE",
+            f"/v1/pbx/subscribers/{_path_segment(subscriber_id, noun=_SUBSCRIBER_NOUN)}/app-page",
+        )
 
 
 class PbxDevices:

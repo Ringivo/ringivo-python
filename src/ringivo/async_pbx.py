@@ -19,9 +19,11 @@ from __future__ import annotations
 from collections.abc import Sequence
 from typing import TYPE_CHECKING, Any
 
+from .app_pages import _app_page, _app_page_body
 from .fax_accounts import _JSONAPI
 from .faxes import _data_object, _path_segment
 from .models import (
+    AppPage,
     CallRecord,
     CallRecordPage,
     PbxCall,
@@ -171,6 +173,58 @@ class AsyncPbxSubscribers:
             ),
         )
         return _placed_call(response)
+
+    async def set_app_page(
+        self,
+        subscriber_id: str,
+        *,
+        url: str,
+        label: str,
+        icon: str | None = None,
+    ) -> AppPage:
+        """Set or replace the app page of one subscriber.
+
+        The awaited twin of `PbxSubscribers.set_app_page`: the same flat
+        JSON body, `icon` left off when None, and safe to send again after a
+        502 or a 409 titled `Change in progress`. It outranks the customer's
+        page for this subscriber.
+
+        Needs `pbx-app-pages:write`, on a credential for your whole account.
+        """
+        response = await self._client.request(
+            "POST",
+            f"/v1/pbx/subscribers/{_path_segment(subscriber_id, noun=_SUBSCRIBER_NOUN)}/app-page",
+            json=_app_page_body(url=url, label=label, icon=icon),
+        )
+        return _app_page(response.json())
+
+    async def get_app_page(self, subscriber_id: str) -> AppPage:
+        """Read the app page of one subscriber.
+
+        The awaited twin of `PbxSubscribers.get_app_page`. `page` is None
+        when the subscriber has no page of its own; `effective` and
+        `source` say what its apps show.
+
+        Needs `pbx-app-pages:read`.
+        """
+        response = await self._client.request(
+            "GET",
+            f"/v1/pbx/subscribers/{_path_segment(subscriber_id, noun=_SUBSCRIBER_NOUN)}/app-page",
+        )
+        return _app_page(response.json())
+
+    async def clear_app_page(self, subscriber_id: str) -> None:
+        """Remove the app page of one subscriber.
+
+        The awaited twin of `PbxSubscribers.clear_app_page`: the subscriber
+        then gets the customer's page, and 204 also when there was no page.
+
+        Needs `pbx-app-pages:write`.
+        """
+        await self._client.request(
+            "DELETE",
+            f"/v1/pbx/subscribers/{_path_segment(subscriber_id, noun=_SUBSCRIBER_NOUN)}/app-page",
+        )
 
 
 class AsyncPbxDevices:

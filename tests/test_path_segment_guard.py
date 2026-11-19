@@ -34,7 +34,10 @@ _NOT_PATH_IDS = {"provider_message_id", "call_id", "caller_id", "scope_id"}
 # (method path from the client, the path id parameter, other arguments the
 # method needs to reach its guard)
 _CASES: list[tuple[str, str, dict[str, Any]]] = [
+    ("customers.clear_app_page", "customer_id", {}),
     ("customers.get", "customer_id", {}),
+    ("customers.get_app_page", "customer_id", {}),
+    ("customers.set_app_page", "customer_id", {"url": "https://a.example", "label": "A"}),
     ("fax_account_users.delete", "fax_account_user_id", {}),
     ("fax_account_users.get", "fax_account_user_id", {}),
     ("fax_accounts.delete", "fax_account_id", {}),
@@ -56,7 +59,14 @@ _CASES: list[tuple[str, str, dict[str, Any]]] = [
     ("pbx.call_records.transcripts", "call_record_id", {}),
     ("pbx.devices.get", "pbx_device_id", {}),
     ("pbx.subscribers.call", "subscriber_id", {"destination": "+14075550100"}),
+    ("pbx.subscribers.clear_app_page", "subscriber_id", {}),
     ("pbx.subscribers.get", "subscriber_id", {}),
+    ("pbx.subscribers.get_app_page", "subscriber_id", {}),
+    (
+        "pbx.subscribers.set_app_page",
+        "subscriber_id",
+        {"url": "https://a.example", "label": "A"},
+    ),
     ("webhook_deliveries.get", "webhook_delivery_id", {}),
     ("webhook_endpoints.delete", "webhook_endpoint_id", {}),
     ("webhook_endpoints.get", "webhook_endpoint_id", {}),
@@ -108,7 +118,7 @@ def _path_id_methods(
 def test_the_table_names_every_path_id_on_both_clients(make: Callable[[], Any]) -> None:
     found = _path_id_methods(make())
 
-    assert len(found) == 30, f"{len(found)} path ids found — the sweep is broken: {sorted(found)}"
+    assert len(found) == 36, f"{len(found)} path ids found — the sweep is broken: {sorted(found)}"
     assert found == {(method, parameter) for method, parameter, _ in _CASES}
 
 

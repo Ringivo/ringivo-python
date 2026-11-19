@@ -27,6 +27,8 @@ from typing import Any, Literal, TypeAlias
 from typing_extensions import deprecated
 
 __all__ = [
+    "AppPage",
+    "AppPageValue",
     "CallRecord",
     "CallRecordPage",
     "Customer",
@@ -1612,6 +1614,81 @@ class PbxCall:
             device=_text(attributes, "device"),
             status=_text(attributes, "status"),
             requested_at=_parse_datetime(attributes.get("requestedAt")),
+            raw=resource,
+        )
+
+
+@dataclass(frozen=True)
+class AppPageValue:
+    """One app page as the phone apps show it: an address, a label, an icon.
+
+    `url` is the address the apps load, exactly as it was set. The apps add
+    nothing about the user to it. `label` is the text of the menu entry.
+    `icon` is a Material icon name; the API answers `open_in_new` when the
+    set named none.
+    """
+
+    url: str | None = None
+    label: str | None = None
+    icon: str | None = None
+    raw: Mapping[str, Any] = field(default_factory=dict, repr=False)
+
+    @classmethod
+    def _from_json(cls, source: Mapping[str, Any] | None) -> AppPageValue | None:
+        """Build from one `page` or `effective` member, or None for `null`."""
+        if source is None:
+            return None
+        return cls(
+            url=_text(source, "url"),
+            label=_text(source, "label"),
+            icon=_text(source, "icon"),
+            raw=source,
+        )
+
+
+@dataclass(frozen=True)
+class AppPage:
+    """The app page of one customer or one subscriber.
+
+    `customers.get_app_page()` and `pbx.subscribers.get_app_page()` return
+    one, and so do the two `set_app_page()` calls. `id` is the id of that
+    customer or subscriber.
+
+    -- page AND effective ARE NOT THE SAME THING -----------------------------
+    `page` is the page set for THIS customer or subscriber itself, and None
+    when it has none of its own. `effective` is the page the apps show: to
+    this subscriber, or, on a customer, to a subscriber with no page of its
+    own. It is None when the menu has no entry. `source` says where
+    `effective` comes from: `subscriber`, `customer` or `default` (a page the
+    provider set for many customers), and None when there is none. It is
+    passed through as text, so match the values you know.
+
+    -- complete IS NOT PROOF THAT A SET FINISHED -----------------------------
+    `complete` is True when the iOS app, the Android app and the web phone
+    hold the same page (or none). It is False for a few seconds after a
+    change, or after a set or clear that failed part way. True does not prove
+    a set finished: after a 502, send the set again, or compare `page` with
+    what you sent.
+    """
+
+    id: str
+    page: AppPageValue | None = None
+    complete: bool | None = None
+    effective: AppPageValue | None = None
+    source: str | None = None
+    raw: Mapping[str, Any] = field(default_factory=dict, repr=False)
+
+    @classmethod
+    def _from_resource(cls, resource: Mapping[str, Any]) -> AppPage:
+        """Build from the `app-pages` resource object a read or a set answers."""
+        attributes = _mapping(resource, "attributes") or {}
+
+        return cls(
+            id=_text(resource, "id") or "",
+            page=AppPageValue._from_json(_mapping(attributes, "page")),
+            complete=_boolean(attributes, "complete"),
+            effective=AppPageValue._from_json(_mapping(attributes, "effective")),
+            source=_text(attributes, "source"),
             raw=resource,
         )
 
