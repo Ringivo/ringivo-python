@@ -1391,6 +1391,7 @@ PortOrderStatus: TypeAlias = Literal[
     'draft',
     'awaiting_signature',
     'awaiting_review',
+    'submitting',
     'submitted',
     'foc_assigned',
     'completed',
