@@ -36,6 +36,13 @@ needs `fax:read`; granting and withdrawing needs `fax-accounts:write`.
 customer's `id` is what `customer=` takes on the `client.pbx` lists. It
 needs `customers:read`, which only an account-wide credential can hold.
 
+The app page is one web page of yours in the menu of your customers' phone
+apps: an address, a menu label and an icon. `client.customers.set_app_page()`
+sets it for a customer, and `client.pbx.subscribers.set_app_page()` for one
+subscriber; `get_app_page()` and `clear_app_page()` sit beside each. The
+apps pass nothing about the user to the page, so the page signs its users
+in itself. It needs `pbx-app-pages:write` (or `:read` to read).
+
 `client.pbx` is your customers' phone systems: `pbx.subscribers` are every
 extension on them — people and machines, told apart by `kind` —
 `pbx.devices` are the registrations their phones have made, and
@@ -124,6 +131,8 @@ from .faxes import Faxes
 from .inbound_messages import InboundMessages
 from .messages import Messages, sender_label
 from .models import (
+    AppPage,
+    AppPageValue,
     CallRecord,
     CallRecordPage,
     Customer,
@@ -178,6 +187,8 @@ from .webhook_test_deliveries import WebhookTestDeliveries
 __all__ = [
     "ApiError",
     "ApiErrorDetail",
+    "AppPage",
+    "AppPageValue",
     "AsyncCustomers",
     "AsyncFaxAccountUsers",
     "AsyncFaxAccounts",

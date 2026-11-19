@@ -369,6 +369,12 @@ def is_retryable(error: BaseException) -> bool:
     403 or 404 can be a setting that is fixed later; for example
     `messages.record()` answers 404 while recording texts is not turned on
     for the platform yet. Retry those only after the change, or slowly.
+    ONE 409 IS TRANSIENT AND STILL FALSE HERE: the app page's
+    `Change in progress` (another change of the same page is running). It
+    carries no `code`, so this function cannot tell it from a 409 that
+    answers the same every time. Match `error.status_code == 409` and
+    `error.errors[0].title == "Change in progress"` yourself, and send the
+    same call again after a few seconds.
     False too for `httpx.UnsupportedProtocol` and `httpx.LocalProtocolError`:
     those are transport errors this client caused (a bad URL, an invalid
     request), and an unchanged retry fails the same way. False for anything

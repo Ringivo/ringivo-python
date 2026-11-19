@@ -1,4 +1,4 @@
-"""Your customers: list them, and read one — awaited.
+"""Your customers: list them, read one, and set their app page — awaited.
 
 The SIBLING of customers.py, method for method: each body here is its
 twin's body with an `await` on the line that goes to the network. The page
@@ -16,9 +16,10 @@ from __future__ import annotations
 from collections.abc import Sequence
 from typing import TYPE_CHECKING, Any
 
+from .app_pages import _app_page, _app_page_body
 from .customers import _NOUN, _id_filter, _page
 from .faxes import _data_object, _path_segment
-from .models import Customer, CustomerPage
+from .models import AppPage, Customer, CustomerPage
 
 if TYPE_CHECKING:  # pragma: no cover - import cycle broken for the type only
     from .async_client import AsyncRingivo
@@ -81,3 +82,53 @@ class AsyncCustomers:
             f"/v1/customers/{_path_segment(customer_id, noun=_NOUN)}",
         )
         return Customer._from_resource(_data_object(response.json()))
+
+    async def set_app_page(
+        self,
+        customer_id: str,
+        *,
+        url: str,
+        label: str,
+        icon: str | None = None,
+    ) -> AppPage:
+        """Set or replace the customer's app page.
+
+        The awaited twin of `Customers.set_app_page`: the same flat JSON
+        body, `icon` left off when None, and safe to send again after a 502
+        or a 409 titled `Change in progress`.
+
+        Needs `pbx-app-pages:write`, on a credential for your whole account.
+        """
+        response = await self._client.request(
+            "POST",
+            f"/v1/customers/{_path_segment(customer_id, noun=_NOUN)}/app-page",
+            json=_app_page_body(url=url, label=label, icon=icon),
+        )
+        return _app_page(response.json())
+
+    async def get_app_page(self, customer_id: str) -> AppPage:
+        """Read the customer's app page.
+
+        The awaited twin of `Customers.get_app_page`. `page` is None when
+        the customer has no page of its own.
+
+        Needs `pbx-app-pages:read`.
+        """
+        response = await self._client.request(
+            "GET",
+            f"/v1/customers/{_path_segment(customer_id, noun=_NOUN)}/app-page",
+        )
+        return _app_page(response.json())
+
+    async def clear_app_page(self, customer_id: str) -> None:
+        """Remove the customer's app page.
+
+        The awaited twin of `Customers.clear_app_page`: 204 also when there
+        was no page.
+
+        Needs `pbx-app-pages:write`.
+        """
+        await self._client.request(
+            "DELETE",
+            f"/v1/customers/{_path_segment(customer_id, noun=_NOUN)}/app-page",
+        )

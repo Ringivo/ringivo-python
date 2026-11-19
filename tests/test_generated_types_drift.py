@@ -1394,6 +1394,34 @@ _READS: tuple[_Read, ...] = (
         "requestedAt",
         "PbxCall._from_resource",
     ),
+    # -- AppPage._from_resource reads an AppPage resource (id) + its ---------
+    # AppPageAttributes; AppPageValue._from_json reads `page` and `effective`.
+    _Read(models.AppPage, "id", generated.AppPage, "id", "AppPage._from_resource"),
+    _Read(models.AppPage, "page", generated.AppPageAttributes, "page", "AppPage._from_resource"),
+    _Read(
+        models.AppPage,
+        "complete",
+        generated.AppPageAttributes,
+        "complete",
+        "AppPage._from_resource",
+    ),
+    _Read(
+        models.AppPage,
+        "effective",
+        generated.AppPageAttributes,
+        "effective",
+        "AppPage._from_resource",
+    ),
+    _Read(
+        models.AppPage,
+        "source",
+        generated.AppPageAttributes,
+        "source",
+        "AppPage._from_resource",
+    ),
+    _Read(models.AppPageValue, "url", generated.AppPageValue, "url", "AppPageValue._from_json"),
+    _Read(models.AppPageValue, "label", generated.AppPageValue, "label", "AppPageValue._from_json"),
+    _Read(models.AppPageValue, "icon", generated.AppPageValue, "icon", "AppPageValue._from_json"),
     # -- Customer._from_resource reads a CustomerResource (id) + its --------
     # CustomerAttributes. The resource carries no relationships block.
     _Read(models.Customer, "id", generated.CustomerResource, "id", "Customer._from_resource"),
@@ -2217,6 +2245,8 @@ _EXCLUDED: dict[tuple[type, str], str] = {
         "holds the whole source mapping this object was built from"
     ),
     (models.PbxSubscriber, "raw"): "holds the whole source mapping this object was built from",
+    (models.AppPage, "raw"): "holds the whole source mapping this object was built from",
+    (models.AppPageValue, "raw"): "holds the whole source mapping this object was built from",
     (models.PbxDevice, "raw"): "holds the whole source mapping this object was built from",
     (models.CallRecord, "raw"): "holds the whole source mapping this object was built from",
     (models.Recording, "raw"): "holds the whole source mapping this object was built from",
@@ -2330,6 +2360,8 @@ _MODELS: tuple[type, ...] = (
     models.TranscriptChannel,
     models.PbxCall,
     models.Customer,
+    models.AppPage,
+    models.AppPageValue,
     models.OutboundMessageMediaItem,
     models.InboundMessageMediaItem,
     models.InboundMessageMediaWithLink,
@@ -2369,7 +2401,7 @@ def test_every_field_a_model_reads_is_covered_by_the_read_table() -> None:
     them, in both directions, or this whole test proves nothing about that
     model.
     """
-    assert len(_MODELS) == 32, (
+    assert len(_MODELS) == 34, (
         f"only {[m.__name__ for m in _MODELS]} was searched — the sweep is broken"
     )
 
@@ -2391,7 +2423,7 @@ def test_every_field_a_model_reads_is_covered_by_the_read_table() -> None:
 
 
 def test_every_field_a_model_reads_exists_in_the_generated_types() -> None:
-    assert len(_READS) == 313, f"{len(_READS)} reads were checked, not 313 — the sweep is broken"
+    assert len(_READS) == 321, f"{len(_READS)} reads were checked, not 321 — the sweep is broken"
 
     failures: list[str] = []
     for read in _READS:
@@ -2518,6 +2550,24 @@ def test_every_member_of_a_webhook_test_result_is_read() -> None:
     }
 
     assert len(_generated_keys(typed_dict)) == 9, "the test result's shape changed"
+    assert read == _generated_keys(typed_dict)
+
+
+@pytest.mark.parametrize(
+    ("model", "typed_dict", "size"),
+    [
+        (models.AppPage, generated.AppPageAttributes, 4),
+        (models.AppPageValue, generated.AppPageValue, 3),
+    ],
+)
+def test_every_member_of_an_app_page_is_read(model: type, typed_dict: type, size: int) -> None:
+    """Both directions for an app page, as for a test result above: every
+    member the spec gives the page's attributes and its page value is read
+    into a field, and nothing else is.
+    """
+    read = {r.key for r in _READS if r.model is model and r.typed_dict is typed_dict}
+
+    assert len(_generated_keys(typed_dict)) == size, "the app page's shape changed"
     assert read == _generated_keys(typed_dict)
 
 
