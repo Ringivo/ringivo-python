@@ -148,23 +148,30 @@ class Customers:
         Safe to send again: a set the phone system already holds changes
         nothing. Send the same call again after a 502 (the phone system
         failed part way; `errors[0].meta["changedSettings"]` counts what was
-        already changed) or a 409 titled `Change in progress`.
+        already changed) or a 409 titled `Change in progress` (`is_retryable()`
+        is False for that 409; the README's "Retrying from a queue" says how
+        to match it).
 
         Args:
             customer_id: The customer, as `customers.list()` returns it.
             url: The page's address: `https://` and a host name, at most
-                2,000 characters. The API refuses an address it cannot
-                pass to the apps safely with a 422 on `/url`.
+                2,000 characters. No IP address as the host, no user name
+                or password, and no `[` or `]` (also not percent-encoded):
+                each is a 422 on `/url`, and its `detail` says why.
             label: The text of the menu entry, 1 to 64 characters.
             icon: A Material icon name (lower-case letters, digits and
                 `_`). Left off the request when None, and the API then
                 uses `open_in_new`.
 
-        Returns the `AppPage` as written. Its `effective` and `source` say
-        what the apps now show to a subscriber with no page of its own.
+        Returns the `AppPage` as written. It is an echo of the set, not a
+        read: `complete` is always True there, and `effective` is the page
+        you sent. A page your provider set for many customers (`source`
+        `default`) outranks it, and only `get_app_page()` shows that. To see
+        the change applied, read the page a few seconds later and compare
+        `page` with what you sent.
 
         Raises:
-            ApiError: 422 for a refused member (its `source.pointer` names
+            ApiError: 422 for a refused member (its `source["pointer"]` names
                 it; nothing is written), 409 for a customer with no phone
                 system or a change in progress, 502 and 503 as above.
 

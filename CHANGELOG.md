@@ -10,7 +10,11 @@
   `get_app_page()` reads either, and `clear_app_page()` removes it (204 also
   when there was none). A set sends flat JSON, leaves `icon` off when it is
   None (the API then uses `open_in_new`), and is safe to send again after a
-  502 or a 409 titled `Change in progress`. The apps pass nothing about the
+  502 or a 409 titled `Change in progress`. That 409 has no `code`, and
+  `is_retryable()` is False for it: match its title (the README's "Retrying
+  from a queue" shows how). The answer of a set is an echo of what was
+  written (`complete` always True); read the page with `get_app_page()` to
+  see what the apps show. The apps pass nothing about the
   user to the page, so the page signs its users in itself; never put a
   secret in `url`. Setting and clearing need `pbx-app-pages:write`; reading
   needs `pbx-app-pages:read`. Applies to both clients.

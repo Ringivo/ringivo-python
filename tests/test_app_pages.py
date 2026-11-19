@@ -17,7 +17,7 @@ import httpx
 import pytest
 import respx
 
-from ringivo import ApiError, AppPage, AppPageValue, Ringivo
+from ringivo import ApiError, AppPage, AppPageValue, Ringivo, is_retryable
 
 BASE_URL = "https://api.yourprovider.example"
 TOKEN_URL = f"{BASE_URL}/oauth/token"
@@ -249,6 +249,28 @@ def test_a_set_that_failed_part_way_says_how_much_changed(
 
     assert caught.value.status_code == 502
     assert caught.value.errors[0].meta == {"changedSettings": 4}
+    assert is_retryable(caught.value) is True
+
+
+def test_a_change_in_progress_409_has_no_code_and_is_retryable_says_false(
+    respx_mock: respx.MockRouter, client: Ringivo
+) -> None:
+    # The API's own shape: a title and no `code`. The README documents that
+    # `is_retryable()` is False for it and that a caller matches the title.
+    respx_mock.post(CUSTOMER_PAGE_URL).mock(
+        return_value=httpx.Response(
+            409, json={"errors": [{"status": "409", "title": "Change in progress"}]}
+        )
+    )
+
+    with client, pytest.raises(ApiError) as caught:
+        client.customers.set_app_page(
+            CUSTOMER_ID, url="https://app.example.com/phone", label="Missed calls"
+        )
+
+    assert caught.value.status_code == 409
+    assert caught.value.errors[0].title == "Change in progress"
+    assert is_retryable(caught.value) is False
 
 
 # -- subscriber ------------------------------------------------------------

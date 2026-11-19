@@ -91,6 +91,46 @@ async def test_set_sends_flat_json_to_the_customers_page(
 
 
 @pytest.mark.anyio
+async def test_set_passes_the_icon_to_the_customers_page(
+    respx_mock: respx.MockRouter, client: AsyncRingivo, openapi_spec: dict[str, Any]
+) -> None:
+    answer = _example(openapi_spec, CUSTOMER_PATH, "post", "200")
+    route = respx_mock.post(CUSTOMER_PAGE_URL).mock(return_value=httpx.Response(200, json=answer))
+
+    async with client:
+        await client.customers.set_app_page(
+            CUSTOMER_ID,
+            url="https://app.example.com/phone",
+            label="Missed calls",
+            icon="call_missed",
+        )
+
+    assert json.loads(route.calls.last.request.content) == {
+        "url": "https://app.example.com/phone",
+        "label": "Missed calls",
+        "icon": "call_missed",
+    }
+
+
+@pytest.mark.anyio
+async def test_set_leaves_the_icon_off_the_subscribers_page(
+    respx_mock: respx.MockRouter, client: AsyncRingivo, openapi_spec: dict[str, Any]
+) -> None:
+    answer = _example(openapi_spec, SUBSCRIBER_PATH, "post", "200")
+    route = respx_mock.post(SUBSCRIBER_PAGE_URL).mock(return_value=httpx.Response(200, json=answer))
+
+    async with client:
+        await client.pbx.subscribers.set_app_page(
+            SUBSCRIBER_ID, url="https://app.example.com/phone", label="Missed calls"
+        )
+
+    assert json.loads(route.calls.last.request.content) == {
+        "url": "https://app.example.com/phone",
+        "label": "Missed calls",
+    }
+
+
+@pytest.mark.anyio
 async def test_get_reads_the_customers_page(
     respx_mock: respx.MockRouter, client: AsyncRingivo, openapi_spec: dict[str, Any]
 ) -> None:

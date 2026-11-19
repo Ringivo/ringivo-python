@@ -552,25 +552,28 @@ because the order is the DNS preference.
 An app page is one web page of yours, shown as an entry in the menu of the
 iOS app, the Android app and the web phone. It has an address (`url`), a
 menu label (`label`) and an icon (`icon`, a Material icon name). Set it for
-a customer, and every user of that customer sees it. Set it for one
+a customer, and every user of that customer with no page of its own sees it,
+unless your provider set a page for many customers, which outranks it. Set it for one
 subscriber, and that page outranks the customer's for that user, which is
 how you show a page to one user first.
 
 ```python
-    page = client.customers.set_app_page(
+    client.customers.set_app_page(
         customer.id,
         url="https://app.example.com/phone",
         label="Missed calls",
         icon="call_missed",
     )
-    print(page.effective.url if page.effective else None, page.source)
 
     # One user only:
     client.pbx.subscribers.set_app_page(
         subscriber.id, url="https://app.example.com/phone", label="Missed calls"
     )
 
+    # A few seconds later: what the apps show, and where it comes from.
     page = client.customers.get_app_page(customer.id)
+    print(page.effective.url if page.effective else None, page.source, page.complete)
+
     client.pbx.subscribers.clear_app_page(subscriber.id)  # back to the customer's page
 ```
 
@@ -584,12 +587,22 @@ subscriber has its extension, its email and its customer.
 A set replaces the whole page and is safe to send again: send the same call
 again after a 502 (the phone system failed part way;
 `error.errors[0].meta["changedSettings"]` counts what was already changed)
-or a 409 titled `Change in progress`. The body is flat JSON, and `icon` is
-left off when you pass none (the API then uses `open_in_new`). A refused
-address or label is an `ApiError` with status 422 whose
+or a 409 titled `Change in progress` (`is_retryable()` is False for that
+409: "Retrying from a queue" says how to match it). The body is flat JSON,
+and `icon` is left off when you pass none (the API then uses `open_in_new`).
+A refused address or label is an `ApiError` with status 422 whose
 `errors[0].source["pointer"]` names it (`/url`, `/label`), and nothing is
-written. The phone system applies a change a few seconds after it answers:
-`complete` is False until the three apps hold the same page.
+written: for `url`, an IP address as the host, a user name or password, and
+`[` or `]` (also percent-encoded) are each refused, and the `detail` says
+why.
+
+**The answer of a set is an echo, not a read.** It is what was written:
+`complete` is always True there, and `effective` is the page you sent. A
+page your provider set for many customers (`source` `default`) outranks
+yours, and only `get_app_page()` shows that. The phone system applies a
+change a few seconds after it answers, so read the page a few seconds later
+and compare `page` with what you sent: `complete` is False until the three
+apps hold the same page.
 
 `page` is the page set for that customer or subscriber itself, None when it
 has none. `effective` is what the apps show, and `source` says where it
@@ -1419,6 +1432,13 @@ never retry those unchanged. A 401, 403 or 404 can be an account setting
 that is fixed later, such as a missing scope. A queue may retry those
 slowly, after the change.
 
+**One 409 is transient and carries no `code`:** the app page's
+`Change in progress`, which says another change of the same page is
+running. `is_retryable()` is False for it, because a 409 with no code is
+told apart only by its title. Match
+`error.status_code == 409 and error.errors and error.errors[0].title == "Change in progress"`,
+and send the same call again after a few seconds.
+
 **Retry with the same `Idempotency-Key`.** For `faxes.send()` and
 `pbx.subscribers.call()`, a retry is safe only when it sends the key the
 first attempt sent: pass your own `idempotency_key` and keep it with the
@@ -1441,6 +1461,13 @@ except (ApiError, httpx.TransportError) as error:
         # Unchanged means the same idempotency key too, for a send or a call.
         wait = getattr(error, "retry_after", None)  # seconds the server asked for, or None
         queue.retry_later(seconds=wait or your_backoff(attempt))
+    elif (
+        isinstance(error, ApiError)
+        and error.status_code == 409
+        and error.errors
+        and error.errors[0].title == "Change in progress"
+    ):
+        queue.retry_later(seconds=5)  # an app page change is still running
     elif isinstance(error, ApiError) and error.status_code in (401, 403, 404):
         # An account setting, such as a missing scope: retry slowly, and
         # alert someone to fix it.
