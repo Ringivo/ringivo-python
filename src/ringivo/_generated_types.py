@@ -1822,7 +1822,7 @@ class TenantUpdateRequest(TypedDict):
     data: Data16
 
 
-SipTrunkMode: TypeAlias = Literal['static', 'register']
+SipTrunkMode: TypeAlias = Literal['static', 'register', 'webex']
 
 
 SipTrunkRegistrationMode: TypeAlias = Literal['replace', 'additive']
@@ -1842,7 +1842,7 @@ SipTrunkDnisFormat: TypeAlias = Literal['plus_e164', 'e164', 'national', 'sip_us
 SipTrunkDialPolicy: TypeAlias = Literal['us_canada', 'nanp', 'permit_all']
 
 
-SipTrunkMediaMode: TypeAlias = Literal['anchored', 'direct']
+SipTrunkMediaMode: TypeAlias = Literal['anchored', 'direct', 'srtp']
 
 
 SipTrunkTransport: TypeAlias = Literal['udp', 'tcp', 'tls']
