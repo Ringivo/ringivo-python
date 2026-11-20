@@ -1,6 +1,6 @@
 # Release notes
 
-## Unreleased — Added
+## 0.26.0 (2026-11-20) — Added
 
 - **The app page: a web page of yours in the menu of your customers' phone
   apps.** `customers.set_app_page(customer_id, *, url, label, icon=None)`
